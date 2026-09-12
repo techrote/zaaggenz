@@ -9,7 +9,7 @@ def fixture_pack():
     ratio=(1.,9/8,5/4,4/3,3/2,5/3,15/8)
     tritave=tuple(3**(k/13) for k in range(13))
     return {
-      'tet12-a440':Tuning('tet12-a440',440.,0,2.,tet12,_linear(12,69,69),'12 equal divisions of 2:1','mathematical reference'),
+      '12tet-a440':Tuning('12tet-a440',440.,0,2.,tet12,_linear(12,69,69),'12 equal divisions of 2:1','mathematical reference'),
       'synthetic-ratio-7':Tuning('synthetic-ratio-7',48.,0,2.,ratio,_linear(7),'Synthetic 7-degree ratio fixture','synthetic test fixture'),
       'synthetic-13ed3':Tuning('synthetic-13ed3',48.,0,3.,tritave,_linear(13),'13 equal divisions of a 3:1 period','synthetic non-octave fixture'),
     }
