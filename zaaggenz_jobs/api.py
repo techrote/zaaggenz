@@ -22,17 +22,28 @@ class RenderCoordinator:
                        'recipe_sha256':recipe_sha256,'cache_key':cache_key})
         with self._lock:
             old=self._channels.get(channel);generation=(old['generation']+1 if old else 1)
+            # Identical replacement should adopt a still-useful computation, not cancel and
+            # immediately submit the same work again. The old client generation becomes stale.
+            if old and old.get('job_id') and old.get('dedupe_key')==dedupe:
+                try:snap=self.scheduler.snapshot(old['job_id'])
+                except JobError:snap=None
+                if snap is not None and snap.state in (JobState.QUEUED.value,JobState.RUNNING.value):
+                    self._channels[channel]={'generation':generation,'revision_id':revision_id,
+                                             'job_id':old['job_id'],'artifact':None,'dedupe_key':dedupe}
+                    return RequestTicket(channel,generation,revision_id,old['job_id'],dedupe,False)
             if old and old.get('job_id'):
                 try:self.scheduler.cancel(old['job_id'])
                 except JobError:pass
             cached=self.scheduler.cached_preview(dedupe)
             if cached is not None:
                 if cached.revision_id!=revision_id or cached.recipe_sha256!=recipe_sha256 or cached.cache_key!=cache_key:raise JobError('preview cache identity mismatch')
-                self._channels[channel]={'generation':generation,'revision_id':revision_id,'job_id':None,'artifact':cached}
+                self._channels[channel]={'generation':generation,'revision_id':revision_id,'job_id':None,
+                                         'artifact':cached,'dedupe_key':dedupe}
                 return RequestTicket(channel,generation,revision_id,None,dedupe,True)
             jid=self.scheduler.submit(JobClass.PREVIEW,revision_id,executor,estimated_memory_bytes=estimated_memory_bytes,
                                       generation=generation,dedupe_key=dedupe)
-            self._channels[channel]={'generation':generation,'revision_id':revision_id,'job_id':jid,'artifact':None}
+            self._channels[channel]={'generation':generation,'revision_id':revision_id,'job_id':jid,
+                                     'artifact':None,'dedupe_key':dedupe}
             return RequestTicket(channel,generation,revision_id,jid,dedupe,False)
     def poll(self,ticket):
         if not isinstance(ticket,RequestTicket):raise JobError('RequestTicket required')
@@ -66,7 +77,8 @@ class RenderCoordinator:
             if current and current.get('job_id'):
                 try:self.scheduler.cancel(current['job_id'])
                 except JobError:pass
-            self._channels[channel]={'generation':generation,'revision_id':None,'job_id':None,'artifact':None}
+            self._channels[channel]={'generation':generation,'revision_id':None,'job_id':None,
+                                     'artifact':None,'dedupe_key':None}
             return generation
     def close(self):
         with self._lock:
