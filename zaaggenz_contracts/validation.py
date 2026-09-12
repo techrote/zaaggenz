@@ -100,8 +100,8 @@ def _partials(d):
             require(v['frequency_hz'] < d['asset']['sample_rate_hz'] / 2, 'partial above Nyquist')
             for field in ('amplitudes', 'phases_radians'):
                 require(len(v[field]) == d['asset']['channels'], 'partial channel coefficient count mismatch')
-            if track['continuity'] == 'unknown' or not any(v['amplitudes']):
-                require(v['action'] == 'preserve', 'unobserved continuity/silent phase cannot authorize transformation')
+            if track['continuity'] != 'continuous' or not any(v['amplitudes']):
+                require(v['action'] == 'preserve', 'only continuous observed phase history can authorize transformation')
     for key in ('residual_asset', 'transient_asset'):
         other = d[key]
         if other:
@@ -204,7 +204,8 @@ def _recipe(d):
 def _trial(d):
     unique(d['stimuli'])
     ids = {s['id'] for s in d['stimuli']}
-    require(set(d['presentation_order']) == ids, 'trial order contains unknown or omitted stimulus')
+    order = d['presentation_order']
+    require(len(order) == len(ids) and set(order) == ids, 'trial order must contain each stimulus exactly once')
     for s in d['stimuli']:
         require(s['start_sample'] < s['end_sample'] <= s['asset']['frame_count'], 'trial excerpt outside audio asset')
     if d['mode'] == 'confirmatory':
