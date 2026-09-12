@@ -1,0 +1,36 @@
+name: ZG-013 component analysis
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_components/**'
+      - 'tests/components/**'
+      - 'tools/component_fixture_report.py'
+      - 'docs/components/**'
+      - '.github/workflows/zg013-components.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  components:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env: {PYTHONUTF8: '1', OPENBLAS_NUM_THREADS: '1', OMP_NUM_THREADS: '1'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt
+      - name: Component tests
+        run: python -m unittest discover -s tests/components -v
+      - name: Synthetic measurement report
+        run: python tools/component_fixture_report.py --out component-fixtures.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: component-fixtures-${{ matrix.os }}
+          path: component-fixtures.json
