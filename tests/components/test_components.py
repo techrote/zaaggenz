@@ -20,7 +20,9 @@ class ComponentTests(unittest.TestCase):
         r=analyse_components(tone(440),SR);validate(r.bundle.to_dict(),'PartialTrackBundle');tr=longest(r);self.assertIsNotNone(tr)
         rows=tr['frames'];self.assertLess(np.median([abs(x['frequency_hz']-440) for x in rows]),1.5)
         self.assertTrue(.45<np.median([x['amplitudes'][0] for x in rows])<.75)
-        self.assertGreater(r.diagnostics['transform_frames'],0)
+        self.assertLessEqual(r.diagnostics['tracks'],2,'one sinusoid must not explode into leakage tracks')
+        self.assertEqual(r.diagnostics['ambiguous_tracks'],0)
+        self.assertGreater(sum(x['action']=='transform' for x in rows),len(rows)*.75)
     def test_linear_chirp_measured_error(self):
         n=round(SR*1.5);t=np.arange(n)/SR;x=signal.chirp(t,300,t[-1],600,method='linear').astype(np.float32)
         r=analyse_components(x,SR);tr=longest(r);self.assertIsNotNone(tr)
@@ -28,6 +30,8 @@ class ComponentTests(unittest.TestCase):
         for row in tr['frames']:
             truth=300+(600-300)*(row['support']['anchor_sample']/SR)/t[-1];errors.append(abs(row['frequency_hz']-truth))
         self.assertLess(np.median(errors),6.)
+        self.assertEqual(r.diagnostics['ambiguous_tracks'],0,'single chirp should not become ambiguous from window sidelobes')
+        self.assertGreater(sum(x['action']=='transform' for x in tr['frames']),len(tr['frames'])*.5)
     def test_amplitude_modulation_is_observed(self):
         n=SR;t=np.arange(n)/SR;truth=.5*(1+.45*np.sin(2*np.pi*3*t));x=(truth*np.cos(2*np.pi*440*t+.2)).astype(np.float32)
         r=analyse_components(x,SR);tr=longest(r);rows=tr['frames'];anchors=np.array([q['support']['anchor_sample'] for q in rows]);amps=np.array([q['amplitudes'][0] for q in rows])
