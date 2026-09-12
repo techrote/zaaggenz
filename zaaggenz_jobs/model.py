@@ -52,6 +52,9 @@ class SchedulerLimits:
         if any(type(v)is not int or v<0 for v in ints): raise JobError('scheduler limits must be non-negative integers')
         if self.interactive_workers<1 or self.background_workers<1: raise JobError('both scheduler lanes require at least one worker')
         if self.max_queued_jobs<1 or self.max_history_jobs<16: raise JobError('queue/history bounds are too small')
+        if self.max_background_queued_jobs>self.max_queued_jobs: raise JobError('background queue bound exceeds total queue bound')
+        if self.max_history_jobs<self.max_queued_jobs+self.interactive_workers+self.background_workers:
+            raise JobError('history bound must hold the maximum queued plus running jobs')
         if not 0<self.interactive_memory_reserve_bytes<=self.max_memory_bytes: raise JobError('invalid interactive memory reserve')
         if not 0<self.max_preview_memory_bytes<=self.interactive_memory_reserve_bytes: raise JobError('preview bound exceeds reserved interactive memory')
         if not 0<self.max_job_memory_bytes<=self.max_memory_bytes: raise JobError('job memory bound exceeds process reservation')
@@ -107,12 +110,15 @@ class RenderArtifact:
         if len(self.audio_bytes)>512*1024*1024: raise JobError('audio payload exceeds artifact bound')
         try: validate(self.asset,'AudioAssetRef')
         except Exception as exc: raise JobError('invalid audio asset metadata') from exc
+        if self.asset['identity_domain']=='pcm-f32le-interleaved-v1':
+            expected=self.asset['frame_count']*self.asset['channels']*4
+            if len(self.audio_bytes)!=expected: raise JobError('PCM artifact byte length disagrees with frame/channel metadata')
         if self.asset['content_sha256']!=hashlib.sha256(self.audio_bytes).hexdigest():
             raise JobError('audio bytes do not match declared content identity')
         object.__setattr__(self,'asset',deepcopy(self.asset));object.__setattr__(self,'scopes',_json_safe(self.scopes))
     @property
     def cache_bytes(self):
-        # Count the actual immutable audio plus serialized metadata instead of an arbitrary slab estimate.
+        # Count actual immutable audio plus serialized metadata rather than an arbitrary slab estimate.
         return len(self.audio_bytes)+len(json.dumps(self.metadata(),ensure_ascii=False,allow_nan=False,separators=(',',':')).encode('utf-8'))
     def metadata(self):
         return dict(revision_id=self.revision_id,recipe_sha256=self.recipe_sha256,product=self.product,
