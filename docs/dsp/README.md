@@ -1,0 +1,31 @@
+# Validated DSP graph and multiband routing v1
+
+ZG-016 makes stage order explicit without rewriting the known-good v1.2.1 source.
+
+## Graph
+
+`DSPNodeSpec` IDs resolve through a reviewed local registry; recipes cannot name Python modules, files or code. v1 executable nodes are identity, gain, tanh, hard clip, static four-band gain and the authenticated legacy SCULPT adapter. Cycles are rejected because **no bounded delayed-feedback node is registered yet**.
+
+Every node declares channels, state/reset, phase, latency/lookahead, bounds and automation. Gain/tanh/hard-clip parameters can use deterministic sample-domain step or linear automation. Linear interpolation is the smoothing mechanism; a requested `step` remains deliberately discontinuous rather than receiving hidden smoothing. Static multiband/legacy-SCULPT parameters reject automation until a versioned implementation exists.
+
+Node outputs are labelled taps when requested, so transforms can be placed before/after/between explicit nonlinear graph nodes and inspected independently. The authenticated legacy source remains opaque internally: its exposed tap is `legacy-source-post-internal-nonlinear`. ZG-016 does **not** fabricate unsupported pre-waveshaper access inside the old source.
+
+## Legacy graphification
+
+`graphify_legacy_recipe()` proves the recipe is an exact legacy projection, then moves the legacy SCULPT payload into an explicit `legacy.sculpt.v1` graph node. The source renderer is invoked without SCULPT/master, explicit nodes execute in stored DAG order, then the one declared output master policy runs.
+
+This produces the same SYNTH/ARRANGE/A+B/BASS output as the recovered pipeline for the tested settings. Reversebass diagnostic component stems remain pre-master; `mix` is the post-master product, matching the frozen contract.
+
+## Identity-safe multiband
+
+The four analysis bands are a nested zero-phase Butterworth decomposition whose dry sum is algebraically the source. Processing follows:
+
+`y = x + Σ P_i(F_i(B_i x) - B_i x)`
+
+Only the **effect delta** is optionally re-confined. If every effect is identity, the router returns the original dry array without invoking a crossover at all. This prevents the earlier failure mode where re-filtering unchanged bands squared their transfer functions and coloured bypass.
+
+Transition regions are deliberately filters, not brick walls. `confine_delta` means reduce out-of-band effect energy under the declared filter policy, not eliminate it mathematically.
+
+## Scope
+
+This issue does not implement spectral Auto-Tune, Chordness, sidechain semantics or a new source oscillator. Those consumers get explicit, validated insertion points without changing the present default sound.

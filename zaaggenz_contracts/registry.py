@@ -1,4 +1,4 @@
-"""Reviewed data registry, not code discovery or a plugin execution mechanism."""
+"""Reviewed data registry. IDs map to bounded implementations; recipes never name modules/code."""
 from __future__ import annotations
 from copy import deepcopy
 from .model import ContractError
@@ -30,20 +30,53 @@ def legacy_schema(family):
     return deepcopy(entry['schema'])
 
 
+def _p(type_, default, lo=None, hi=None, unit='unitless', automatable=False):
+    d={'type':type_,'default':default,'unit':unit,'x-automatable':bool(automatable)}
+    if lo is not None:d.update(minimum=lo,maximum=hi)
+    return d
+
+
+def _legacy_sculpt_parameters():
+    out={}
+    for name,spec in legacy_catalogue()['sculpt']['schema']['properties'].items():
+        x=deepcopy(spec);x['unit']=x.pop('x-unit','unitless');x['x-automatable']=False;out[name]=x
+    return out
+
+
 def node_catalogue():
     return {
         'core.identity.v1': {
-            'licence': 'LicenseRef-Zaaggenz-Owner-Provided',
-            'provenance': 'ZG-002 contract definition; executor belongs to ZG-016',
-            'availability': 'contract_only', 'parameters': {}, 'state': 'stateless',
-            'bypass': 'identity', 'latency': 0, 'lookahead': 0, 'inputs': (1, 1),
+            'licence':'LicenseRef-Zaaggenz-Owner-Provided','provenance':'ZG-002 contract; ZG-016 executor',
+            'availability':'executable','parameters':{},'state':'stateless','bypass':'identity','latency':0,'lookahead':0,'inputs':(1,1),
         },
         'core.gain.v1': {
-            'licence': 'LicenseRef-Zaaggenz-Owner-Provided',
-            'provenance': 'ZG-002 linear-gain contract; not a limiter/master stage',
-            'availability': 'contract_only',
-            'parameters': {'gain_db': {'type': 'number', 'minimum': -120, 'maximum': 24, 'unit': 'dB', 'default': 0}},
-            'state': 'stateless', 'bypass': 'identity', 'latency': 0, 'lookahead': 0, 'inputs': (1, 1),
+            'licence':'LicenseRef-Zaaggenz-Owner-Provided','provenance':'ZG-002 linear gain; ZG-016 executor',
+            'availability':'executable','parameters':{'gain_db':_p('number',0,-120,24,'dB',True)},
+            'state':'stateless','bypass':'identity','latency':0,'lookahead':0,'inputs':(1,1),
+        },
+        'core.tanh.v1': {
+            'licence':'LicenseRef-Zaaggenz-Owner-Provided','provenance':'ZG-016 bounded waveshaper',
+            'availability':'executable','parameters':{'drive_db':_p('number',0,-24,48,'dB',True),'mix':_p('number',1,0,1,'ratio',True)},
+            'state':'stateless','bypass':'identity','latency':0,'lookahead':0,'inputs':(1,1),
+        },
+        'core.hard_clip.v1': {
+            'licence':'LicenseRef-Zaaggenz-Owner-Provided','provenance':'ZG-016 bounded hard-clip node',
+            'availability':'executable','parameters':{'threshold':_p('number',1,.001,4,'linear_amplitude',True),'mix':_p('number',1,0,1,'ratio',True)},
+            'state':'stateless','bypass':'identity','latency':0,'lookahead':0,'inputs':(1,1),
+        },
+        'core.multiband_gain.v1': {
+            'licence':'LicenseRef-Zaaggenz-Owner-Provided','provenance':'ZG-016 zero-phase offline effect-delta router',
+            'availability':'executable','parameters':{
+                'low_xover_hz':_p('number',105,20,20000,'Hz'), 'mid_xover_hz':_p('number',520,20,20000,'Hz'),
+                'high_xover_hz':_p('number',3600,20,40000,'Hz'), 'sub_gain_db':_p('number',0,-36,24,'dB'),
+                'lowmid_gain_db':_p('number',0,-36,24,'dB'),'highmid_gain_db':_p('number',0,-36,24,'dB'),'air_gain_db':_p('number',0,-36,24,'dB'),
+                'confine_delta':_p('boolean',True,unit='boolean')},
+            'state':'stateless','bypass':'identity','latency':0,'lookahead':0,'inputs':(1,1),
+        },
+        'legacy.sculpt.v1': {
+            'licence':'LicenseRef-Owner-Provided-Unspecified','provenance':'authenticated v1.2.1 SpectralSculptParams/process_spectral_sculpt adapter',
+            'availability':'executable','parameters':_legacy_sculpt_parameters(),
+            'state':'stateless','bypass':'identity','latency':0,'lookahead':0,'inputs':(1,1),
         },
     }
 
