@@ -1,7 +1,7 @@
 from __future__ import annotations
 from collections import OrderedDict
 from dataclasses import dataclass
-import hashlib,heapq,os,threading,time
+import hashlib,heapq,math,os,threading,time
 from .model import (JobClass,JobState,SchedulerLimits,JobError,JobCancelled,
                     CancellationToken,JobContext,JobSnapshot,RenderArtifact,numeric_thread_limit)
 
@@ -67,7 +67,9 @@ class JobScheduler:
             if self._shutdown:raise JobError('scheduler is shutting down')
             if job_class is JobClass.PREVIEW and dedupe_key:
                 active=self._active_dedupe.get(dedupe_key)
-                if active and not self._records[active].state.terminal:return active
+                if active:
+                    state=self._records[active].state
+                    if state in (JobState.QUEUED,JobState.RUNNING):return active
             queued=sum(r.state is JobState.QUEUED for r in self._records.values())
             if queued>=self.limits.max_queued_jobs:raise JobError('scheduler queue full')
             if not job_class.interactive:
@@ -84,10 +86,17 @@ class JobScheduler:
         if type(dedupe_key)is not str:return None
         with self._cv:return self._cache.get(dedupe_key)
     def _trim_history(self):
-        while len(self._records)>self.limits.max_history_jobs and self._order:
-            jid=self._order[0];rec=self._records[jid]
-            if not rec.state.terminal:break
-            self._order.pop(0);self._records.pop(jid,None)
+        """Remove oldest terminal records wherever they occur; a running oldest job never blocks trimming."""
+        if len(self._records)<=self.limits.max_history_jobs:return
+        kept=[]
+        for jid in self._order:
+            rec=self._records.get(jid)
+            if rec is None:continue
+            if len(self._records)>self.limits.max_history_jobs and rec.state.terminal:
+                self._records.pop(jid,None)
+                continue
+            kept.append(jid)
+        self._order=kept
     def _can_start(self,rec,lane):
         total=self._running_i+self._running_b
         if lane=='background':
@@ -113,7 +122,7 @@ class JobScheduler:
                     if rec:break
                     self._cv.wait(.1)
                 if rec.token.cancelled:
-                    rec.state=JobState.CANCELLED;rec.finished_at=time.monotonic();self._finish_dedupe(rec);self._cv.notify_all();continue
+                    rec.state=JobState.CANCELLED;rec.finished_at=time.monotonic();self._finish_dedupe(rec);self._trim_history();self._cv.notify_all();continue
                 rec.state=JobState.RUNNING;rec.started_at=time.monotonic()
                 if lane=='interactive':self._running_i+=rec.estimated_memory_bytes
                 else:self._running_b+=rec.estimated_memory_bytes
@@ -138,7 +147,7 @@ class JobScheduler:
                     rec.finished_at=time.monotonic()
                     if lane=='interactive':self._running_i-=rec.estimated_memory_bytes
                     else:self._running_b-=rec.estimated_memory_bytes
-                    self._finish_dedupe(rec);self._cv.notify_all()
+                    self._finish_dedupe(rec);self._trim_history();self._cv.notify_all()
     def _finish_dedupe(self,rec):
         if rec.dedupe_key and self._active_dedupe.get(rec.dedupe_key)==rec.job_id:self._active_dedupe.pop(rec.dedupe_key,None)
     def cancel(self,job_id):
@@ -148,7 +157,7 @@ class JobScheduler:
             if rec.state.terminal:return False
             rec.token.cancel()
             if rec.state is JobState.QUEUED:
-                rec.state=JobState.CANCELLED;rec.finished_at=time.monotonic();self._finish_dedupe(rec)
+                rec.state=JobState.CANCELLED;rec.finished_at=time.monotonic();self._finish_dedupe(rec);self._trim_history()
             elif rec.state is JobState.RUNNING:rec.state=JobState.CANCEL_REQUESTED
             self._cv.notify_all();return True
     def snapshot(self,job_id):
@@ -183,13 +192,10 @@ class JobScheduler:
                         if rec.state is JobState.QUEUED:
                             rec.state=JobState.CANCELLED;rec.finished_at=time.monotonic();self._finish_dedupe(rec)
                         elif rec.state is JobState.RUNNING:rec.state=JobState.CANCEL_REQUESTED
-            self._cv.notify_all()
+            self._trim_history();self._cv.notify_all()
         deadline=time.monotonic()+timeout
         for t in self._threads:t.join(max(0,deadline-time.monotonic()))
         alive=any(t.is_alive() for t in self._threads)
         guard=self._numeric_guard
         if not alive and guard is not None and hasattr(guard,'restore_original_limits'):guard.restore_original_limits()
         return not alive
-
-# local import avoids making math part of the public module surface
-import math
