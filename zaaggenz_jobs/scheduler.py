@@ -81,6 +81,8 @@ class JobScheduler:
             heap=(self._interactive if job_class.interactive else self._background)
             heapq.heappush(heap,(int(job_class),rec.sequence,jid))
             if job_class is JobClass.PREVIEW and dedupe_key:self._active_dedupe[dedupe_key]=jid
+            # Prune only while admitting new work. A completion remains observable by
+            # wait/result until a later submission creates pressure on bounded history.
             self._trim_history();self._cv.notify_all();return jid
     def cached_preview(self,dedupe_key):
         if type(dedupe_key)is not str:return None
@@ -122,7 +124,7 @@ class JobScheduler:
                     if rec:break
                     self._cv.wait(.1)
                 if rec.token.cancelled:
-                    rec.state=JobState.CANCELLED;rec.finished_at=time.monotonic();self._finish_dedupe(rec);self._trim_history();self._cv.notify_all();continue
+                    rec.state=JobState.CANCELLED;rec.finished_at=time.monotonic();self._finish_dedupe(rec);self._cv.notify_all();continue
                 rec.state=JobState.RUNNING;rec.started_at=time.monotonic()
                 if lane=='interactive':self._running_i+=rec.estimated_memory_bytes
                 else:self._running_b+=rec.estimated_memory_bytes
@@ -147,7 +149,7 @@ class JobScheduler:
                     rec.finished_at=time.monotonic()
                     if lane=='interactive':self._running_i-=rec.estimated_memory_bytes
                     else:self._running_b-=rec.estimated_memory_bytes
-                    self._finish_dedupe(rec);self._trim_history();self._cv.notify_all()
+                    self._finish_dedupe(rec);self._cv.notify_all()
     def _finish_dedupe(self,rec):
         if rec.dedupe_key and self._active_dedupe.get(rec.dedupe_key)==rec.job_id:self._active_dedupe.pop(rec.dedupe_key,None)
     def cancel(self,job_id):
@@ -157,7 +159,7 @@ class JobScheduler:
             if rec.state.terminal:return False
             rec.token.cancel()
             if rec.state is JobState.QUEUED:
-                rec.state=JobState.CANCELLED;rec.finished_at=time.monotonic();self._finish_dedupe(rec);self._trim_history()
+                rec.state=JobState.CANCELLED;rec.finished_at=time.monotonic();self._finish_dedupe(rec)
             elif rec.state is JobState.RUNNING:rec.state=JobState.CANCEL_REQUESTED
             self._cv.notify_all();return True
     def snapshot(self,job_id):
@@ -192,7 +194,7 @@ class JobScheduler:
                         if rec.state is JobState.QUEUED:
                             rec.state=JobState.CANCELLED;rec.finished_at=time.monotonic();self._finish_dedupe(rec)
                         elif rec.state is JobState.RUNNING:rec.state=JobState.CANCEL_REQUESTED
-            self._trim_history();self._cv.notify_all()
+            self._cv.notify_all()
         deadline=time.monotonic()+timeout
         for t in self._threads:t.join(max(0,deadline-time.monotonic()))
         alive=any(t.is_alive() for t in self._threads)
