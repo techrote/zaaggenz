@@ -1,7 +1,6 @@
 from __future__ import annotations
 import hashlib,tempfile,threading,time,unittest
 from pathlib import Path
-from zaaggenz_contracts.legacy import freeze_legacy
 from zaaggenz_jobs import *
 from zaaggenz_jobs.model import CancellationToken
 
@@ -12,7 +11,7 @@ def asset(payload,frames=1):
                 identity_domain='pcm-f32le-interleaved-v1',sample_rate_hz=48000,channels=1,
                 channel_layout='mono',frame_count=frames,level_domain='source',sample_policy='unclamped_float')
 def artifact(revision=R,payload=b'1234'):
-    return RenderArtifact(revision,Q,'preview',K,payload,asset(payload),{'waveform':[0,1],'timecode_s':0.0})
+    return RenderArtifact(revision,Q,'preview',K,payload,asset(payload,len(payload)//4),{'waveform':[0,1],'timecode_s':0.0})
 
 class SchedulerTests(unittest.TestCase):
     def tearDown(self):
@@ -20,7 +19,7 @@ class SchedulerTests(unittest.TestCase):
     def make(self,**kw):
         base=dict(interactive_workers=1,background_workers=2,max_queued_jobs=8,max_background_queued_jobs=6,
                   max_history_jobs=64,max_memory_bytes=100,interactive_memory_reserve_bytes=20,
-                  max_job_memory_bytes=80,max_preview_memory_bytes=20,preview_cache_bytes=1024,
+                  max_job_memory_bytes=80,max_preview_memory_bytes=20,preview_cache_bytes=4096,
                   preview_cache_entries=2,numeric_threads=1);base.update(kw)
         self.s=JobScheduler(SchedulerLimits(**base),apply_numeric_limit=False);return self.s
     def test_background_cannot_starve_preview(self):
@@ -35,7 +34,7 @@ class SchedulerTests(unittest.TestCase):
         self.assertTrue(any(s.snapshot(x).state=='running' for x in b));release.set()
     def test_background_memory_preserves_interactive_reserve(self):
         s=self.make(background_workers=1);release=threading.Event();started=threading.Event()
-        b=s.submit(JobClass.ANALYSIS,R,lambda ctx:(started.set(),release.wait(2))[1],estimated_memory_bytes=80)
+        s.submit(JobClass.ANALYSIS,R,lambda ctx:(started.set(),release.wait(2))[1],estimated_memory_bytes=80)
         self.assertTrue(started.wait(1));p=s.submit(JobClass.PREVIEW,R,lambda ctx:artifact(),estimated_memory_bytes=20)
         self.assertEqual(s.wait(p,1).state,'completed');release.set()
     def test_active_preview_deduplicates_and_completion_caches(self):
@@ -44,11 +43,31 @@ class SchedulerTests(unittest.TestCase):
         a=s.submit(JobClass.PREVIEW,R,run,estimated_memory_bytes=10,dedupe_key='same')
         b=s.submit(JobClass.PREVIEW,R,run,estimated_memory_bytes=10,dedupe_key='same');self.assertEqual(a,b)
         go.set();self.assertEqual(s.wait(a,1).state,'completed');self.assertIsInstance(s.cached_preview('same'),RenderArtifact)
+    def test_cancel_requested_preview_is_not_deduplicated(self):
+        s=self.make();go=threading.Event();started=threading.Event()
+        def old(ctx):started.set();go.wait(1);ctx.check_cancelled();return artifact()
+        a=s.submit(JobClass.PREVIEW,R,old,estimated_memory_bytes=1,dedupe_key='same');self.assertTrue(started.wait(1))
+        self.assertTrue(s.cancel(a));self.assertEqual(s.snapshot(a).state,'cancel_requested')
+        b=s.submit(JobClass.PREVIEW,R,lambda ctx:artifact(),estimated_memory_bytes=1,dedupe_key='same')
+        self.assertNotEqual(a,b);go.set();self.assertEqual(s.wait(a,1).state,'cancelled');self.assertEqual(s.wait(b,1).state,'completed')
     def test_cache_is_bounded(self):
-        s=self.make(preview_cache_entries=1,preview_cache_bytes=8192)
-        for key,payload in [('a',b'a'),('b',b'b')]:
+        s=self.make(preview_cache_entries=1,preview_cache_bytes=4096)
+        for key,payload in [('a',b'aaaa'),('b',b'bbbb')]:
             j=s.submit(JobClass.PREVIEW,R,lambda ctx,p=payload:artifact(payload=p),estimated_memory_bytes=1,dedupe_key=key);s.wait(j,1)
         self.assertIsNone(s.cached_preview('a'));self.assertIsNotNone(s.cached_preview('b'))
+    def test_history_bound_skips_old_running_record(self):
+        s=self.make(max_history_jobs=16);release=threading.Event();started=threading.Event()
+        old=s.submit(JobClass.ANALYSIS,R,lambda ctx:(started.set(),release.wait(3),ctx.check_cancelled())[2],estimated_memory_bytes=1)
+        self.assertTrue(started.wait(1))
+        for i in range(30):
+            payload=int(i).to_bytes(4,'little')
+            j=s.submit(JobClass.PREVIEW,R,lambda ctx,p=payload:artifact(payload=p),estimated_memory_bytes=1)
+            self.assertEqual(s.wait(j,1).state,'completed')
+            self.assertLessEqual(len(s._records),16)
+        self.assertEqual(s.snapshot(old).state,'running');release.set()
+    def test_history_bound_must_cover_queue_and_workers(self):
+        with self.assertRaises(JobError):
+            SchedulerLimits(interactive_workers=1,background_workers=2,max_queued_jobs=16,max_background_queued_jobs=8,max_history_jobs=16)
     def test_queued_and_running_cancellation(self):
         s=self.make(background_workers=1);release=threading.Event();started=threading.Event()
         first=s.submit(JobClass.ANALYSIS,R,lambda ctx:(started.set(),release.wait(2),ctx.check_cancelled())[2],estimated_memory_bytes=10);started.wait(1)
@@ -74,7 +93,7 @@ class SchedulerTests(unittest.TestCase):
         s=self.make()
         with self.assertRaises(JobError):s.submit(JobClass.PREVIEW,R,lambda c:None,estimated_memory_bytes=21)
     def test_backpressure(self):
-        s=self.make(max_queued_jobs=1,background_workers=1);release=threading.Event();started=threading.Event()
+        s=self.make(max_queued_jobs=1,max_background_queued_jobs=1,background_workers=1);release=threading.Event();started=threading.Event()
         s.submit(JobClass.ANALYSIS,R,lambda c:(started.set(),release.wait(2))[1],estimated_memory_bytes=1);started.wait(1)
         s.submit(JobClass.ANALYSIS,R,lambda c:1,estimated_memory_bytes=1)
         with self.assertRaises(JobError):s.submit(JobClass.ANALYSIS,R,lambda c:2,estimated_memory_bytes=1)
@@ -99,6 +118,18 @@ class CoordinatorTests(unittest.TestCase):
             if result['state']=='completed':break
             time.sleep(.005)
         self.assertTrue(result['accepted']);self.assertEqual(result['revision_id'],r2);self.assertEqual(result['artifact']['scopes']['waveform'],[0,1])
+    def test_identical_replace_reuses_active_job_with_new_generation(self):
+        go=threading.Event();calls=[]
+        def render(ctx):calls.append(ctx.job_id);go.wait(1);return artifact()
+        t1=self.c.request_preview('p',R,Q,K,render,estimated_memory_bytes=1)
+        t2=self.c.request_preview('p',R,Q,K,render,estimated_memory_bytes=1)
+        self.assertEqual(t1.job_id,t2.job_id);self.assertEqual(t2.generation,t1.generation+1);self.assertEqual(self.c.poll(t1)['state'],'stale')
+        go.set();end=time.time()+1
+        while time.time()<end:
+            result=self.c.poll(t2)
+            if result['state']=='completed':break
+            time.sleep(.005)
+        self.assertTrue(result['accepted']);self.assertEqual(len(calls),1)
     def test_stop_invalidates_late_result(self):
         go=threading.Event();t=self.c.request_preview('p',R,Q,K,lambda ctx:(go.wait(1),artifact())[1],estimated_memory_bytes=1)
         self.c.stop('p');go.set();self.assertEqual(self.c.poll(t)['state'],'stale')
@@ -111,7 +142,7 @@ class CoordinatorTests(unittest.TestCase):
         t=self.c.request_preview('p',R,Q,K,lambda ctx:artifact('d'*64),estimated_memory_bytes=1)
         end=time.time()+1
         while time.time()<end:
-            try:r=self.c.poll(t)
+            try:self.c.poll(t)
             except JobError:break
             time.sleep(.005)
         else:self.fail('revision mismatch should fail closed')
@@ -127,7 +158,10 @@ class AtomicTests(unittest.TestCase):
             p=Path(td)/'a.bin';p.write_bytes(b'old');atomic_publish_bytes(p,b'new');self.assertEqual(p.read_bytes(),b'new')
     def test_artifact_identity(self):self.assertEqual(artifact().asset['content_sha256'],hashlib.sha256(b'1234').hexdigest())
     def test_artifact_rejects_mismatched_bytes(self):
-        a=asset(b'x')
-        with self.assertRaises(JobError):RenderArtifact(R,Q,'preview',K,b'y',a,{})
+        a=asset(b'xxxx')
+        with self.assertRaises(JobError):RenderArtifact(R,Q,'preview',K,b'yyyy',a,{})
+    def test_pcm_byte_length_matches_declared_frames(self):
+        payload=b'abcd';a=asset(payload,frames=2)
+        with self.assertRaises(JobError):RenderArtifact(R,Q,'preview',K,payload,a,{})
 
 if __name__=='__main__':unittest.main(verbosity=2)
