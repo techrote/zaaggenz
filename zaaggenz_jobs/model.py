@@ -112,7 +112,8 @@ class RenderArtifact:
         object.__setattr__(self,'asset',deepcopy(self.asset));object.__setattr__(self,'scopes',_json_safe(self.scopes))
     @property
     def cache_bytes(self):
-        return len(self.audio_bytes)+len(json.dumps(self.scopes,separators=(',',':')).encode('utf-8'))+2048
+        # Count the actual immutable audio plus serialized metadata instead of an arbitrary slab estimate.
+        return len(self.audio_bytes)+len(json.dumps(self.metadata(),ensure_ascii=False,allow_nan=False,separators=(',',':')).encode('utf-8'))
     def metadata(self):
         return dict(revision_id=self.revision_id,recipe_sha256=self.recipe_sha256,product=self.product,
                     cache_key=self.cache_key,asset=deepcopy(self.asset),scopes=deepcopy(self.scopes))
