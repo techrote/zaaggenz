@@ -1,0 +1,3 @@
+# User-local reference locators and private media staging.
+reference-locators*.local.json
+references/local/
