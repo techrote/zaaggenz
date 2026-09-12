@@ -1,0 +1,18 @@
+[
+  {"value":null,"sha256":"5d0d8cd70155123c5c8bbef00fbd9b87cb3bd99bbc516056e333d4c85ac449b1"},
+  {"value":true,"sha256":"8cc65f988d2b85a6220a8fdcb27c65939a6ced2a18ad209706193dab23233b55"},
+  {"value":false,"sha256":"9692f95b27fc9c2160674ed9a2fbd83da21fa29136e933881abe5792f1157509"},
+  {"value":0,"sha256":"adb9c95cb5cf1522f0ce6b953aa4f72ec453f55952b67b1ccd4716217b30639b"},
+  {"value":-0.0,"sha256":"adb9c95cb5cf1522f0ce6b953aa4f72ec453f55952b67b1ccd4716217b30639b"},
+  {"value":1,"sha256":"67680e5653b161d660c0dc19d5677b321b655effe91e5b525e348f120cc51584"},
+  {"value":1.0,"sha256":"67680e5653b161d660c0dc19d5677b321b655effe91e5b525e348f120cc51584"},
+  {"value":0.1,"sha256":"67880d0c665ab174c6425d91b5b5604ead8b1af7af83867050788108b3bbfb0e"},
+  {"value":-1.1,"sha256":"ca0030bdb4879da06ca13eb40ce95fca898d2720f1605bfafda8d80514246c92"},
+  {"value":5e-324,"sha256":"36dea71e0696655f8179bcf30092da8628f79728450a4ad25fe899164462376c"},
+  {"value":9007199254740991,"sha256":"bcff11ac4389997bd0b6bed2b809bd43fcae039cd0e1c94cc2a2d840757c8d24"},
+  {"value":1e-30,"sha256":"74061cadf65c8c663a6e210fb8f5375582129b8d2419493a5aad8f79bc3d76a7"},
+  {"value":{"z":0,"a":1},"sha256":"495d59b20e2a606a6347faed7c158de0e9131c24fa6d9a9d7fefc0b6c0729744"},
+  {"value":{"":"private use","😀":"emoji","é":"combining"},"sha256":"5c15bc1ae44db34145090616ee29e8f5c565741edd5b0f7d9ca476be38e977cb"},
+  {"value":[1,"1",true,null],"sha256":"5e78a2fb12da5d437dc5fdd6977a7897c55140b082baf060a27eedce26f31375"},
+  {"value":{"kind":"RenderRecipe","version":"1.0.0","render_mode":"synth","source":{"id":"source","method":"legacy.synth.1.2.1","params":{"sr":48000,"bpm":190.0,"f0_hz":48.0,"beats":4,"beat_fill":0.92,"sweep_semitones":5.0,"sweep_tau_ms":55.0,"pitch_jitter_cents":18.0,"pitch_jitter_tau_ms":70.0,"pitch_jitter_hz":28.0,"harmonic_count":31,"harmonic_decay":1.12,"odd_even_ratio":1.5,"harmonic_lock_cents":20.0,"harmonic_lock_tau_ms":75.0,"harmonic_tilt_db_per_oct":-1.0,"roughness":0.25,"roughness_erb_fraction":0.22,"roughness_decay_ms":260.0,"roughness_min_harmonic":3,"noise_level":0.06,"noise_attack_ms":2.0,"noise_decay_ms":180.0,"noise_hp_hz":700.0,"noise_lp_hz":15500.0,"noise_sync":0.35,"drive_db":16.0,"input_trim_db":-10.0,"shaper_mix":0.58,"asymmetry":0.08,"hard_clip_mix":0.12,"hard_clip_level":0.9,"hard_clip_makeup":0.0,"wavefold":0.0,"preemphasis":0.1,"attack_ms":0.8,"decay_ms":225.0,"sustain":0.035,"transient_click":0.05,"transient_ms":3.0,"post_hp_hz":24.0,"post_lp_hz":19000.0,"peak":0.94,"seed":7}},"arrangement":null,"reversebass":null,"sculpt":null,"time_map":{"kind":"TimeMap","version":"1.0.0","sample_rate_hz":48000,"origin_sample":0,"beat_unit":"quarter_note","rounding":"nearest_ties_even","tempo_segments":[{"beat":"0/1","bpm":"190/1"}],"meter_segments":[{"beat":"0/1","numerator":4,"denominator":4}]},"tuning":{"kind":"TuningSpec","version":"1.0.0","id":"legacy-12edo","reference_hz":48.0,"reference_degree":0,"period_ratio":2.0,"degree_ratios":[1.0,1.0594630943592953,1.122462048309373,1.189207115002721,1.2599210498948732,1.3348398541700344,1.4142135623730951,1.4983070768766815,1.5874010519681994,1.681792830507429,1.7817974362806785,1.8877486253633868],"keyboard":null},"phrase":null,"nodes":[],"output_node":"source","channels":1,"phase_policy":"legacy-v1.2.1","state_policy":"reset-render","tail":{"mode":"legacy","maximum_samples":0},"quality":"legacy","random":{"algorithm":"sha256-named-u64-v1","root":"7","streams":[]},"output":{"master_gain_db":0.0,"clipping":"clip_at_full_scale","normalisation":"none","diagnostic_stems":"pre_master","mix":"post_master"}},"sha256":"d81b094313d0a1de20a2351380c88443ef9b0c9f7f56d3e60b3b76bc48ee332e"}
+]

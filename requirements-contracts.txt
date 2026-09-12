@@ -1,0 +1,4 @@
+# Optional development/contract-consumer dependency; legacy requirements unchanged.
+# Both libraries use MIT licences; see docs/contracts/EVOLUTION.md.
+jsonschema==4.26.0
+referencing==0.37.0
