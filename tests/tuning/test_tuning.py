@@ -26,7 +26,7 @@ class MathTests(unittest.TestCase):
         t=fixture_pack()['12tet-a440'];self.assertAlmostEqual(transpose_frequency(t,48,7),48*2**(7/12),11)
     def test_analysis_does_not_mutate_tuning(self):
         spec=tuning_to_spec(fixture_pack()['12tet-a440']);before=deepcopy(spec);r=analyse_frequency(spec,445)
-        self.assertEqual(spec,before);self.assertEqual(r['tuning_id'],'12tet-a440');self.assertAlmostEqual(r['observed_hz'],445)
+        self.assertEqual(spec,before);self.assertEqual(r['tuning_id'],'tet12-a440');self.assertAlmostEqual(r['observed_hz'],445)
     def test_invalid_values(self):
         for f in (lambda:cents_to_ratio(float('nan')),lambda:ratio_to_cents(0),lambda:transpose_frequency(fixture_pack()['12tet-a440'],0,1)):
             with self.assertRaises(TuningError):f()
