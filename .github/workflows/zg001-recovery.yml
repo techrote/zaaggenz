@@ -3,47 +3,49 @@ name: ZG-001 recovered baseline
 on:
   pull_request:
     paths:
-      - 'baseline/recovered_source/**'
-      - 'baseline/V1_2_1_CONTRACT.json'
+      - 'baseline/**'
+      - 'tests/test_recovery.py'
       - 'docs/baseline/**'
       - '.github/workflows/zg001-recovery.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'baseline/**'
+      - 'tests/test_recovery.py'
+      - '.github/workflows/zg001-recovery.yml'
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   verify-recovery:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.13'
-
+          python-version: '3.13.5'
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-
+      - name: Test strict materialization and failure handling
+        run: python -m unittest discover -s tests -p test_recovery.py -v
       - name: Materialize authenticated runtime payload
-        run: |
-          mkdir -p "$RUNNER_TEMP/zaaggenz-recovered"
-          python baseline/recovered_source/materialize_v2.py --out "$RUNNER_TEMP/zaaggenz-recovered"
-          test -f "$RUNNER_TEMP/zaaggenz-recovered/app/webapp.py"
-          test -f "$RUNNER_TEMP/zaaggenz-recovered/app/uptempo_harmony/synth.py"
-
-      - name: Install recovered runtime dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -r "$RUNNER_TEMP/zaaggenz-recovered/app/requirements.txt"
-
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install recorded baseline dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0
       - name: Compile Python and validate client JavaScript
-        working-directory: ${{ runner.temp }}/zaaggenz-recovered/app
+        working-directory: app
         run: |
-          python -m py_compile webapp.py uh.py uptempo_harmony/*.py
+          python -m compileall -q .
           node --check web/static/app.js
-
       - name: Run every recovered smoke test
-        working-directory: ${{ runner.temp }}/zaaggenz-recovered/app
+        working-directory: app
         shell: bash
         run: |
           set -euo pipefail
