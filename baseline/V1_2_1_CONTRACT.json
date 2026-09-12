@@ -1,0 +1,76 @@
+{
+  "api": {
+    "master_minus6_clip_fraction": 0.0,
+    "master_minus6_gain_linear": 0.5011872336272722,
+    "master_minus6_wav_sha256": "fd9cc6f284a14478fcb22f24343126be2a2c63e5e9d6eb6a5470278e4f8bf7ab",
+    "preview_pcm16_wav_sha256": "d64fde39f925d8039f4dd17e9328017c7fadc21b573ab1b60c3a6ef6f845ae92",
+    "preview_sample_rate": 48000,
+    "preview_samples": 16800,
+    "static_cache_headers": {
+      "css": {"Cache-Control": "no-store, max-age=0", "Expires": "0", "Pragma": "no-cache"},
+      "root": {"Cache-Control": "no-store, max-age=0", "Expires": "0", "Pragma": "no-cache"}
+    }
+  },
+  "environment": {"numpy": "2.3.5", "python": "3.13.5", "scipy": "1.17.0"},
+  "portability": {
+    "owner_listening_required_before_default_sound_change": true,
+    "raw_float_hashes_strict_only_in_recorded_environment": true,
+    "required_cross_environment_checks": [
+      "sample_count",
+      "peak/rms/crest within declared numerical tolerance",
+      "structural recipe/preset invariants",
+      "bit-identical transparent bypass where implementation permits"
+    ]
+  },
+  "preset_contracts": {
+    "layered_reverse_canonical_json_sha256": "77c309b17894b89a965f145cbb13c6bee1cf29d9be9c38054afe0ce5a3be4aa6",
+    "locked_bloom_canonical_json_sha256": "6a6e5a55f04f978e57e90b9e582d2b830b3d82192aec7d0f727112ef75b5afe2",
+    "locked_bloom_invariants": {"f0_hz": 48.0, "harmonic_count": 49, "noise_level": 0.0, "roughness": 0.0},
+    "transparent_sculpt_canonical_json_sha256": "30821d1e9e5e9087258d2938164365e5cc6f0c1d344e627d1302a1391a4502a0"
+  },
+  "renders": {
+    "ci_12k": {
+      "locked_bloom_one": {"float32_sha256": "09f28bbf9ff7a3d559fee9db612103e44021c0cb2a6a3f4f91586fe3985a5ed0", "samples": 3489, "peak": 0.9399999976158142, "rms": 0.3500568341863944, "crest_db": 8.57978583325982},
+      "grit_wall_one": {"float32_sha256": "398439769637a3cefc87eb0bfe90636eff35953da1590aa974fe5794a32c0885", "samples": 3231, "peak": 0.9399999976158142, "rms": 0.3475053227816166, "crest_db": 8.643327827585702},
+      "arrange_source_preserving": {"float32_sha256": "3482573058c7bb34084bcf92778113fff6dab256e6f2de43a3b4f281fa77a7df", "samples": 32400, "peak": 0.9223734736442566, "rms": 0.30030836081399614, "crest_db": 9.746787624404162, "events": 15, "rolls": 7},
+      "arrange_bass_layered_reverse": {"float32_sha256": "feb5a6de6d43e3bea74fffa807feee0f5d755c212bc68ae151e56caff2c6baa9", "samples": 28800, "peak": 0.9399951696395874, "rms": 0.31811134678125835, "crest_db": 9.410929231343701, "events": 15, "rolls": 7, "synthline_stem_sha256": "06b28b997b7550c51e8e8ca179139f6d670ed466679d0a84099fd4e115fdb60e"},
+      "live_preview_root_350ms": {"float32_sha256": "e837db2afcc7268845c720c2bb8d6061d2bb9006d464a55eb58a9964ccada4e7", "pcm16_wav_sha256": "d40d376bc7feecd5e8409e2d2671c03bc010ace8ddfb33cdced7160e58727163", "samples": 4200},
+      "sculpt_transparent_bypass": {"bit_identical": true, "input_sha256": "09f28bbf9ff7a3d559fee9db612103e44021c0cb2a6a3f4f91586fe3985a5ed0", "output_sha256": "09f28bbf9ff7a3d559fee9db612103e44021c0cb2a6a3f4f91586fe3985a5ed0"},
+      "master_minus6": {"input_sha256": "09f28bbf9ff7a3d559fee9db612103e44021c0cb2a6a3f4f91586fe3985a5ed0", "output_sha256": "31834cb21e18efd409beeb59f10e2b7bfb9230e3811486a6bdcd1e4499232a2f", "peak": 0.47111600637435913}
+    },
+    "full_rate_48k": {
+      "locked_bloom_one": {"float32_sha256": "25eabbe29b4ea4a2930acd700a32af141cfe72337b1b88edc7dee3476d09fe65", "samples": 13956, "peak": 0.9399999976158142, "rms": 0.3485592139057397, "crest_db": 8.617025700391752},
+      "grit_wall_one": {"float32_sha256": "d01acea5de4bcce68d95cea1f1b79e73e2cc30c8e353b4187cc47408660ac445", "samples": 12925, "peak": 0.9399999976158142, "rms": 0.3321843969779294, "crest_db": 9.034972462702708},
+      "arrange_source_preserving": {"float32_sha256": "5f5f3d53ffe6f5abd6259c894a99937bbbda12eeb6665158bf068fdf28b1e0bf", "samples": 129600, "peak": 0.9283158779144287, "rms": 0.2990134958405736, "crest_db": 9.840099764704826, "events": 15, "rolls": 7},
+      "arrange_bass_layered_reverse": {"float32_sha256": "4a3a62edeb0ea2e59ab5355cc0c6b957cae93e604f0303e06df096592565fb4a", "samples": 115200, "peak": 0.9399967193603516, "rms": 0.3183109741166552, "crest_db": 9.405494524755767, "events": 15, "rolls": 7, "synthline_stem_sha256": "d99fbc2cd5adc827b0a50089ea1e1ce21b93edd789e965e742bbac021cc18df1"},
+      "live_preview_root_350ms": {"float32_sha256": "912548f2283c345e1930c9f8187e7449763fde7a15296cb6731a1c3547642c66", "pcm16_wav_sha256": "d64fde39f925d8039f4dd17e9328017c7fadc21b573ab1b60c3a6ef6f845ae92", "samples": 16800},
+      "sculpt_transparent_bypass": {"bit_identical": true, "input_sha256": "25eabbe29b4ea4a2930acd700a32af141cfe72337b1b88edc7dee3476d09fe65", "output_sha256": "25eabbe29b4ea4a2930acd700a32af141cfe72337b1b88edc7dee3476d09fe65"},
+      "master_minus6": {"input_sha256": "25eabbe29b4ea4a2930acd700a32af141cfe72337b1b88edc7dee3476d09fe65", "output_sha256": "7a077978c1e5db8567477d87f49932c2b07732d78968dcc365095b8d6952b115", "peak": 0.47111600637435913}
+    }
+  },
+  "reports": {
+    "all_recovered_checks_passed": true,
+    "api_report_sha256": "6b10e7629837bca171bdf107ebcafe057adb45defcb1bf2525376466d6d4bcd3",
+    "freeze_expected_sha256": "b9cce44a3e6cec24c566a0ac9e629cf65b225832beab65425bf260d5ba54942e",
+    "recovered_check_count": 15,
+    "test_report_sha256": "c3b4e74cab9eb44d93a9a9c9cfb9f52d1d622a0c9b4ed2914463e51098207178"
+  },
+  "schema": "zaaggenz-baseline-contract-v1",
+  "semantics": {
+    "arrange_bass_requires_full_synthline": true,
+    "master_is_final_linear_gain_without_upward_normalization": true,
+    "preview_uses_same_synth_topology": true,
+    "source_preserving_arrange_default": true,
+    "transparent_sculpt_bit_identical": true,
+    "ui_default_theme": "earth",
+    "ui_header_render_modes": ["SYN", "ARR", "A+B", "BASS"]
+  },
+  "source": {
+    "owner_supplied_zip": "zaaggenz-v1.2.1.zip",
+    "recovered_version": "1.2.1-earth-ui",
+    "runtime_payload_sha256": "eaf5d3ab822dfa121cd3b795d62619af9e62c041fb02de19f8dbeafb0014c919",
+    "runtime_regular_files": 34,
+    "zip_bytes": 9498941,
+    "zip_sha256": "90be319a4660a637077df935a8ebcbd1bb4c3a629e28e2f6d4bfe62d88dfe8a8"
+  }
+}
