@@ -1,0 +1,57 @@
+name: ZG-001 recovered baseline
+
+on:
+  pull_request:
+    paths:
+      - 'baseline/recovered_source/**'
+      - 'baseline/V1_2_1_CONTRACT.json'
+      - 'docs/baseline/**'
+      - '.github/workflows/zg001-recovery.yml'
+  workflow_dispatch:
+
+jobs:
+  verify-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Materialize authenticated runtime payload
+        run: |
+          mkdir -p "$RUNNER_TEMP/zaaggenz-recovered"
+          python baseline/recovered_source/materialize_v2.py --out "$RUNNER_TEMP/zaaggenz-recovered"
+          test -f "$RUNNER_TEMP/zaaggenz-recovered/app/webapp.py"
+          test -f "$RUNNER_TEMP/zaaggenz-recovered/app/uptempo_harmony/synth.py"
+
+      - name: Install recovered runtime dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r "$RUNNER_TEMP/zaaggenz-recovered/app/requirements.txt"
+
+      - name: Compile Python and validate client JavaScript
+        working-directory: ${{ runner.temp }}/zaaggenz-recovered/app
+        run: |
+          python -m py_compile webapp.py uh.py uptempo_harmony/*.py
+          node --check web/static/app.js
+
+      - name: Run every recovered smoke test
+        working-directory: ${{ runner.temp }}/zaaggenz-recovered/app
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=0
+          for test_file in tests/*_smoke.py; do
+            echo "==> $test_file"
+            PYTHONPATH=. python "$test_file"
+            count=$((count + 1))
+          done
+          test "$count" -eq 13
+          echo "recovered smoke scripts passed: $count"
