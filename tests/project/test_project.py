@@ -60,6 +60,8 @@ class CacheTests(unittest.TestCase):
         self.assertNotEqual(cache_key(r,e,'synth'),cache_key('3'*64,e,'synth'))
         self.assertNotEqual(cache_key(r,e,'synth'),cache_key(r,'4'*64,'synth'))
         self.assertNotEqual(cache_key(r,e,'synth'),cache_key(r,e,'bass'))
+    def test_key_rejects_nonhex_digest(self):
+        with self.assertRaises(ProjectError):cache_key('g'*64,'2'*64,'synth')
     def test_bounded_eviction_and_integrity(self):
         with tempfile.TemporaryDirectory() as td:
             c=ArtifactCache(td,max_bytes=6);k1='1'*64;k2='2'*64
@@ -71,6 +73,15 @@ class CacheTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             c=ArtifactCache(td,100);a=self.asset(b'a')
             with self.assertRaises(ProjectError):c.put('a'*64,b'b',a)
+    def test_put_owns_defensive_asset_copy(self):
+        with tempfile.TemporaryDirectory() as td:
+            c=ArtifactCache(td,100);a=self.asset(b'a');c.put('a'*64,b'a',a);a['frame_count']=999
+            self.assertEqual(c.index['entries']['a'*64]['asset']['frame_count'],1)
+            self.assertEqual(ArtifactCache(td,100).index['entries']['a'*64]['asset']['frame_count'],1)
+    def test_corrupt_index_fails_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            Path(td,'index.json').write_text('{"version":"1.0.0","clock":-1,"entries":{}}',encoding='utf-8')
+            with self.assertRaises(ProjectError):ArtifactCache(td,100)
     def test_slot_persists_asset_identity_not_locator(self):
         p=Project(recipe());payload=b'wav';a=self.asset(payload);k=cache_key(p.head_recipe.sha256,'e'*64,'synth')
         p.bind_slot('SYN',revision_id=p.head,product='synth',cache_key=k,asset=a)
