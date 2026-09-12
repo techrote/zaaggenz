@@ -1,0 +1,25 @@
+{
+  "version":"1.0.0",
+  "segments":[
+    {"id":"c1-a","asset_id":"activation","start_sample":5760000,"end_sample":6144000,"section_function":"unknown","label":"spectral candidate 1 / original","confidence":0.0,"source":"automatic-suggestion","meter_candidates":[],"correspondence_group":"auto-candidate-1"},
+    {"id":"c1-z","asset_id":"zaagtivation","start_sample":6912000,"end_sample":7296000,"section_function":"unknown","label":"spectral candidate 1 / edit","confidence":0.0,"source":"automatic-suggestion","meter_candidates":[],"correspondence_group":"auto-candidate-1"},
+    {"id":"c2-a","asset_id":"activation","start_sample":4992000,"end_sample":5376000,"section_function":"unknown","label":"spectral candidate 2 / original","confidence":0.0,"source":"automatic-suggestion","meter_candidates":[],"correspondence_group":"auto-candidate-2"},
+    {"id":"c2-z","asset_id":"zaagtivation","start_sample":1152000,"end_sample":1536000,"section_function":"unknown","label":"spectral candidate 2 / edit","confidence":0.0,"source":"automatic-suggestion","meter_candidates":[],"correspondence_group":"auto-candidate-2"},
+    {"id":"c3-a","asset_id":"activation","start_sample":6144000,"end_sample":6528000,"section_function":"unknown","label":"spectral candidate 3 / original","confidence":0.0,"source":"automatic-suggestion","meter_candidates":[],"correspondence_group":"auto-candidate-3"},
+    {"id":"c3-z","asset_id":"zaagtivation","start_sample":7488000,"end_sample":7872000,"section_function":"unknown","label":"spectral candidate 3 / edit","confidence":0.0,"source":"automatic-suggestion","meter_candidates":[],"correspondence_group":"auto-candidate-3"},
+    {"id":"c4-a","asset_id":"activation","start_sample":4416000,"end_sample":4800000,"section_function":"unknown","label":"spectral candidate 4 / original","confidence":0.0,"source":"automatic-suggestion","meter_candidates":[],"correspondence_group":"auto-candidate-4"},
+    {"id":"c4-z","asset_id":"zaagtivation","start_sample":5952000,"end_sample":6336000,"section_function":"unknown","label":"spectral candidate 4 / edit","confidence":0.0,"source":"automatic-suggestion","meter_candidates":[],"correspondence_group":"auto-candidate-4"},
+    {"id":"c5-a","asset_id":"activation","start_sample":6912000,"end_sample":7296000,"section_function":"unknown","label":"spectral candidate 5 / original","confidence":0.0,"source":"automatic-suggestion","meter_candidates":[],"correspondence_group":"auto-candidate-5"},
+    {"id":"c5-z","asset_id":"zaagtivation","start_sample":4992000,"end_sample":5376000,"section_function":"unknown","label":"spectral candidate 5 / edit","confidence":0.0,"source":"automatic-suggestion","meter_candidates":[],"correspondence_group":"auto-candidate-5"},
+    {"id":"c6-a","asset_id":"activation","start_sample":6528000,"end_sample":6912000,"section_function":"unknown","label":"spectral candidate 6 / original","confidence":0.0,"source":"automatic-suggestion","meter_candidates":[],"correspondence_group":"auto-candidate-6"},
+    {"id":"c6-z","asset_id":"zaagtivation","start_sample":1920000,"end_sample":2304000,"section_function":"unknown","label":"spectral candidate 6 / edit","confidence":0.0,"source":"automatic-suggestion","meter_candidates":[],"correspondence_group":"auto-candidate-6"}
+  ],
+  "relations":[
+    {"id":"c1","left_segment":"c1-a","right_segment":"c1-z","relation":"uncertain","confidence":0.0,"source":"automatic-suggestion"},
+    {"id":"c2","left_segment":"c2-a","right_segment":"c2-z","relation":"uncertain","confidence":0.0,"source":"automatic-suggestion"},
+    {"id":"c3","left_segment":"c3-a","right_segment":"c3-z","relation":"uncertain","confidence":0.0,"source":"automatic-suggestion"},
+    {"id":"c4","left_segment":"c4-a","right_segment":"c4-z","relation":"uncertain","confidence":0.0,"source":"automatic-suggestion"},
+    {"id":"c5","left_segment":"c5-a","right_segment":"c5-z","relation":"uncertain","confidence":0.0,"source":"automatic-suggestion"},
+    {"id":"c6","left_segment":"c6-a","right_segment":"c6-z","relation":"uncertain","confidence":0.0,"source":"automatic-suggestion"}
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "status":"carried-forward-recomputed-observation",
+  "method":"planning paired-descriptor-v1 / same 24 kHz stereo-power method integrated as zg-reference-descriptor-v1",
+  "run_date":"2026-09-12",
+  "environment":{"python":"3.13.5","numpy":"2.3.5","scipy":"1.17.0","ffmpeg":"7.1.5-0+deb13u1","platform":"Linux x86_64"},
+  "identity_hard_gate":true,
+  "tracks":["activation","zaagtivation","one_kick","push_up","con_calma","go_insane"],
+  "finding":"All six supplied files were content-hashed and analysed from unclamped float decode. The Activation/Zaagtivation hashes and planning descriptor method reproduced exactly in the preflight run. Native decoded/sample peaks may exceed 1.0; no clamp is permitted before analysis.",
+  "limitations":["mastered recordings are observational, not synthetic ground truth","top-RMS-quartile windows are not matched musical passages","digital LUFS/true peak are not calibrated playback SPL","filenames do not establish rights or provenance","no production-chain, chord or genre-classifier inference"]
+}
