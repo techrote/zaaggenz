@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import { RenderTransport } from '../../web/jobs_transport.mjs';
+const h = 'a'.repeat(64), r2 = 'b'.repeat(64);
+const t = new RenderTransport();
+const g1=t.begin('preview',h),g2=t.begin('preview',r2);
+const message=(generation,revision)=>({state:'completed',accepted:true,generation,revision_id:revision,audio:new Uint8Array([1,2]),artifact:{revision_id:revision,recipe_sha256:'c'.repeat(64),cache_key:'d'.repeat(64),product:'preview',asset:{kind:'AudioAssetRef'},scopes:{waveform:[1]}}});
+assert.equal(t.accept('preview',message(g1,h)),false,'late prior generation must be rejected');
+assert.equal(t.accept('preview',message(g2,r2)),true);
+const current=t.current('preview');assert.equal(current.revisionId,r2);assert.deepEqual(current.scopes,{waveform:[1]});
+t.stop('preview');assert.equal(t.current('preview'),null);assert.equal(t.accept('preview',message(g2,r2)),false,'stop invalidates late decode/playback');
+console.log(JSON.stringify({stale_rejected:true,atomic_transport_snapshot:true,stop_invalidates:true}));

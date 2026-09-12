@@ -1,0 +1,2 @@
+# Process-wide native numerical thread limiting for bounded worker execution.
+threadpoolctl==3.6.0
