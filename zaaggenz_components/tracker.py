@@ -70,8 +70,12 @@ def _candidate_frames(a,sr,spec):
         if mean<=1e-24:rows.append([]);abstained+=1;continue
         flat=float(np.exp(np.mean(np.log(power+1e-30)))/(mean+1e-30))
         if flat>spec.max_flatness:rows.append([]);abstained+=1;continue
-        floor=max(float(np.median(bmag)),1e-15);peak=float(np.max(bmag));prom=max(floor*2.5,peak*.006)
-        local,_=signal.find_peaks(bmag,prominence=prom,height=floor*1.8,distance=max(1,int(nfft*12/sr)))
+        floor=max(float(np.median(bmag)),1e-15);peak=float(np.max(bmag))
+        # Hann sidelobes of one dominant sinusoid are analysis leakage, not new partials.
+        # A -30.5 dB relative prominence floor removes those while retaining materially
+        # quieter resolved components; absolute peak/SNR/confidence gates still apply.
+        prom=max(floor*2.5,peak*.03)
+        local,_=signal.find_peaks(bmag,prominence=prom,height=max(floor*1.8,peak*.01),distance=max(1,int(nfft*12/sr)))
         ks=[int(band[k]) for k in local]
         if not ks:
             k=int(band[int(np.argmax(bmag))]);ks=[k] if mag[k]>=floor*1.8 else []
@@ -139,12 +143,16 @@ def _transient_mask(a,sr,spec):
     n=len(a);mask=np.zeros(n,dtype=np.float32)
     if n==0:return mask,0
     mono=np.mean(a,axis=1)
-    try:timeline=analyse_multiresolution(a,sr)['short'];vals=np.array([f.spectral_flux for f in timeline.frames if f.spectral_flux is not None],dtype=float)
-    except Exception:timeline=None;vals=np.empty(0)
+    try:
+        timeline=analyse_multiresolution(a,sr)['short']
+        eligible=[f for f in timeline.frames if f.spectral_flux is not None and f.support_fraction>=.999]
+        vals=np.array([f.spectral_flux for f in eligible],dtype=float)
+    except Exception:
+        eligible=[];vals=np.empty(0)
     anchors=[]
     if len(vals):
         med=float(np.median(vals));mad=float(np.median(np.abs(vals-med)));thr=max(1e-6,med+spec.transient_sigma*(1.4826*mad+1e-12))
-        anchors.extend(f.anchor_sample for f in timeline.frames if f.spectral_flux is not None and f.spectral_flux>thr)
+        anchors.extend(f.anchor_sample for f in eligible if f.spectral_flux>thr)
     if n>2:
         d=np.abs(np.diff(mono,prepend=mono[0]));med=float(np.median(d));mad=float(np.median(np.abs(d-med)));peak=max(float(np.max(np.abs(mono))),1e-12)
         idx=np.flatnonzero((d>med+20*(1.4826*mad+1e-12))&(d>.15*peak));anchors.extend(int(x) for x in idx)
@@ -183,11 +191,10 @@ def analyse_components(x,sample_rate_hz,spec=ComponentTrackerSpec()):
     a,mono=_audio(x);source32=np.asarray(a,dtype=np.float32);n=len(a)
     if n==0:
         dummy=type('R',(),{'spec':type('S',(),{'window_samples':_pow2(sample_rate_hz*spec.window_seconds),'hop_samples':1,'fft_samples':_pow2(sample_rate_hz*spec.window_seconds)*spec.fft_factor})()})()
-        z=np.zeros_like(source32);mask=np.zeros(0,dtype=np.float32);bundle,tf,amb=_track_bundle(source32,sample_rate_hz,[],spec,dummy,mask,z,z)
+        z=np.zeros_like(source32);mask=np.zeros(0,dtype=np.float32);bundle,_,_=_track_bundle(source32,sample_rate_hz,[],spec,dummy,mask,z,z)
         src=source32[:,0] if mono else source32
         return ComponentAnalysis(bundle,src,src.copy(),src.copy(),src.copy(),mask,dict(method=METHOD,tracks=0,tracked_frames=0,transform_frames=0,abstained_frames=0,ambiguous_tracks=0,transient_fraction=0.,reconstruction_rms_error=0.))
     r,frames,abstained=_candidate_frames(a,sample_rate_hz,spec);tracks=_track(frames,spec)
-    # First export is not needed to resynthesise; construct a temporary valid bundle with zero remainders.
     mask,onsets=_transient_mask(a,sample_rate_hz,spec);zero=np.zeros_like(source32)
     temp,_,_=_track_bundle(source32,sample_rate_hz,tracks,spec,r,mask,zero,zero)
     raw=reconstruct_components(temp);raw2=raw[:,None] if raw.ndim==1 else raw
