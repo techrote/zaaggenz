@@ -1,0 +1,7 @@
+zaaggenz_contracts/** text eol=lf
+examples/contracts/** text eol=lf
+tests/contracts/** text eol=lf
+tools/check_contracts.py text eol=lf
+requirements-contracts.txt text eol=lf
+docs/contracts/** text eol=lf
+.github/workflows/zg002-contracts.yml text eol=lf
