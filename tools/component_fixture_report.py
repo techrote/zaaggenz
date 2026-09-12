@@ -17,17 +17,21 @@ def main():
     x=tone(330,n,.2);x[n//2]+=1;fixtures['tone_plus_impulse']=x
     rows={}
     for name,x in fixtures.items():
-        r=analyse_components(x,sr);d=dict(r.diagnostics)
+        r=analyse_components(x,sr);d=dict(r.diagnostics);tracks=r.bundle.to_dict()['tracks']
+        dominant=max(tracks,key=lambda z:len(z['frames'])) if tracks else None
+        d['dominant_track_frames']=len(dominant['frames']) if dominant else 0
+        d['dominant_track_transform_frames']=sum(f['action']=='transform' for f in dominant['frames']) if dominant else 0
         if name=='tone440':
-            fs=[f['frequency_hz'] for tr in r.bundle.to_dict()['tracks'] for f in tr['frames']]
-            d['median_abs_frequency_error_hz']=float(np.median(np.abs(np.asarray(fs)-440))) if fs else None
+            fs=[f['frequency_hz'] for f in dominant['frames']] if dominant else []
+            d['dominant_median_abs_frequency_error_hz']=float(np.median(np.abs(np.asarray(fs)-440))) if fs else None
         if name=='chirp300_600':
-            tracks=r.bundle.to_dict()['tracks'];tr=max(tracks,key=lambda z:len(z['frames'])) if tracks else None;errors=[]
-            if tr:
-                for f in tr['frames']:
+            errors=[]
+            if dominant:
+                for f in dominant['frames']:
                     at=f['support']['anchor_sample']/sr;truth=300+300*at/t[-1];errors.append(abs(f['frequency_hz']-truth))
-            d['median_abs_frequency_error_hz']=float(np.median(errors)) if errors else None
+            d['dominant_median_abs_frequency_error_hz']=float(np.median(errors)) if errors else None
         rows[name]=d
-    report={'scope':'synthetic deterministic fixtures; no perceptual quality claim','platform':platform.platform(),'python':sys.version,'sample_rate_hz':sr,'fixtures':rows}
+    report={'scope':'synthetic deterministic fixtures; dominant-track errors are trajectory metrics, not perceptual quality',
+            'platform':platform.platform(),'python':sys.version,'sample_rate_hz':sr,'fixtures':rows}
     a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
 if __name__=='__main__':main()
