@@ -1,6 +1,12 @@
 from dataclasses import replace
+from pathlib import Path
+import sys
 import unittest
 import numpy as np
+
+ROOT=Path(__file__).resolve().parents[2]
+sys.path.insert(0,str(ROOT/'app'))
+
 from zaaggenz_qc import fixture,fixture_names,diagnose,alignment,check_identity,check_required_stems,check_master_gain,QCError
 from zaaggenz_qc.checks import check_source_preservation
 from uptempo_harmony.synth import PRESETS
