@@ -1,0 +1,5 @@
+# Recorded successful numerical environment; independent of the missing instrument.
+numpy==2.3.5
+scipy==1.17.0
+# Optional private-reference audit also needs ffmpeg/ffprobe executables.
+# Recorded system FFmpeg: 7.1.5-0+deb13u1. No network/service required.
