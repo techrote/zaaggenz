@@ -1,0 +1,43 @@
+name: ZG-008 source-preserving melodic notes
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_melody/**'
+      - 'tests/melody/**'
+      - 'tools/melody_fixture_report.py'
+      - 'docs/melody/**'
+      - '.github/workflows/zg008-melody.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  melody:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical and contract/job dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Melodic construction tests
+        run: python -m unittest discover -s tests/melody -v
+      - name: Generated listening/evidence fixtures
+        run: python tools/melody_fixture_report.py --out melody-report.json --audio-dir melody-listening
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg008-melody-${{ matrix.os }}
+          path: |
+            melody-report.json
+            melody-listening/
