@@ -1,0 +1,40 @@
+name: ZG-014 calibrated descriptors
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_descriptors/**'
+      - 'tests/descriptors/**'
+      - 'tools/descriptor_fixture_report.py'
+      - 'tools/descriptor_reference_report.py'
+      - 'docs/descriptors/**'
+      - '.github/workflows/zg014-descriptors.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  descriptors:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install numerical and contract dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt
+      - name: Descriptor tests
+        run: python -m unittest discover -s tests/descriptors -v
+      - name: Synthetic calibration report
+        run: python tools/descriptor_fixture_report.py --out descriptor-fixtures.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg014-descriptors-${{ matrix.os }}
+          path: descriptor-fixtures.json
