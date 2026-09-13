@@ -57,7 +57,7 @@ def _event_count(plan):
 def validate_plan(plan):
     try:
         check_json(plan)
-    except ValueError as exc:
+    except (ValueError, TypeError) as exc:
         raise PhraseRoleError(str(exc)) from exc
     exact(plan, {'format', 'version', 'id', 'description', 'end_beat', 'placement_seed', 'content_seed', 'windows'}, 'plan')
     if plan['format'] != 'zaaggenz-phrase-role-plan' or plan['version'] != VERSION:
@@ -68,7 +68,7 @@ def validate_plan(plan):
         end = fraction(plan['end_beat'])
         seed_value(plan['placement_seed'])
         seed_value(plan['content_seed'])
-    except ValueError as exc:
+    except (ValueError, TypeError) as exc:
         raise PhraseRoleError(str(exc)) from exc
     if not 0 < end <= 256:
         raise PhraseRoleError('end_beat must be positive and at most 256 quarter-note beats')
@@ -87,11 +87,26 @@ def validate_plan(plan):
             raise PhraseRoleError(f'window {window["id"]}: unsupported phrase role')
         try:
             start, stop = fraction(window['start_beat']), fraction(window['end_beat'])
-        except ValueError as exc:
+        except (ValueError, TypeError) as exc:
             raise PhraseRoleError(f'window {window["id"]}: {exc}') from exc
         if not previous_end <= start < stop <= end:
             raise PhraseRoleError('role windows must be ordered, non-overlapping and inside the phrase')
         previous_end = stop
+        destination = window['destination']
+        if window['role'] == 'return' and destination is None:
+            raise PhraseRoleError('return role requires a destination anchor')
+        if destination is not None:
+            exact(destination, {'beat', 'duration_beats', 'degree', 'detune_cents', 'gain_db', 'source_family'}, 'destination')
+            identifier(destination['source_family'], 'destination.source_family')
+            integer(destination['degree'], -4096, 4096, 'destination.degree')
+            number(destination['detune_cents'], -4800, 4800, 'destination.detune_cents')
+            number(destination['gain_db'], -120, 24, 'destination.gain_db')
+            try:
+                at, duration = fraction(destination['beat']), fraction(destination['duration_beats'])
+            except (ValueError, TypeError) as exc:
+                raise PhraseRoleError(str(exc)) from exc
+            if not start <= at < at + duration <= stop:
+                raise PhraseRoleError('destination anchor must lie wholly inside its role window')
         placements = window['placements']
         if type(placements) is not list or not 1 <= len(placements) <= 32:
             raise PhraseRoleError(f'window {window["id"]}: 1..32 placement choices required')
@@ -100,7 +115,7 @@ def validate_plan(plan):
             exact(placement, {'offset', 'weight'}, f'placement[{pi}]')
             try:
                 offset = fraction(placement['offset'])
-            except ValueError as exc:
+            except (ValueError, TypeError) as exc:
                 raise PhraseRoleError(str(exc)) from exc
             if offset < 0:
                 raise PhraseRoleError('placement offsets are nonnegative')
@@ -130,7 +145,7 @@ def validate_plan(plan):
                 exact(event, {'offset', 'duration_beats', 'degree', 'detune_cents', 'gain_db', 'roll_density'}, f'event[{ei}]')
                 try:
                     offset, duration = fraction(event['offset']), fraction(event['duration_beats'])
-                except ValueError as exc:
+                except (ValueError, TypeError) as exc:
                     raise PhraseRoleError(str(exc)) from exc
                 if offset < 0 or duration <= 0:
                     raise PhraseRoleError('event offset/duration must be nonnegative/positive')
@@ -144,21 +159,6 @@ def validate_plan(plan):
                 for placement in placement_offsets:
                     if placement + offset + duration > window_length:
                         raise PhraseRoleError(f'window {window["id"]}: variant {variant["id"]} cannot fit every declared placement')
-        destination = window['destination']
-        if destination is not None:
-            exact(destination, {'beat', 'duration_beats', 'degree', 'detune_cents', 'gain_db', 'source_family'}, 'destination')
-            identifier(destination['source_family'], 'destination.source_family')
-            integer(destination['degree'], -4096, 4096, 'destination.degree')
-            number(destination['detune_cents'], -4800, 4800, 'destination.detune_cents')
-            number(destination['gain_db'], -120, 24, 'destination.gain_db')
-            try:
-                at, duration = fraction(destination['beat']), fraction(destination['duration_beats'])
-            except ValueError as exc:
-                raise PhraseRoleError(str(exc)) from exc
-            if not start <= at < at + duration <= stop:
-                raise PhraseRoleError('destination anchor must lie wholly inside its role window')
-        if window['role'] == 'return' and destination is None:
-            raise PhraseRoleError('return role requires a destination anchor')
     if _event_count(plan) > 256:
         raise PhraseRoleError('worst-case expansion exceeds the accepted 256-event timeline bound')
 
