@@ -102,7 +102,8 @@ class ExpansionTests(unittest.TestCase):
         self.assertEqual(bar4(expansion)['window_start_beat'], '12/1')
         destination = next(e for e in events if e['id'] == bar4(expansion)['destination_event_id'])
         self.assertEqual((destination['beat'], destination['pitch']['degree']), ('15/1', 0))
-        self.assertEqual([r['role'] for r in phrase['roles']], ['establish','repeat','repeat','variation','return'])
+        self.assertEqual(bar4(expansion)['destination_beat'], '15/1')
+        self.assertEqual([r['role'] for r in phrase['roles']], ['establish','repeat','repeat','variation'])
 
     def test_repeated_expansion_is_identical_and_trace_is_defensive(self):
         a = expand_role_plan(self.plan, 'twelve-tet'); b = expand_role_plan(self.plan, 'twelve-tet')
