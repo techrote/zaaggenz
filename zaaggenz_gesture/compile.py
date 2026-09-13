@@ -2,7 +2,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
-import json,math
 from zaaggenz_contracts import Contract,digest
 from zaaggenz_contracts.model import fraction
 from zaaggenz_melody import note_event,make_phrase_plan,make_melodic_recipe
@@ -20,14 +19,16 @@ def _trajectory(data,axis): return next(t for t in data['trajectories'] if t['ax
 def _beat_value(v): return Fraction(str(float(v))).limit_denominator(960)
 
 def trajectory_value(trajectory,beat):
+    """Evaluate authored control points; step values change at the point itself."""
     beat=fraction(beat) if isinstance(beat,str) else beat
     points=[(fraction(p['beat']),float(p['value'])) for p in trajectory['points']]
     if beat<=points[0][0]: return points[0][1]
     if beat>=points[-1][0]: return points[-1][1]
     left=points[0]
     for right in points[1:]:
-        if beat<=right[0]:
-            if trajectory['interpolation']=='step' or right[0]==left[0]: return left[1]
+        if beat==right[0]: return right[1]
+        if beat<right[0]:
+            if trajectory['interpolation']=='step': return left[1]
             alpha=float((beat-left[0])/(right[0]-left[0])); return left[1]+alpha*(right[1]-left[1])
         left=right
     return points[-1][1]
@@ -50,7 +51,7 @@ class GestureRenderBundle:
 def compile_gesture(plan,tuning_id,*,source_id='source'):
     if not isinstance(plan,DirectionalGesture): raise GestureError('DirectionalGesture required')
     if type(tuning_id)is not str or not tuning_id: raise GestureError('active tuning id required')
-    data=plan.to_dict(); landing=data['landing']; landing_at=fraction(landing['beat']); duration=fraction(data['duration_beats'])
+    data=plan.to_dict(); landing=data['landing']; landing_at=fraction(landing['beat'])
     density=_trajectory(data,'onset_density'); accent=_trajectory(data,'accent_db'); durations=_trajectory(data,'duration_beats'); pitch=_trajectory(data,'pitch_cents')
     events=[]; trace=[]; at=Fraction(0); index=0
     while at<landing_at:
