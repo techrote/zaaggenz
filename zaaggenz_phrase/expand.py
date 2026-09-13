@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from fractions import Fraction
 import hashlib
 import json
 from zaaggenz_contracts import Contract, digest
@@ -44,6 +43,11 @@ def _prob(weight, weights):
     return float(weight) / float(sum(weights))
 
 
+def _contract_root(placement_seed, content_seed):
+    payload = f'zaaggenz.phrase-role-root-v1\0{placement_seed}\0{content_seed}'.encode()
+    return str(int.from_bytes(hashlib.sha256(payload).digest()[:8], 'big'))
+
+
 @dataclass(frozen=True)
 class RoleExpansion:
     phrase: Contract
@@ -70,7 +74,7 @@ def expand_role_plan(plan, tuning_id):
     sequence = 0
     streams = []
 
-    def emit(window, variant, event, beat, source_family, rule):
+    def emit(event, beat, source_family):
         nonlocal sequence
         event_id = f'role-{sequence:04d}'
         sequence += 1
@@ -93,7 +97,7 @@ def expand_role_plan(plan, tuning_id):
         events.append(rendered)
         return event_id
 
-    for wi, window in enumerate(data['windows']):
+    for window in data['windows']:
         placement_weights = [x['weight'] for x in window['placements']]
         variant_weights = [x['weight'] for x in window['variants']]
         placement_index, placement_draw = _draw(data['placement_seed'], f'{window["id"]}.placement', placement_weights)
@@ -105,13 +109,13 @@ def expand_role_plan(plan, tuning_id):
         event_ids = []
         for event in variant['events']:
             beat = window_start + placement_offset + fraction(event['offset'])
-            event_ids.append(emit(window, variant, event, beat, variant['source_family'], 'variant'))
+            event_ids.append(emit(event, beat, variant['source_family']))
         destination_id = None
         if window['destination'] is not None:
             d = window['destination']
             event = {'duration_beats': d['duration_beats'], 'degree': d['degree'],
                      'detune_cents': d['detune_cents'], 'gain_db': d['gain_db'], 'roll_density': 0}
-            destination_id = emit(window, variant, event, fraction(d['beat']), d['source_family'], 'destination')
+            destination_id = emit(event, fraction(d['beat']), d['source_family'])
             roles.append({'beat': d['beat'], 'duration_beats': d['duration_beats'], 'role': 'return'})
         role_duration = window_end - window_start
         roles.append({'beat': window['start_beat'], 'duration_beats': _rat(role_duration), 'role': _ROLE_MAP[window['role']]})
@@ -137,5 +141,6 @@ def expand_role_plan(plan, tuning_id):
     phrase = Contract(envelope('PhrasePlan', start_beat='0/1', end_beat=data['end_beat'], tuning_id=tuning_id,
                                source_ids=sorted(source_ids), gestures=gestures, events=events, roles=roles,
                                bass_role='none', random={'algorithm': 'sha256-named-u64-v1',
-                                                        'root': data['content_seed'], 'streams': sorted(set(streams))}))
+                                                        'root': _contract_root(data['placement_seed'], data['content_seed']),
+                                                        'streams': sorted(set(streams))}))
     return RoleExpansion(phrase, plan.sha256, json.dumps(trace, sort_keys=True, allow_nan=False))
