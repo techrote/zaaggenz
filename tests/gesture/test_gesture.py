@@ -13,7 +13,7 @@ from zaaggenz_melody import render_phrase
 from zaaggenz_project import Project
 from zaaggenz_timeline import default_document
 from zaaggenz_gesture import (GestureError,DirectionalGesture,rise_turn_return,vary_surface,reverse_direction,
-                              replace_trajectory_points,edit_landing,compile_gesture,compile_gesture_recipe)
+                              replace_trajectory_points,edit_landing,trajectory_value,compile_gesture,compile_gesture_recipe)
 
 
 def trajectory(plan,axis): return next(t for t in plan.to_dict()['trajectories'] if t['axis']==axis)
@@ -75,6 +75,12 @@ class TransformTests(unittest.TestCase):
 
 class CompilationTests(unittest.TestCase):
     def setUp(self): self.plan=rise_turn_return();self.base=default_document(12000)
+    def test_step_controls_switch_at_the_exact_authored_point(self):
+        density=trajectory(self.plan,'onset_density');duration=trajectory(self.plan,'duration_beats')
+        self.assertEqual(trajectory_value(density,'999/1000'),2.)
+        self.assertEqual(trajectory_value(density,'1/1'),4.)
+        self.assertEqual(trajectory_value(duration,'999/1000'),.5)
+        self.assertEqual(trajectory_value(duration,'1/1'),.375)
     def test_compilation_is_deterministic_and_terminal_landing_is_explicit(self):
         a=compile_gesture(self.plan,'twelve-tet');b=compile_gesture(self.plan,'twelve-tet')
         self.assertEqual(a.sha256,b.sha256);events=a.phrase.to_dict()['events']
