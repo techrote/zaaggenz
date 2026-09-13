@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import {Editor,rational,snap,add} from '../../web/timeline/editor.mjs';
+const base={end_beat:'16/1',next_id:0,notes:[],clips:[],project:{retained:true},name:'Test'};
+const note={beat:'0/1',duration_beats:'1/2',degree:0,detune_cents:0,gain_db:-18,muted:false,roll_density:0};
+assert.equal(rational('0.125'),'1/8');assert.equal(rational('2/4'),'1/2');assert.equal(add('1/3','1/6'),'1/2');
+assert.equal(snap('1/3','1/4'),'1/4');assert.equal(snap('1/8','1/4'),'1/4');
+assert.throws(()=>rational('NaN'));assert.throws(()=>rational('1/0'));assert.throws(()=>snap('-1/1','1/4'));
+const e=new Editor(base);const id=e.add(note,'1/4');const first=e.document;
+const id2=e.duplicate(id,'1/4');const twice=e.document;e.undo();assert.deepEqual(e.document,first);e.redo();assert.deepEqual(e.document,twice);
+e.undo();assert.equal(e.duplicate(id,'1/4'),id2);assert.deepEqual(e.document,twice);
+e.mute(id);assert.equal(e.document.notes[0].muted,true);e.undo();assert.equal(e.document.notes[0].muted,false);
+e.edit(id,{...note,beat:'1/3',duration_beats:'3/2',degree:4},'1/12');assert.equal(e.document.notes[0].beat,'1/3');
+const prior=e.document;assert.throws(()=>e.edit(id,{...note,beat:'16/1'},'1/4'));assert.deepEqual(e.document,prior);
+e.example(4);assert.equal(e.document.notes.length,32);assert.equal(e.document.end_beat,'16/1');assert.equal(e.document.project.retained,true);
+e.example(16);assert.equal(e.document.notes.length,128);assert.equal(e.document.end_beat,'64/1');
+const clip=e.clip('Triplet','1/3','2/3');e.duplicateClip(clip);assert.equal(e.document.clips.at(-1).end_beat,'1/1');
+console.log('timeline editor: rational snaps, deterministic IDs, edit/duplicate/mute, undo/redo, clips and 4/16-bar fixtures passed');
