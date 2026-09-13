@@ -1,0 +1,67 @@
+"""Loopback-only listening workflow layered beside the normal Compose timeline."""
+from __future__ import annotations
+from pathlib import Path
+import re,secrets
+from http.server import ThreadingHTTPServer
+from urllib.parse import urlparse
+from zaaggenz_contracts.model import loads
+from zaaggenz_timeline.model import default_document
+from zaaggenz_timeline.service import TimelineService
+from zaaggenz_timeline.server import Handler as TimelineHandler
+from .model import ListeningError,ENDPOINTS,exact
+from .service import ListeningService
+
+ROOT=Path(__file__).resolve().parents[1];STATIC=ROOT/'web'/'listening'
+AUDIO=re.compile(r'/api/listening/audio/([0-9a-f]{64})\.wav\Z')
+ABX=re.compile(r'/api/listening/trial/([0-9a-f]{64})/X\.wav\Z')
+
+class Handler(TimelineHandler):
+    def do_GET(self):
+        if not self._origin_ok():return
+        path=urlparse(self.path).path
+        try:
+            if path=='/api/listening/bootstrap':return self._json({'token':self.server.token,'templates':self.server.listening.templates,'endpoints':list(ENDPOINTS),'compose_independent':True})
+            m=AUDIO.fullmatch(path)
+            if m:return self._binary(self.server.listening.audio.wav(m[1]),'audio/wav',extra_headers={'X-Playback-SHA256':m[1],'Cache-Control':'no-store'})
+            x=ABX.fullmatch(path)
+            if x:
+                trial=self.server.listening.manifest(x[1]);td=trial.to_dict()
+                if td['design']!='abx':raise ListeningError('X playback belongs only to ABX trials')
+                sid=td['presentation_order'][0 if td['abx_truth']=='A' else 1]
+                row=next(r for r in td['matched_stimuli'] if r['stimulus_id']==sid)
+                return self._binary(self.server.listening.audio.wav(row['playback_sha256']),'audio/wav',extra_headers={'Cache-Control':'no-store'})
+            resources={'/listen':('index.html','text/html; charset=utf-8'),'/listen/':('index.html','text/html; charset=utf-8'),'/listen/app.mjs':('app.mjs','text/javascript; charset=utf-8'),'/listen/style.css':('style.css','text/css; charset=utf-8')}
+            if path in resources:
+                filename,mime=resources[path];return self._binary((STATIC/filename).read_bytes(),mime,extra_headers={'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"})
+            return super().do_GET()
+        except (ListeningError,ValueError,KeyError) as e:return self._error(str(e),400)
+    def do_POST(self):
+        if not self._origin_ok():return
+        path=urlparse(self.path).path
+        if not path.startswith('/api/listening/'):return super().do_POST()
+        if not secrets.compare_digest(self.headers.get('X-Zaaggenz-Token',''),self.server.token):return self._error('listening session token required',403)
+        try:
+            if self.headers.get('Content-Type','').split(';')[0]!='application/json':raise ListeningError('application/json required')
+            d=loads(self._read_body(limit=2_000_000))
+            if path=='/api/listening/freeze':
+                exact(d,{'job_id','name','start_frame','end_frame'},'freeze request');return self._json(self.server.listening.freeze_job(d['job_id'],d['name'],d['start_frame'],d['end_frame']))
+            if path=='/api/listening/match':
+                exact(d,{'stimulus_ids','target_rms_dbfs','peak_ceiling_dbfs'},'match request');return self._json({'matched_stimuli':self.server.listening.match(d['stimulus_ids'],d['target_rms_dbfs'],d['peak_ceiling_dbfs'])})
+            if path=='/api/listening/trial':
+                exact(d,{'title','design','matched_stimuli','seed','endpoints','instruction_template'},'trial request');return self._json({'trial':self.server.listening.create_trial(d['title'],d['design'],d['matched_stimuli'],d['seed'],d['endpoints'],d['instruction_template'])},201)
+            if path=='/api/listening/submit':
+                exact(d,{'trial_id','result'},'submit request');return self._json(self.server.listening.submit(d['trial_id'],d['result']),201)
+            if path=='/api/listening/export':
+                exact(d,{'trial_id'},'export request');return self._json(self.server.listening.export_bundle(d['trial_id']))
+            if path=='/api/listening/reopen':
+                exact(d,{'bundle'},'reopen request');return self._json(self.server.listening.reopen_bundle(d['bundle']))
+            return self._error('unknown listening route',404)
+        except (ListeningError,ValueError,KeyError,TypeError) as e:return self._error(str(e),400)
+
+class ListeningServer(ThreadingHTTPServer):
+    daemon_threads=True
+    def __init__(self,port=8765,sample_rate=48000,verbose=False):
+        super().__init__(('127.0.0.1',port),Handler);self.token=secrets.token_urlsafe(32);self.verbose=verbose;self.initial_document=default_document(sample_rate);self.timeline=TimelineService();self.listening=ListeningService(self.timeline)
+    def server_close(self):
+        if hasattr(self,'timeline'):self.timeline.close()
+        super().server_close()
