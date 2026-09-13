@@ -116,7 +116,6 @@ def expand_role_plan(plan, tuning_id):
             event = {'duration_beats': d['duration_beats'], 'degree': d['degree'],
                      'detune_cents': d['detune_cents'], 'gain_db': d['gain_db'], 'roll_density': 0}
             destination_id = emit(event, fraction(d['beat']), d['source_family'])
-            roles.append({'beat': d['beat'], 'duration_beats': d['duration_beats'], 'role': 'return'})
         role_duration = window_end - window_start
         roles.append({'beat': window['start_beat'], 'duration_beats': _rat(role_duration), 'role': _ROLE_MAP[window['role']]})
         pp = _prob(placement['weight'], placement_weights)
