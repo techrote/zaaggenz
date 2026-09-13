@@ -6,6 +6,7 @@ import numpy as np
 from scipy.io import wavfile
 
 ROOT=Path(__file__).resolve().parents[1]
+sys.path.insert(0,str(ROOT))
 sys.path.insert(0,str(ROOT/'app'))
 
 from zaaggenz_contracts.legacy import adapt_parameters,freeze_legacy,envelope,legacy_object
