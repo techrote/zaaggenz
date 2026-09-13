@@ -20,8 +20,9 @@ class ComponentTests(unittest.TestCase):
         r=analyse_components(tone(440),SR);validate(r.bundle.to_dict(),'PartialTrackBundle');tr=longest(r);self.assertIsNotNone(tr)
         rows=tr['frames'];self.assertLess(np.median([abs(x['frequency_hz']-440) for x in rows]),1.5)
         self.assertTrue(.45<np.median([x['amplitudes'][0] for x in rows])<.75)
-        self.assertGreater(r.diagnostics['transform_frames'],0)
         self.assertLessEqual(r.diagnostics['tracks'],2,'a stationary clean tone must not produce a forest of sidelobe trajectories')
+        self.assertEqual(r.diagnostics['ambiguous_tracks'],0)
+        self.assertGreater(sum(x['action']=='transform' for x in rows),len(rows)*.75)
     def test_linear_chirp_measured_error(self):
         n=round(SR*1.5);t=np.arange(n)/SR;x=signal.chirp(t,300,t[-1],600,method='linear').astype(np.float32)
         r=analyse_components(x,SR);tr=longest(r);self.assertIsNotNone(tr)
