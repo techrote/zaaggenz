@@ -1,0 +1,23 @@
+# ZG-015 verification record
+
+Branch: `zg-015/listening-trials`. Base: accepted ZG-032 main `492e614524bc27ab2f6f1ae05eb6541c61d13e2f`.
+
+Local pre-publication checks on Python 3.13 / NumPy 2.3.5 / SciPy 1.17.0:
+
+- ZG-015 listening suite: **13 passed**;
+- accepted project suite: **16 passed**;
+- accepted jobs suite: **23 passed**;
+- accepted timeline suite: **24 passed**;
+- accepted QC suite: **14 passed**;
+- existing browser stale-result transport checks: passed;
+- deterministic 48 kHz three-stimulus matching/trial report: passed.
+
+The local full-rate report freezes three source-derived four-beat stimuli, matches them to one common whole-file RMS target and creates deterministic A/B, ABX and multi-example manifests. Matched RMS is approximately **-32.49 dBFS** in the local environment. Matching gains are approximately `0.00`, `-3.22` and `-1.01` dB; matched sample-peak headroom exceeds 18 dB in this fixture. These are sample-peak/RMS engineering quantities, not a perceptual loudness or true-peak claim.
+
+Every stimulus records immutable project revision, RenderRecipe hash, render cache key, source asset identity, excerpt frames, raw excerpt PCM hash and alignment metadata. Every matched playback has its own PCM SHA-256. Tests edit/render projects after freeze and verify the frozen stimulus is unchanged; reopening a bundle in a store without exact playback bytes fails instead of regenerating from project state.
+
+Trial tests distinguish A/B choice, hidden ABX accuracy, task ratings, confidence, effort, comfortable level, per-stimulus/X replay counts, time-local annotations and completed/aborted/missing status. No field is relabelled as preference, acoustic quality or biochemical response when it is not that endpoint.
+
+Local Playwright acceptance was not claimed because a managed Chromium binary was not present in the local environment. The final PR workflow installs Chromium on Windows and Ubuntu and runs the real browser workflow against the actual loopback numerical server.
+
+Final acceptance is produced by `.github/workflows/zg015-listening.yml` plus the independent ZG-002 contracts/legacy workflow. The PR/issue completion comment records final head SHA, workflow IDs, artifact IDs and remote evidence inspection.
