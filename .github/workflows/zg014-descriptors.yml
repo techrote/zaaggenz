@@ -41,6 +41,7 @@ jobs:
             descriptor-fixtures.json
             zaaggenz_descriptors/
             zaaggenz_components/
+            zaaggenz_analysis/
             zaaggenz_contracts/
             zaaggenz_reference/
             tools/descriptor_reference_report.py
