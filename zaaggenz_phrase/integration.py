@@ -3,7 +3,6 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 from zaaggenz_contracts import Contract
-from zaaggenz_contracts.model import fraction
 from zaaggenz_melody import make_melodic_recipe
 from zaaggenz_project import Project
 from zaaggenz_timeline import TimelineDocument, default_document
@@ -33,6 +32,15 @@ def _density_map(phrase):
         if curve is not None:
             out[gesture['id']] = int(round(float(curve['points'][0]['value'])))
     return out
+
+
+def _render_phrase_for_source(phrase, source_id):
+    """Bind authoring source-family labels to the one source allowed by RenderRecipe v1."""
+    data = phrase.to_dict()
+    data['source_ids'] = [source_id]
+    for event in data['events']:
+        event['source_id'] = source_id
+    return Contract(data)
 
 
 def plan_to_timeline(plan, base=None, *, sample_rate=48000):
@@ -69,8 +77,9 @@ def compile_role_recipe(plan, base=None, *, sample_rate=48000, quality='standard
     timeline, expansion = plan_to_timeline(plan, base, sample_rate=sample_rate)
     timeline_data = timeline.to_dict()
     source_recipe = Project.from_document(timeline_data['project']).head_recipe.to_dict()
+    render_phrase = _render_phrase_for_source(expansion.phrase, source_recipe['source']['id'])
     recipe = make_melodic_recipe(source_recipe['source']['params'], source_recipe['time_map'], source_recipe['tuning'],
-                                 expansion.phrase, quality=quality, tail_mode=tail_mode,
+                                 render_phrase, quality=quality, tail_mode=tail_mode,
                                  master_gain_db=timeline_data['master_gain_db'])
     if recipe.to_dict()['source'] != source_recipe['source']:
         raise AssertionError('role compilation changed the retained protected source')
