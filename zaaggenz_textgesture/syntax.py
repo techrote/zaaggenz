@@ -67,7 +67,9 @@ class _Parser:
             if self.text[self.i]==']':self.i+=1;return values
             key_start=self.i;m=_KEY.match(self.text,self.i)
             if not m:raise TextSyntaxError(self.text,self.i,'expected one-letter modifier key')
-            key=m.group(0);self.i=m.end();self.ws()
+            key=m.group(0);self.i=m.end()
+            if key not in MODIFIERS:raise TextSyntaxError(self.text,key_start,f'unknown modifier {key!r}; allowed: {", ".join(MODIFIERS)}')
+            self.ws()
             if self.i>=len(self.text) or self.text[self.i]!='=':raise TextSyntaxError(self.text,self.i,"expected '=' after modifier key")
             self.i+=1;self.ws();value_start=self.i
             while self.i<len(self.text) and self.text[self.i] not in ',]':self.i+=1
