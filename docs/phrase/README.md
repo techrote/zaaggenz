@@ -29,11 +29,11 @@ The exported timeline is a normal accepted ZG-009 document: notes, rests, roll d
 
 ## Plan semantics
 
-A role window has an absolute start/end, a role, weighted placement offsets, weighted content variants and optional absolute destination anchor. Content variants carry a `source_family` identity plus relative source-preserving note/rest events. `source_family` is preserved in the compiled PhrasePlan/trace as an authoring identity and future routing hook; ZG-025 deliberately does **not** invent multiple new synthesis engines. The current ZG-008 renderer still uses the one protected source waveform while preserving those event labels.
+A role window has an absolute start/end, a role, weighted placement offsets, weighted content variants and optional absolute destination anchor. Content variants carry a `source_family` identity plus relative source-preserving note/rest events. `source_family` is preserved in the ZG-025 expansion contract and trace as an authoring identity and future routing hook; ZG-025 deliberately does **not** invent multiple new synthesis engines. When the expansion is compiled to a frozen RenderRecipe v1, the adapter explicitly rebinds every emitted event to the one protected audio source allowed by that contract. The original family identity remains available in the role plan/trace rather than masquerading as multiple rendered sources.
 
 Every declared placement must fit every event in every variant. This makes invalid authoring fail at plan construction rather than allowing a choice to become infeasible only after a seed is drawn. No-fill variants are allowed only in vary/tease/turn roles. Return roles require a destination. The accepted ZG-009 bound of 256 note/rest objects is enforced against worst-case expansion.
 
-Role names map onto the frozen PhrasePlan vocabulary without changing that shared schema: `reinforce → repeat`, `vary → variation`, `tease → fakeout`, and `turn → transition`. Destination anchors add an explicit `return` role. The richer authoring vocabulary lives only in the versioned ZG-025 wrapper.
+Role names map onto the frozen PhrasePlan vocabulary without changing that shared schema: `reinforce → repeat`, `vary → variation`, `tease → fakeout`, and `turn → transition`. Frozen PhrasePlan roles must not overlap. Therefore a destination nested inside a broader variation window remains an explicit ZG-025 destination anchor/event in the trace rather than adding an overlapping frozen `return` role. A window whose own role is `return` compiles normally to the frozen `return` role. The richer authoring vocabulary and nested-destination semantics live only in the versioned ZG-025 wrapper.
 
 ## Independence guarantees
 
@@ -43,7 +43,7 @@ For matched controls, changing only `placement_seed` preserves the selected vari
 
 ## Source-preserving integration
 
-`compile_role_recipe()` extracts the protected source parameters, TimeMap and TuningSpec from an accepted timeline Project, expands the role plan, and creates an ordinary ZG-008 source-derived melodic recipe. The source payload is asserted unchanged. No frozen contract, preset or nonlinear topology changes occur.
+`compile_role_recipe()` extracts the protected source parameters, TimeMap and TuningSpec from an accepted timeline Project, expands the role plan, rebinds authoring family labels to that one protected source only at the render boundary, and creates an ordinary ZG-008 source-derived melodic recipe. The source payload is asserted unchanged. No frozen contract, preset or nonlinear topology changes occur.
 
 `plan_to_timeline()` exports selected role events to the ZG-009 browser editor and creates one named clip per role window. The full legacy Project remains byte-for-byte equivalent at the JSON-object level. BODY/AUX/SUB/SCULPT coordination is still ZG-029; this issue does not claim it.
 
