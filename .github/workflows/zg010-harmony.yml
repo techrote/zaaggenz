@@ -1,0 +1,43 @@
+name: ZG-010 sonority and voice-leading
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_harmony/**'
+      - 'tests/harmony/**'
+      - 'tools/harmony_fixture_report.py'
+      - 'docs/harmony/**'
+      - '.github/workflows/zg010-harmony.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  harmony:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical and contract/job dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Harmony tests
+        run: python -m unittest discover -s tests/harmony -v
+      - name: Mathematical and generated-source evidence
+        run: python tools/harmony_fixture_report.py --out harmony-fixtures.json --audio-dir harmony-listening
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg010-harmony-${{ matrix.os }}
+          path: |
+            harmony-fixtures.json
+            harmony-listening/
