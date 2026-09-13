@@ -60,7 +60,7 @@ def _candidate_frames(a,sr,spec):
         if r.valid_fraction[i]<spec.min_support_fraction:rows.append([]);abstained+=1;continue
         mag=np.sqrt(np.sum(np.abs(r.spectra[i])**2,axis=0));bmag=mag[band];power=bmag*bmag;mean=float(np.mean(power))
         if mean<=1e-24:rows.append([]);abstained+=1;continue
-        flat=float(np.exp,an.mean(np.log(power+1e-30)))/(mean+1e-30))
+        flat=float(np.exp(np.mean(np.log(power+1e-30)))/(mean+1e-30))
         if flat>spec.max_flatness:rows.append([]);abstained+=1;continue
         floor=max(float(np.median(bmag)),1e-15);peak=float(np.max(bmag));prom=max(floor*2.5,peak*.03)
         local,_=signal.find_peaks(bmag,prominence=prom,height=max(floor*1.8,peak*.01),distance=min_peak_bins)
