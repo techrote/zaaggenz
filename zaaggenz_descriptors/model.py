@@ -109,15 +109,17 @@ def feature_projection(bundle):
     if not isinstance(bundle,DescriptorBundle):raise DescriptorError('DescriptorBundle required')
     mapping={'rms':('rms','linear_amplitude'),'f0_candidate_hz':('f0','Hz'),'roughness_pairwise':('roughness_score','unitless'),'target_comb_fit':('chord_fit_score','unitless')}
     rows=[]
-    for o in bundle.observations:
-        if o.metric not in mapping:continue
-        feature,unit=mapping[o.metric];role='measurement' if o.role=='measurement' else 'estimate'
-        # Frozen FeatureBundle v1 requires unknown/abstained observations to use
-        # both null value and null confidence. Rich descriptor confidence remains
-        # available in DescriptorBundle and is not discarded from that source.
-        confidence=o.confidence if role=='estimate' and o.validity=='valid' else None
-        rows.append(dict(feature=feature,unit=unit,value=o.value,role=role,validity=o.validity,
-                         confidence=confidence,support=deepcopy(o.support)))
+    # Frozen FeatureBundle v1 deliberately permits an empty asset only with an
+    # empty observation list. DescriptorBundle can retain explicit padded
+    # abstentions/zero-valued measurements, but the compatibility projection
+    # must not fabricate an anchor inside a zero-frame source.
+    if bundle.asset['frame_count']>0:
+        for o in bundle.observations:
+            if o.metric not in mapping:continue
+            feature,unit=mapping[o.metric];role='measurement' if o.role=='measurement' else 'estimate'
+            confidence=o.confidence if role=='estimate' and o.validity=='valid' else None
+            rows.append(dict(feature=feature,unit=unit,value=o.value,role=role,validity=o.validity,
+                             confidence=confidence,support=deepcopy(o.support)))
     d=dict(kind='FeatureBundle',version='1.0.0',asset=deepcopy(bundle.asset),
            method=dict(id='zg.descriptor_projection.v1',version='1.0.0',configuration={'descriptor_bundle_sha256':bundle.sha256}),observations=rows)
     validate(d,'FeatureBundle');return d
