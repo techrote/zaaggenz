@@ -44,6 +44,8 @@ def analyse_descriptors(x,sample_rate_hz,*,target_hz=None,f0_override_hz=None,pa
     if not isinstance(spec,DescriptorAnalysisSpec):raise DescriptorError('DescriptorAnalysisSpec required')
     a,mono=audio_array(x)
     if len(a)>spec.max_samples:raise DescriptorError(f'excerpt has {len(a)} samples; select an explicit <= {spec.max_samples}-sample analysis excerpt instead of implicit truncation')
+    if spec.max_f0_hz>=sample_rate_hz/2:raise DescriptorError('descriptor f0 search maximum must be below Nyquist')
+    targets=None if target_hz is None else tuple(float(v) for v in target_hz)
     asset=pcm_asset(a[:,0] if mono else a,sample_rate_hz);support=whole_support(len(a))
     observations=[rms_observation(a,support=support)]
     periodic=periodicity_observations(a,sample_rate_hz,min_f0_hz=spec.min_f0_hz,max_f0_hz=spec.max_f0_hz,support=support);observations.extend(periodic)
@@ -60,8 +62,8 @@ def analyse_descriptors(x,sample_rate_hz,*,target_hz=None,f0_override_hz=None,pa
     pd=partial_contract.to_dict();pa=pd['asset']
     for key in ('content_sha256','identity_domain','sample_rate_hz','channels','frame_count'):
         if pa[key]!=asset[key]:raise DescriptorError('partial analysis asset does not match descriptor audio excerpt')
-    observations.extend(component_observations(partial_contract,f0_hz=f0,target_hz=target_hz,support=support,component_cap=spec.component_cap,tolerance_cents=spec.tolerance_cents))
-    config={'analysis_spec':spec.to_dict(),'f0_source':f0_source,'target_comb_hz':None if target_hz is None else [float(v) for v in target_hz],
+    observations.extend(component_observations(partial_contract,f0_hz=f0,target_hz=targets,support=support,component_cap=spec.component_cap,tolerance_cents=spec.tolerance_cents))
+    config={'analysis_spec':spec.to_dict(),'f0_source':f0_source,'target_comb_hz':None if targets is None else list(targets),
             'component_method':pd['method'],'window_policy':'caller-selected excerpt; no implicit truncation'}
     bundle=DescriptorBundle(asset,tuple(observations),configuration=config);projection=feature_projection(bundle)
     return DescriptorAnalysis(bundle,partial_contract,projection)
