@@ -7,15 +7,6 @@ on:
       - 'tools/textgesture_fixture_report.py'
       - 'docs/textgesture/**'
       - '.github/workflows/zg031-textgesture.yml'
-  push:
-    branches:
-      - 'zg-031/text-gesture-language'
-    paths:
-      - 'zaaggenz_textgesture/**'
-      - 'tests/textgesture/**'
-      - 'tools/textgesture_fixture_report.py'
-      - 'docs/textgesture/**'
-      - '.github/workflows/zg031-textgesture.yml'
   workflow_dispatch:
 permissions:
   contents: read
