@@ -34,7 +34,13 @@ def main():
             page.on('pageerror',lambda e:errors.append(str(e)))
             page.set_default_timeout(15000)
             page.goto(url)
-            ready=lambda:expect(page.locator('#render')).to_be_enabled(timeout=30000)
+            def ready():
+                try:
+                    expect(page.locator('#render')).to_be_enabled(timeout=30000)
+                except Exception:
+                    print('Browser status:',page.locator('#status').inner_text(),errors,flush=True)
+                    page.screenshot(path=args.out/'failure.png',full_page=True)
+                    raise
             ready()
             def saved(name):
                 ready()
@@ -66,6 +72,7 @@ def main():
             twice=saved('two-events.zgtimeline.json')
             page.locator('#undo').click();ready();expect(page.locator('#roll .note')).to_have_count(1)
             page.locator('#redo').click();ready();assert saved('two-events-redone.zgtimeline.json')==twice
+            page.locator('#event-list button').nth(1).click()
             page.locator('#beat').fill('2');page.locator('#duration').fill('1');page.locator('#density').select_option('8')
             page.locator('#apply').click();ready();page.locator('#mute').click();ready()
             assert saved('muted.zgtimeline.json')['notes'][1]['muted'] is True
@@ -97,6 +104,7 @@ def main():
             page.locator('#outputs').select_option(full_job);ready()
             expect(page.locator('#playback-revision')).to_have_text(first_revision)
             page.locator('#stop').click();expect(page.locator('#play')).to_be_disabled()
+            page.locator('#master').fill('-9');page.locator('#master').dispatch_event('change');ready()
             page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json');ready()
             expect(page.locator('#revision')).to_have_text(first_revision)
             second_full=rendered('four-bar-reopened')

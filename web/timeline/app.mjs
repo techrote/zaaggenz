@@ -149,10 +149,10 @@ function bind(){
   $('save').onclick=()=>safe(()=>{if(!validation)throw Error('Correct invalid editing state before saving.');
     const url=URL.createObjectURL(new Blob([JSON.stringify(editor.document,null,2)],{type:'application/json'}));
     const link=document.createElement('a');link.href=url;link.download='zaaggenz-timeline.zgtimeline.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
-  $('open').onchange=async()=>{const file=$('open').files[0];if(!file)return;
+  $('open').onchange=async()=>{const file=$('open').files[0];if(!file)return;const openEpoch=++epoch;quietCancel(job);job=null;
     try{if(file.size>2000000)throw Error('Project exceeds the 2 MB authoring limit.');const input=JSON.parse(await file.text());
-      await api('validate',{document:input});editor.replace(input);selected=null;afterEdit();
-    }catch(e){status(e.message,true);}finally{$('open').value='';}};
+      await api('validate',{document:input});if(openEpoch!==epoch)return;editor.replace(input);selected=null;afterEdit();
+    }catch(e){if(openEpoch===epoch)status(e.message,true);}finally{$('open').value='';}};
   $('roll').ondblclick=e=>{if(e.target.closest('[data-id]'))return;const bounds=$('roll').getBoundingClientRect(),x=(e.clientX-bounds.left)*1200/bounds.width;
     $('beat').value=snap(Math.max(0,(x-48)/1140*value(editor.document.end_beat)).toFixed(6),$('snap').value);
     mutate(()=>{selected=editor.add(rowFromForm(),$('snap').value);});};
