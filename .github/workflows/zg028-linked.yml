@@ -1,0 +1,60 @@
+name: ZG-028 linked violation and return
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_linked/**'
+      - 'tests/linked/**'
+      - 'tools/linked_fixture_report.py'
+      - 'docs/linked/**'
+      - 'examples/linked/**'
+      - '.github/workflows/zg028-linked.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linked:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Capture exact tracked source
+        run: git archive --format=zip --output=verification-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zg028-source-${{ matrix.os }}
+          path: verification-source.zip
+          retention-days: 7
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical and shared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Linked phase, matching, convergence, anchor and Compose tests
+        run: python -m unittest discover -s tests/linked -v
+      - name: Accepted harmony, phrase, meter, gesture and timeline regressions
+        run: |
+          python -m unittest discover -s tests/harmony -v
+          python -m unittest discover -s tests/phrase -v
+          python -m unittest discover -s tests/meter -v
+          python -m unittest discover -s tests/gesture -v
+          python -m unittest discover -s tests/timeline -v
+      - name: Full-rate five-condition linked-return evidence
+        run: python tools/linked_fixture_report.py --out linked-fixtures-48k.json --audio-dir linked-listening-48k --sample-rate 48000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg028-linked-${{ matrix.os }}
+          path: |
+            linked-fixtures-48k.json
+            linked-listening-48k/
