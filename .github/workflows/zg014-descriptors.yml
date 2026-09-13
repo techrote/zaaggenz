@@ -7,6 +7,9 @@ on:
       - 'tools/descriptor_fixture_report.py'
       - 'tools/descriptor_reference_report.py'
       - 'docs/descriptors/**'
+      - 'zaaggenz_components/**'
+      - 'tests/components/**'
+      - 'zaaggenz_analysis/**'
       - '.github/workflows/zg014-descriptors.yml'
   workflow_dispatch:
 permissions:
@@ -29,6 +32,8 @@ jobs:
         with: {python-version: '3.13'}
       - name: Install numerical and contract dependencies
         run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt
+      - name: Component contract regression tests
+        run: python -m unittest discover -s tests/components -v
       - name: Descriptor tests
         run: python -m unittest discover -s tests/descriptors -v
       - name: Synthetic calibration report
@@ -37,4 +42,14 @@ jobs:
         if: always()
         with:
           name: zg014-descriptors-${{ matrix.os }}
-          path: descriptor-fixtures.json
+          path: |
+            descriptor-fixtures.json
+            zaaggenz_descriptors/
+            zaaggenz_components/
+            zaaggenz_analysis/
+            zaaggenz_contracts/
+            zaaggenz_reference/
+            tools/descriptor_reference_report.py
+            requirements-contracts.txt
+            references/private_registry_v1.json
+            references/paired_suggestions_v1.json

@@ -143,7 +143,7 @@ def _track_bundle(source,sr,tracks,spec,r,transient_mask,residual,transient):
         if continuity=='unknown':ambiguous_tracks+=1
         frames=[]
         for row in t['rows']:
-            action='transform' if continuity!='unknown' and row['confidence']>=spec.transform_confidence and transient_mask[row['anchor']]<.5 else 'preserve'
+            action='transform' if continuity=='continuous' and row['confidence']>=spec.transform_confidence and transient_mask[row['anchor']]<.5 else 'preserve'
             if action=='transform':transform_frames+=1
             frames.append(dict(support=dict(start_sample=row['start'],end_sample=row['end'],anchor_sample=row['anchor'],padding='zero'),frequency_hz=row['frequency_hz'],amplitudes=list(row['amplitudes']),phases_radians=list(row['phases']),confidence=row['confidence'],action=action))
         exported.append(dict(id=f'p{idx:04d}',segment_id=f's{idx:04d}',continuity=continuity,frames=frames))
