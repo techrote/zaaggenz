@@ -1,0 +1,56 @@
+name: ZG-027 directional gestures
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_gesture/**'
+      - 'tests/gesture/**'
+      - 'tools/gesture_fixture_report.py'
+      - 'docs/gesture/**'
+      - '.github/workflows/zg027-gesture.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  gesture:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Capture exact tracked source
+        run: git archive --format=zip --output=verification-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zg027-source-${{ matrix.os }}
+          path: verification-source.zip
+          retention-days: 7
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical and shared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Gesture constraints, transformations, manual correction and source-safe compilation
+        run: python -m unittest discover -s tests/gesture -v
+      - name: Accepted melody and phrase regressions
+        run: |
+          python -m unittest discover -s tests/melody -v
+          python -m unittest discover -s tests/phrase -v
+      - name: Full-rate matched directionality fixtures
+        run: python tools/gesture_fixture_report.py --out gesture-fixtures-48k.json --audio-dir gesture-listening-48k --sample-rate 48000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg027-gesture-${{ matrix.os }}
+          path: |
+            gesture-fixtures-48k.json
+            gesture-listening-48k/
