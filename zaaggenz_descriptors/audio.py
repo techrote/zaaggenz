@@ -36,6 +36,9 @@ def _parabolic(y,k):
 
 def periodicity_observations(x,sample_rate_hz,*,min_f0_hz=30.,max_f0_hz=1200.,support=None):
     a,_=audio_array(x);support=whole_support(len(a)) if support is None else support
+    if type(sample_rate_hz)is not int or not 8000<=sample_rate_hz<=192000:raise DescriptorError('sample rate out of range')
+    if type(min_f0_hz) not in (int,float) or type(max_f0_hz) not in (int,float) or type(min_f0_hz)is bool or type(max_f0_hz)is bool or not math.isfinite(float(min_f0_hz)) or not math.isfinite(float(max_f0_hz)) or not 0<min_f0_hz<max_f0_hz<sample_rate_hz/2:
+        raise DescriptorError('f0 search must be finite, ordered and below Nyquist')
     if len(a)<32:
         d={'reason':'too-short'}
         return [observation('periodicity_peak',None,support,validity='abstained',confidence=0.,role='estimate',details=d),
@@ -60,15 +63,20 @@ def periodicity_observations(x,sample_rate_hz,*,min_f0_hz=30.,max_f0_hz=1200.,su
         d={'reason':'no-periodic-candidate','analysis_channel':ch}
         return [observation('periodicity_peak',None,support,validity='abstained',confidence=0.,role='estimate',details=d),observation('f0_candidate_hz',None,support,validity='abstained',confidence=0.,role='estimate',details=d)]
     near=[c for c in candidates if c[0]>=candidates[0][0]-.02];best=min(near,key=lambda c:c[2]);best_score=max(0.,min(1.,best[0]));alts=[{'hz':c[1],'periodicity':max(0.,min(1.,c[0]))} for c in candidates[:6]]
+    if all(abs(c['hz']-best[1])>1e-9 for c in alts):alts=[{'hz':best[1],'periodicity':best_score,'selected':True},*alts[:5]]
+    else:
+        for c in alts:
+            if abs(c['hz']-best[1])<=1e-9:c['selected']=True
     octave=False
     for c in candidates:
         if c==best:continue
         ratio=max(c[1],best[1])/min(c[1],best[1])
         if abs(1200*math.log2(ratio)-1200)<45 and c[0]>=best[0]-.06:octave=True;break
-    valid=best_score>=.18;details={'analysis_channel':ch,'alternatives':alts,'octave_ambiguous':octave,'search_hz':[float(min_f0_hz),float(max_f0_hz)],'estimator':'unbiased autocorrelation, shortest-lag tie preference'}
+    valid=best_score>=.18;f0_conf=best_score*(.55 if octave else 1.0)
+    details={'analysis_channel':ch,'selected_hz':best[1],'selected_periodicity':best_score,'alternatives':alts,'octave_ambiguous':octave,'search_hz':[float(min_f0_hz),float(max_f0_hz)],'estimator':'unbiased autocorrelation, shortest-lag tie preference','confidence_policy':'f0 confidence discounted to 55% of periodicity strength when a near-equal octave/subharmonic alternative exists'}
     validity='valid' if valid else 'unknown';value=best_score if valid else None;hz=best[1] if valid else None
     return [observation('periodicity_peak',value,support,validity=validity,confidence=best_score,role='estimate',details=details),
-            observation('f0_candidate_hz',hz,support,validity=validity,confidence=best_score,role='estimate',details=details)]
+            observation('f0_candidate_hz',hz,support,validity=validity,confidence=f0_conf,role='estimate',details=details)]
 
 def envelope_observations(x,sample_rate_hz,*,support=None):
     a,_=audio_array(x);support=whole_support(len(a)) if support is None else support;y,ch=_analysis_channel(a)
