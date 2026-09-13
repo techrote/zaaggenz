@@ -37,4 +37,13 @@ jobs:
         if: always()
         with:
           name: zg014-descriptors-${{ matrix.os }}
-          path: descriptor-fixtures.json
+          path: |
+            descriptor-fixtures.json
+            zaaggenz_descriptors/
+            zaaggenz_components/
+            zaaggenz_contracts/
+            zaaggenz_reference/
+            tools/descriptor_reference_report.py
+            requirements-contracts.txt
+            references/private_registry_v1.json
+            references/paired_suggestions_v1.json
