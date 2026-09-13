@@ -28,6 +28,7 @@ def integer(v,lo,hi,name):
     if type(v)is not int or not lo<=v<=hi: raise GestureError(f'{name}: integer {lo}..{hi} required')
 def number(v,lo,hi,name):
     if type(v) not in (int,float) or type(v)is bool or not math.isfinite(float(v)) or not lo<=float(v)<=hi: raise GestureError(f'{name}: finite {lo}..{hi} required')
+    return float(v)
 
 def _direction_ok(values,direction):
     pairs=list(zip(values,values[1:])); eps=1e-9
