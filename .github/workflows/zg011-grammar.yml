@@ -1,0 +1,59 @@
+name: ZG-011 directional modal grammar
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_grammar/**'
+      - 'tests/grammar/**'
+      - 'tools/grammar_fixture_report.py'
+      - 'docs/grammar/**'
+      - 'examples/grammars/**'
+      - '.github/workflows/zg011-grammar.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  grammar:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Capture tracked source for reproducible verification
+        run: git archive --format=zip --output=verification-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zg011-source-${{ matrix.os }}
+          path: verification-source.zip
+          retention-days: 7
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical and contract/job dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Verify prerequisite harmony regression
+        run: python -m unittest discover -s tests/harmony -v
+      - name: Grammar validation, authoring round-trip, CLI and bounded jobs
+        run: python -m unittest discover -s tests/grammar -v
+      - name: Tuning and melody integration regressions
+        run: |
+          python -m unittest discover -s tests/tuning -v
+          python -m unittest discover -s tests/melody -v
+      - name: Full-rate generated-source audition evidence
+        run: python tools/grammar_fixture_report.py --out grammar-fixtures-48k.json --audio-dir grammar-listening-48k --sample-rate 48000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg011-grammar-${{ matrix.os }}
+          path: |
+            grammar-fixtures-48k.json
+            grammar-listening-48k/
