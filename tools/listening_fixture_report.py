@@ -1,6 +1,7 @@
 """Generate immutable 48 kHz listening stimuli, matching diagnostics and trial manifests."""
 from __future__ import annotations
 import argparse,hashlib,json,sys
+from copy import deepcopy
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'app'))
 from zaaggenz_listening import ListeningService,make_trial
@@ -27,13 +28,17 @@ def main():
         ids=[s['id'] for s in stimuli];matched=service.match(ids,peak_ceiling_dbfs=-3.)
         rms=[r['matched_rms_dbfs'] for r in matched]
         if max(rms)-min(rms)>1e-4 or any(r['sample_peak_headroom_db']<2.999 for r in matched):raise RuntimeError('level matching invariant failed')
-        for row in matched:
-            wav=service.audio.wav(row['playback_sha256']);path=a.artifact_dir/(next(s['name'] for s in stimuli if s['id']==row['stimulus_id'])+'-matched.wav');path.write_bytes(wav);row['wav_file']=path.name;row['wav_sha256']=hashlib.sha256(wav).hexdigest()
+        # Trial manifests consume the strict immutable matching contract. Human-facing
+        # file names/hashes are report evidence and must not be injected into those rows.
         ab=make_trial('A/B fixture','ab',matched[:2],seed='101',endpoints=('liking','sound_quality'))
         abx=make_trial('ABX fixture','abx',matched[:2],seed='102',endpoints=('source_identity',))
         multi=make_trial('Multi fixture','multi',matched,seed='103',endpoints=('groove','liking'))
         if make_trial('A/B fixture','ab',matched[:2],seed='101',endpoints=('liking','sound_quality')).to_dict()!=ab.to_dict():raise RuntimeError('trial randomisation is not reproducible')
-        report={'method':'zg015-listening-fixture-v1','sample_rate_hz':a.sample_rate,'stimuli':stimuli,'matching':matched,
+        files=[]
+        for row in matched:
+            wav=service.audio.wav(row['playback_sha256']);name=next(s['name'] for s in stimuli if s['id']==row['stimulus_id']);path=a.artifact_dir/(name+'-matched.wav');path.write_bytes(wav)
+            files.append({'stimulus_id':row['stimulus_id'],'playback_sha256':row['playback_sha256'],'wav_file':path.name,'wav_sha256':hashlib.sha256(wav).hexdigest()})
+        report={'method':'zg015-listening-fixture-v1','sample_rate_hz':a.sample_rate,'stimuli':stimuli,'matching':deepcopy(matched),'playback_files':files,
                 'trials':{'ab':ab.to_dict(),'abx':abx.to_dict(),'multi':multi.to_dict()},
                 'claims':{'participant_data':False,'preference_claimed':False,'perceptual_loudness_match_claimed':False,'true_peak_measured':False,'silent_regeneration_allowed':False},
                 'note':'Generated source-derived engineering fixtures; no participant ratings or owner listening approval.'}
