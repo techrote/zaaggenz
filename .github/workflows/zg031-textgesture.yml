@@ -1,0 +1,57 @@
+name: ZG-031 safe text gesture language
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_textgesture/**'
+      - 'tests/textgesture/**'
+      - 'tools/textgesture_fixture_report.py'
+      - 'docs/textgesture/**'
+      - '.github/workflows/zg031-textgesture.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  textgesture:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Capture exact tracked source
+        run: git archive --format=zip --output=verification-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zg031-source-${{ matrix.os }}
+          path: verification-source.zip
+          retention-days: 7
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical and shared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Safe syntax, project dictionaries, bundle roundtrip, preview/apply and offline render
+        run: python -m unittest discover -s tests/textgesture -v
+      - name: Accepted gesture, tuning and timeline regressions
+        run: |
+          python -m unittest discover -s tests/gesture -v
+          python -m unittest discover -s tests/tuning -v
+          python -m unittest discover -s tests/timeline -v
+      - name: Full-rate dictionary/text evidence
+        run: python tools/textgesture_fixture_report.py --out textgesture-fixtures-48k.json --artifact-dir textgesture-evidence-48k --sample-rate 48000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg031-textgesture-${{ matrix.os }}
+          path: |
+            textgesture-fixtures-48k.json
+            textgesture-evidence-48k/
