@@ -11,6 +11,7 @@ import numpy as np
 from scipy.io import wavfile
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / 'app'))
 from zaaggenz_melody import render_phrase
 from zaaggenz_phrase import PhraseRolePlan, template_1234_5555, expand_role_plan, compile_role_recipe
