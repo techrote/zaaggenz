@@ -38,13 +38,13 @@ jobs:
         run: python -m unittest discover -s tests/inverse_research -v
       - name: Frozen ZG-024a laboratory regressions
         run: python -m unittest discover -s tests/inverse -v
-      - name: Generate strategy research evidence
+      - name: Reproduce frozen strategy calibration and independent audits
         run: >-
           python tools/inverse_strategy_report.py
           --out zg024b-evidence.json
           --full-out zg024b-full.json
           --telemetry-out zg024b-telemetry.json
-          --reference-out zg024b-proposed-reference.json
+          --check examples/zg024b_strategy_calibration.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -53,6 +53,5 @@ jobs:
             zg024b-evidence.json
             zg024b-full.json
             zg024b-telemetry.json
-            zg024b-proposed-reference.json
           retention-days: 7
           compression-level: 9
