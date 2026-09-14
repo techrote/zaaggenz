@@ -35,9 +35,14 @@ The frozen benchmark recipe records:
 - target-harmonic and non-target spectral power fractions;
 - spectral centroid;
 - a fixed transient-window peak/RMS/derivative measure;
+- per-placement count of spectral frames actually changed;
 - pairwise output differences;
 - exact identity/latency checks;
 - 1×/2×/4× nonlinear reconstruction error against an evidence-only 8× reference.
+
+Transient metrics are observations, not a required divergence test. ZG-017 explicitly preserves transient-owned material, so a fixture can legitimately show near-identical transient-window measurements across placement variants even while sinusoidal/harmonic content and total level differ strongly. The frozen ZG-019 fixture does exactly this; retaining that near-invariance is useful evidence that the ownership boundary is functioning rather than a reason to force a different transient result.
+
+Likewise, the spectral changed-frame count is evidence. Strong nonlinear processing can reduce confidence/continuity enough that a later spectral stage abstains rather than forcing uncertain tracks. A `post` variant with few or zero changed frames therefore remains a valid placement outcome and is reported explicitly; it is not silently converted into an aggressive retune.
 
 These measurements establish that order and antialiasing choices create controlled, reproducible differences. They do not establish which sound is preferable. Any product/default placement remains subject to explicit owner listening.
 
