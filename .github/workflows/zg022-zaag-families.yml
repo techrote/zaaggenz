@@ -1,0 +1,67 @@
+name: ZG-022 zaag families
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_zaag/**'
+      - 'tests/zaag/**'
+      - 'tools/zaag_family_report.py'
+      - 'examples/zg022_zaag_family_examples.json'
+      - 'docs/gesture/ZG022_ZAAG_FAMILIES.md'
+      - '.github/workflows/zg022-zaag-families.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  families:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env: {PYTHONUTF8: '1', OPENBLAS_NUM_THREADS: '1', OMP_NUM_THREADS: '1'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt
+      - name: ZG-022 family acceptance
+        env: {PYTHONPATH: 'app:.'}
+        run: python -m unittest discover -s tests/zaag -v
+      - name: Melody and gesture regressions
+        env: {PYTHONPATH: 'app:.'}
+        run: |
+          python -m unittest discover -s tests/melody -v
+          python -m unittest discover -s tests/gesture -v
+      - name: Reduced-rate reproducibility and audition pack
+        env: {PYTHONPATH: 'app:.'}
+        run: python tools/zaag_family_report.py --sample-rate 12000 --out zaag-family-evidence.json --audition-dir zaag-audition
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg022-audition-${{ matrix.os }}
+          path: |
+            zaag-family-evidence.json
+            zaag-audition/
+  fullrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env: {PYTHONUTF8: '1', OPENBLAS_NUM_THREADS: '1', OMP_NUM_THREADS: '1', PYTHONPATH: 'app:.'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: python baseline/recovered_source/materialize_v2.py --out .
+      - run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt
+      - name: Full-rate source and short-example evidence
+        run: python tools/zaag_family_report.py --sample-rate 48000 --skip-long --out zaag-family-evidence-48k.json --audition-dir zaag-audition-48k
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg022-audition-fullrate
+          path: |
+            zaag-family-evidence-48k.json
+            zaag-audition-48k/
