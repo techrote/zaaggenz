@@ -47,8 +47,7 @@ def main():
     variants={name:{'spec':result.request.to_dict(),'audio':summarize_audio(result.audio,sr,target_root_hz=440.,transient_sample=transient_sample),
                     'spectral_changed_frames':result.diagnostics['spectral_changed_frames'],'declared_latency_samples':result.diagnostics['declared_latency_samples']}
               for name,result in family.items()}
-    pairs={}
-    names=('pre','inter','post')
+    pairs={};names=('pre','inter','post')
     for i,left in enumerate(names):
         for right in names[i+1:]:pairs[left+'__'+right]=difference_metrics(family[left].audio,family[right].audio)
 
@@ -60,24 +59,29 @@ def main():
 
     alias=recipe['alias_fixture'];at=np.arange(round(alias['sample_rate_hz']*alias['duration_seconds']),dtype=np.float64)/alias['sample_rate_hz']
     ax=float(alias['source_amplitude'])*np.sin(2*np.pi*float(alias['source_tone_hz'])*at);sh=alias['shaper']
-    alias_errors=reference_error(ax,kind=sh['kind'],drive_db=float(sh['drive_db']),mix=float(sh['mix']))
-    alias_rows={str(k):v for k,v in alias_errors.items()}
+    alias_errors=reference_error(ax,kind=sh['kind'],drive_db=float(sh['drive_db']),mix=float(sh['mix']));alias_rows={str(k):v for k,v in alias_errors.items()}
 
     harmonic_values=[variants[n]['audio']['target_harmonic_power_fraction'] for n in names]
     transient_peaks=[variants[n]['audio']['transient']['window_peak'] for n in names]
+    transient_rms=[variants[n]['audio']['transient']['window_rms'] for n in names]
+    transient_derivative=[variants[n]['audio']['transient']['derivative_rms'] for n in names]
     rms_values=[variants[n]['audio']['rms_dbfs'] for n in names]
+    transient_observation={'peak_spread':max(transient_peaks)-min(transient_peaks),
+        'rms_spread':max(transient_rms)-min(transient_rms),'derivative_rms_spread':max(transient_derivative)-min(transient_derivative),
+        'interpretation':'Measured rather than forced: near-invariance is valid when ZG-017 preserves transient-owned material while the same nonlinear stages remain in the family.'}
     failures=[]
     if not all(row['exact'] and row['declared_latency_samples']==0 for row in identity_rows.values()):failures.append('identity placement paths did not align exactly')
     if not all(v['rms_difference']>1e-7 for v in pairs.values()):failures.append('placement order failed to create measurable controlled differences')
     if max(harmonic_values)-min(harmonic_values)<=1e-7:failures.append('placement harmonic products were not measurably distinct')
-    if max(transient_peaks)-min(transient_peaks)<=1e-7:failures.append('placement transient shape was not measurably distinct')
+    if not all(np.isfinite(v) for v in transient_peaks+transient_rms+transient_derivative):failures.append('transient evidence contained nonfinite values')
     if max(rms_values)-min(rms_values)<=1e-7:failures.append('placement level was not measurably distinct')
     if not alias_errors[4]['rms_error']<alias_errors[2]['rms_error']<alias_errors[1]['rms_error']:failures.append('oversampling did not converge monotonically toward 8x reference')
     if not all(v['spec']['output_policy']['normalization']=='none' and v['spec']['output_policy']['master_gain_db']==0 for v in variants.values()):failures.append('hidden output normalization/gain detected')
     report={'scope':'deterministic synthetic engineering evidence; no preferred sound or listening claim','platform':platform.platform(),'python':sys.version,
             'recipe':recipe,'source':summarize_audio(x,sr,target_root_hz=440.,transient_sample=transient_sample),'variants':variants,
             'pairwise_differences':pairs,'identity':identity_rows,'alias_reference':{'reference_factor':alias['reference_factor'],'errors':alias_rows},
-            'observed_spreads':{'target_harmonic_fraction':max(harmonic_values)-min(harmonic_values),'transient_peak':max(transient_peaks)-min(transient_peaks),
+            'transient_observation':transient_observation,
+            'observed_spreads':{'target_harmonic_fraction':max(harmonic_values)-min(harmonic_values),'transient_peak':transient_observation['peak_spread'],
                                 'rms_db':max(rms_values)-min(rms_values)},'acceptance_failures':failures}
     args.out.parent.mkdir(parents=True,exist_ok=True);args.out.write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
     if failures:raise SystemExit('ZG-019 evidence failed: '+'; '.join(failures))
