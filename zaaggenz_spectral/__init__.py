@@ -1,4 +1,4 @@
-"""Phase-coherent spectral retuning and explicit multi-comb shaping for zaaggenz."""
+"""Phase-coherent retuning, multi-comb shaping and explicit nonlinear placement experiments."""
 from .model import (METHOD_ID,METHOD_VERSION,SpectralRetuneError,LatticeVoice,LatticeSegment,
                     SpectralRetuneRequest,TargetTooth,FrameDecision)
 from .lattice import (cents_distance,cents_ratio,build_target_lattice,build_target_schedule,
@@ -12,6 +12,12 @@ from .chordness_descriptors import evaluate_template,evaluate_union,select_templ
 from .chordness_result import ChordnessFrameDecision,ChordnessResult
 from .chordness_engine import apply_chordness,chordness_inspection
 from .chordness_jobs import estimate_chordness_memory_bytes,make_chordness_executor,submit_chordness_job
+from .placement import (PlacementError,NonlinearStageSpec,PlacementRequest,PlacementResult,
+                        run_placement,run_family,PLACEMENTS)
+from .placement_jobs import (estimate_placement_memory_bytes,make_placement_executor,submit_placement_job,
+                             make_family_executor,submit_placement_family_job)
+from .placement_metrics import (pcm_sha256,spectral_metrics,level_metrics,transient_metrics,
+                                summarize_audio,difference_metrics)
 
 __all__=['METHOD_ID','METHOD_VERSION','SpectralRetuneError','LatticeVoice','LatticeSegment',
          'SpectralRetuneRequest','TargetTooth','FrameDecision','cents_distance','cents_ratio',
@@ -21,4 +27,7 @@ __all__=['METHOD_ID','METHOD_VERSION','SpectralRetuneError','LatticeVoice','Latt
          'ChordnessError','CombTemplate','ChordnessCoefficients','ChordnessRequest','harmonic_comb',
          'templates_from_voicing_frame','evaluate_template','evaluate_union','select_templates','objective_terms',
          'ChordnessFrameDecision','ChordnessResult','apply_chordness','chordness_inspection',
-         'estimate_chordness_memory_bytes','make_chordness_executor','submit_chordness_job']
+         'estimate_chordness_memory_bytes','make_chordness_executor','submit_chordness_job',
+         'PlacementError','NonlinearStageSpec','PlacementRequest','PlacementResult','run_placement','run_family','PLACEMENTS',
+         'estimate_placement_memory_bytes','make_placement_executor','submit_placement_job','make_family_executor','submit_placement_family_job',
+         'pcm_sha256','spectral_metrics','level_metrics','transient_metrics','summarize_audio','difference_metrics']

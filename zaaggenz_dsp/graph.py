@@ -68,6 +68,14 @@ def _execute_node(node,x,sr):
         drive=_curve(node,'drive_db',n,p['drive_db']);mix=_curve(node,'mix',n,p['mix']);wet=np.tanh(x*_broadcast(10**(np.asarray(drive)/20),x));m=_broadcast(mix,x);return (1-m)*x+m*wet
     if t=='core.hard_clip.v1':
         threshold=_curve(node,'threshold',n,p['threshold']);mix=_curve(node,'mix',n,p['mix']);th=_broadcast(threshold,x);wet=np.clip(x,-th,th);m=_broadcast(mix,x);return (1-m)*x+m*wet
+    if t in ('core.tanh_aa.v1','core.hard_clip_aa.v1'):
+        if node['automation']:raise GraphError('antialiased nonlinear automation is not registered in v1')
+        try:
+            from .antialias import oversampled_shaper,AntialiasError
+            if t=='core.tanh_aa.v1':
+                return oversampled_shaper(x,kind='tanh',factor=p['oversample'],drive_db=p['drive_db'],mix=p['mix'])
+            return oversampled_shaper(x,kind='hard_clip',factor=p['oversample'],threshold=p['threshold'],mix=p['mix'])
+        except AntialiasError as e:raise GraphError(str(e)) from e
     if t=='core.multiband_gain.v1':
         if node['automation']:raise GraphError('multiband gain automation is not registered in v1')
         cross=(p['low_xover_hz'],p['mid_xover_hz'],p['high_xover_hz']);g=(p['sub_gain_db'],p['lowmid_gain_db'],p['highmid_gain_db'],p['air_gain_db'])

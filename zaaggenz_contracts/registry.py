@@ -36,6 +36,10 @@ def _p(type_, default, lo=None, hi=None, unit='unitless', automatable=False):
     return d
 
 
+def _oversample(default=2):
+    return {'type':'integer','default':default,'enum':[1,2,4],'unit':'ratio','x-automatable':False}
+
+
 def _legacy_sculpt_parameters():
     out={}
     for name,spec in legacy_catalogue()['sculpt']['schema']['properties'].items():
@@ -62,6 +66,16 @@ def node_catalogue():
         'core.hard_clip.v1': {
             'licence':'LicenseRef-Zaaggenz-Owner-Provided','provenance':'ZG-016 bounded hard-clip node',
             'availability':'executable','parameters':{'threshold':_p('number',1,.001,4,'linear_amplitude',True),'mix':_p('number',1,0,1,'ratio',True)},
+            'state':'stateless','bypass':'identity','latency':0,'lookahead':0,'inputs':(1,1),
+        },
+        'core.tanh_aa.v1': {
+            'licence':'LicenseRef-Zaaggenz-Owner-Provided','provenance':'ZG-019 opt-in Kaiser/polyphase antialiased tanh',
+            'availability':'executable','parameters':{'drive_db':_p('number',0,-24,48,'dB'), 'mix':_p('number',1,0,1,'ratio'), 'oversample':_oversample(2)},
+            'state':'stateless','bypass':'identity','latency':0,'lookahead':0,'inputs':(1,1),
+        },
+        'core.hard_clip_aa.v1': {
+            'licence':'LicenseRef-Zaaggenz-Owner-Provided','provenance':'ZG-019 opt-in Kaiser/polyphase antialiased hard clip',
+            'availability':'executable','parameters':{'threshold':_p('number',1,.001,4,'linear_amplitude'), 'mix':_p('number',1,0,1,'ratio'), 'oversample':_oversample(2)},
             'state':'stateless','bypass':'identity','latency':0,'lookahead':0,'inputs':(1,1),
         },
         'core.multiband_gain.v1': {
