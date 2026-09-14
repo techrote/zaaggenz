@@ -1,21 +1,74 @@
-name: ZG-024a inverse laboratory
+name: ZG-024a verified foundation publication
 on:
   push:
-    branches: [work/zg024a-inverse-foundations]
-    paths: ['.github/workflows/zg024a-lab.yml']
+    branches: [work/zg024a-lab-20260914]
+    paths: ['.github/workflows/zg024a-lab.yml', '_zg024a_transfer/**']
 permissions:
-  contents: read
+  contents: write
 jobs:
-  source-snapshot:
+  publish:
+    if: github.repository == 'techrote/zaaggenz' && github.ref == 'refs/heads/work/zg024a-lab-20260914'
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
     steps:
       - uses: actions/checkout@v4
-        with: {persist-credentials: false}
-      - name: Export tracked source for isolated local validation
-        run: git archive --format=zip -o /tmp/zg024a-source.zip HEAD
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Verify and materialise the locally tested source transfer
+        shell: python
+        run: |
+          import gzip, hashlib, json
+          from pathlib import Path
+          parts = sorted(Path('_zg024a_transfer').glob('part-*'))
+          if [p.name for p in parts] != [f'part-{n:02d}' for n in range(8)]:
+              raise SystemExit('Incomplete source transfer')
+          payload = b''.join(p.read_bytes() for p in parts)
+          if len(payload) != 48081 or hashlib.sha256(payload).hexdigest() != 'd1619fc4ceab87a6b0079f49ca05aeb7d5f6aa0fca33846080064b7a8271de43':
+              raise SystemExit('Source transfer checksum mismatch')
+          files = json.loads(gzip.decompress(payload))
+          expected = {'.github/workflows/zg024a-lab.yml', 'docs/inverse/README.md', 'docs/inverse/ZG024_BASELINE_CHARACTERISATION.md', 'docs/inverse/ZG024_RESEARCH_HANDOFF_1.md', 'tests/inverse/test_contracts.py', 'tests/inverse/test_search.py', 'tests/inverse/test_validation.py', 'tools/check_inverse_regressions.py', 'tools/inverse_foundation_report.py', 'zaaggenz_inverse/__init__.py', 'zaaggenz_inverse/contracts.py', 'zaaggenz_inverse/engine.py', 'zaaggenz_inverse/fixtures.py', 'zaaggenz_inverse/jobs.py', 'zaaggenz_inverse/objectives.py', 'zaaggenz_inverse/render.py', 'zaaggenz_inverse/validation.py'}
+          if not isinstance(files, dict) or set(files) != expected:
+              raise SystemExit('Unexpected publication scope')
+          for name, text in files.items():
+              if not isinstance(text, str):
+                  raise SystemExit('UTF-8 source required')
+              path = Path(name)
+              if path.is_symlink() or any(p.is_symlink() for p in path.parents):
+                  raise SystemExit('Symlink destination rejected')
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_text(text, encoding='utf-8', newline='\n')
+          # Workflow replacement is published separately through the authorized connector.
+          Path('/tmp/zg024a-paths.json').write_text(json.dumps(sorted(expected - {'.github/workflows/zg024a-lab.yml'})))
+          print('Verified all 17 source/test/documentation files; compressed SHA-256 matched.')
+      - name: Install inherited dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Materialise authenticated recovered baseline
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Foundation acceptance tests
+        run: python -m unittest discover -s tests/inverse -v
+      - name: Generate frozen evidence and independent deterministic reruns
+        run: python tools/inverse_foundation_report.py --out examples/zg024a_inverse_baseline.json --full-dir /tmp/zg024a-records
+      - name: Publish only verified source and evidence; remove transfer fragments
+        shell: python
+        run: |
+          import json, subprocess
+          from pathlib import Path
+          paths = json.loads(Path('/tmp/zg024a-paths.json').read_text())
+          subprocess.run(['git', 'add', '--', *paths, 'examples/zg024a_inverse_baseline.json'], check=True)
+          subprocess.run(['git', 'rm', '-r', '--', '_zg024a_transfer'], check=True)
+          subprocess.run(['git', 'config', 'user.name', 'github-actions[bot]'], check=True)
+          subprocess.run(['git', 'config', 'user.email', '41898282+github-actions[bot]@users.noreply.github.com'], check=True)
+          subprocess.run(['git', 'commit', '-m', 'ZG-024a: establish deterministic inverse laboratory, fixtures and frozen evidence'], check=True)
+          subprocess.run(['git', 'push', 'origin', 'HEAD:refs/heads/work/zg024a-lab-20260914'], check=True)
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: zg024a-source-snapshot
-          path: /tmp/zg024a-source.zip
-          retention-days: 1
+          name: zg024a-publication-evidence
+          path: |
+            examples/zg024a_inverse_baseline.json
+            /tmp/zg024a-records/
+          retention-days: 7
