@@ -1,0 +1,93 @@
+name: ZG-023 harmonic comb inspector
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_inspector/**'
+      - 'web/inspector/**'
+      - 'tests/inspector/**'
+      - 'tools/inspector_fixture_report.py'
+      - 'docs/analysis/ZG023_INSPECTOR.md'
+      - '.github/workflows/zg023-inspector.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inspector:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            pythonpath: 'app:.'
+          - os: windows-latest
+            pythonpath: 'app;.'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      PYTHONPATH: ${{ matrix.pythonpath }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '22'}
+      - name: Capture exact tracked source
+        run: git archive --format=zip --output=verification-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zg023-source-${{ matrix.os }}
+          path: verification-source.zip
+          retention-days: 7
+      - name: Materialize authenticated v1.2.1 runtime
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical, shared and browser dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt playwright==1.57.0
+      - name: Install Chromium with Linux dependencies
+        if: runner.os == 'Linux'
+        run: python -m playwright install --with-deps chromium
+      - name: Install Chromium on Windows
+        if: runner.os == 'Windows'
+        run: python -m playwright install chromium
+      - name: Inspector model, service, HTTP and stale-result tests
+        run: python -m unittest discover -s tests/inspector -p 'test_*.py' -v
+      - name: Accepted spectral and tuning regressions
+        run: |
+          python -m unittest discover -s tests/spectral -v
+          python -m unittest discover -s tests/tuning -v
+      - name: Timeline model regression
+        run: python -m unittest discover -s tests/timeline -p 'test_*.py' -v
+      - name: Real Chromium A/B, zoom, mask, freeze/apply/undo and stale gate
+        run: python tests/inspector/browser.py --out inspector-browser --sample-rate 12000
+      - name: Reduced-rate fixture evidence
+        run: python tools/inspector_fixture_report.py --sample-rate 12000 --out inspector-evidence-12k.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg023-inspector-${{ matrix.os }}
+          path: |
+            inspector-browser/
+            inspector-evidence-12k.json
+  fullrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env: {PYTHONUTF8: '1', OPENBLAS_NUM_THREADS: '1', OMP_NUM_THREADS: '1', PYTHONPATH: 'app:.'}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: python baseline/recovered_source/materialize_v2.py --out .
+      - run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Full-rate snapshot and state-policy evidence
+        run: python tools/inspector_fixture_report.py --sample-rate 48000 --out inspector-evidence-48k.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg023-inspector-fullrate
+          path: inspector-evidence-48k.json
