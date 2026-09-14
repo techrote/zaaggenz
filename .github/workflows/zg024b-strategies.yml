@@ -1,0 +1,58 @@
+name: ZG-024b deterministic strategy research
+on:
+  pull_request:
+    paths:
+      - 'research/zg024b/**'
+      - 'research/__init__.py'
+      - 'tests/inverse_research/**'
+      - 'tools/inverse_strategy_report.py'
+      - 'examples/zg024b_strategy_calibration.json'
+      - 'docs/inverse/**'
+      - '.github/workflows/zg024b-strategies.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  strategy-research:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+      PYTHONHASHSEED: '0'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Materialize authenticated unmodified baseline
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install declared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: ZG-024b strategy and fixture acceptance tests
+        run: python -m unittest discover -s tests/inverse_research -v
+      - name: Frozen ZG-024a laboratory regressions
+        run: python -m unittest discover -s tests/inverse -v
+      - name: Generate strategy research evidence
+        run: >-
+          python tools/inverse_strategy_report.py
+          --out zg024b-evidence.json
+          --full-out zg024b-full.json
+          --telemetry-out zg024b-telemetry.json
+          --reference-out zg024b-proposed-reference.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg024b-strategy-research-${{ matrix.os }}
+          path: |
+            zg024b-evidence.json
+            zg024b-full.json
+            zg024b-telemetry.json
+            zg024b-proposed-reference.json
+          retention-days: 7
+          compression-level: 9
