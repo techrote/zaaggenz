@@ -64,5 +64,6 @@ Search for the stable ID, contract name or exact musical/DSP term first. Prefer 
 ### ZG-024 serial inverse-search passes
 `docs/inverse/README.md` defines the ZG-024a laboratory and reuse boundaries;
 `docs/inverse/RECOVERED_BASELINE.md` preserves predecessor provenance;
-`docs/inverse/ZG024_RESEARCH_HANDOFF_1.md` records the first calibration and next research questions.
-Issue #25 remains open: the first pass is substrate plus a bounded grid, not the final optimizer.
+`docs/inverse/ZG024_RESEARCH_HANDOFF_1.md` records the deterministic laboratory calibration;
+`docs/inverse/ZG024_RESEARCH_HANDOFF_2.md` records the fixed-budget grid/uniform/Halton/coordinate strategy comparison, gate interaction, and staged-search research directions.
+Issue #25 remains open: ZG-024a is substrate and ZG-024b is strategy evidence, neither is the final production optimizer.
