@@ -2,7 +2,7 @@ from __future__ import annotations
 import unittest
 import numpy as np
 from zaaggenz_components import analyse_components
-from zaaggenz_tuning import (DissonanceModelSpec,IntervalGrid,TimbreSpectrum,dissonance_curve,harmonic_spectrum,
+from zaaggenz_tuning import (DissonanceError,DissonanceModelSpec,IntervalGrid,TimbreSpectrum,dissonance_curve,harmonic_spectrum,
                              interaction_roughness,local_minima,sensitivity_candidates,spectrum_from_partial_bundle)
 
 SR=12000
@@ -51,5 +51,9 @@ class DissonanceMapTests(unittest.TestCase):
         model=DissonanceModelSpec(audible_min_hz=20.,audible_max_hz=200.)
         observation=interaction_roughness(a,b,2400.,model)
         self.assertIsNone(observation.value);self.assertEqual(observation.validity,'insufficient-audible-partials')
+
+    def test_mismatched_frequency_amplitude_arrays_are_rejected(self):
+        with self.assertRaises(DissonanceError):TimbreSpectrum('bad',(220.,440.),(1.,))
+        with self.assertRaises(DissonanceError):TimbreSpectrum('bad',(220.,),(1.,.5))
 
 if __name__=='__main__':unittest.main(verbosity=2)
