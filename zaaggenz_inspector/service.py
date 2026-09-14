@@ -39,13 +39,12 @@ def fixture_source(sample_rate_hz,*,variant=0):
             phase=.19*harmonic+.31*group+.07*variant
             x+=amp*np.sin(2*np.pi*hz*t+phase)
     x+=.035*np.sin(2*np.pi*(713.+variant*11.)*t+.43)
-    env=np.minimum(1.,t/.018)*np.exp(-.13*t)
-    x*=env
+    env=np.minimum(1.,t/.018)*np.exp(-.13*t);x*=env
     click=min(n-1,round(.035*sample_rate_hz));x[click]+=.22
     peak=float(np.max(np.abs(x),initial=1e-12));x*=.72/max(peak,1e-12)
     return x.astype(np.float32)
 
-def build_analysis(source,sample_rate_hz,controls,*,revision_seed=None,checkpoint=None,progress=None):
+def build_analysis(source,sample_rate_hz,controls,*,revision_seed=None,before_identity=None,checkpoint=None,progress=None):
     controls=validate_controls(controls);src=np.asarray(source,dtype=np.float32)
     if src.ndim!=1 or len(src)<64 or not np.isfinite(src).all():raise InspectorError('finite mono source required')
     if checkpoint:checkpoint()
@@ -64,10 +63,9 @@ def build_analysis(source,sample_rate_hz,controls,*,revision_seed=None,checkpoin
     if checkpoint:checkpoint()
     lower=harmonic_spectrum('compat.root',root,partials=8);upper_spec=harmonic_spectrum('compat.upper',upper,partials=8)
     curve=dissonance_curve(lower,upper_spec,IntervalGrid(0.,1200.,20.))
-    snapshot=snapshot_from_chordness(result,src,result.audio,sample_rate_hz,controls=controls,compatibility=compatibility_rows(curve),revision_seed=revision_seed)
+    snapshot=snapshot_from_chordness(result,src,result.audio,sample_rate_hz,controls=controls,compatibility=compatibility_rows(curve),revision_seed=revision_seed,before_identity=before_identity)
     if progress:progress(1.)
     return {'source':src.copy(),'after':np.asarray(result.audio,dtype=np.float32).copy(),'snapshot':snapshot}
-
 
 def _wav(audio,sample_rate_hz):
     buffer=io.BytesIO();wavfile.write(buffer,sample_rate_hz,np.asarray(audio,dtype=np.float32));return buffer.getvalue()
@@ -75,13 +73,13 @@ def _wav(audio,sample_rate_hz):
 class InspectorService:
     def __init__(self,sample_rate_hz=12000):
         self.sample_rate_hz=int(sample_rate_hz);self.scheduler=JobScheduler(SchedulerLimits(interactive_workers=1,background_workers=1,max_queued_jobs=8,max_background_queued_jobs=4,max_history_jobs=16))
-        self._lock=threading.RLock();self._jobs={};self._published=set();self._history=[];self._frozen=None
-        initial=build_analysis(fixture_source(self.sample_rate_hz),self.sample_rate_hz,DEFAULT_CONTROLS,revision_seed='initial')
+        self._lock=threading.RLock();self._jobs={};self._published=set();self._history=[];self._frozen=None;self._source_seed='initial'
+        initial=build_analysis(fixture_source(self.sample_rate_hz),self.sample_rate_hz,DEFAULT_CONTROLS,revision_seed=self._source_seed)
         self._source=np.asarray(initial['source'],dtype=np.float32);self._after=np.asarray(initial['after'],dtype=np.float32);self._snapshot=initial['snapshot'];self._working=self._snapshot.before
     def close(self):self.scheduler.shutdown(cancel=True,timeout=5)
     def _stale(self):return self._snapshot.before.revision_id!=self.source_identity.revision_id
     @property
-    def source_identity(self):return slot_identity('A',self._source,self.sample_rate_hz,'Before · source',revision_seed=getattr(self,'_source_seed','initial'))
+    def source_identity(self):return slot_identity('A',self._source,self.sample_rate_hz,'Before · source',revision_seed=self._source_seed)
     @property
     def after_identity(self):return self._snapshot.after
     def compensation(self):
@@ -101,9 +99,9 @@ class InspectorService:
             return _wav(audio,self.sample_rate_hz),self.source_identity.revision_id if slot=='A' else self.after_identity.revision_id
     def submit_analysis(self,controls):
         controls=validate_controls(controls)
-        with self._lock:source=self._source.copy();expected=self.source_identity;seed={'expected_revision':expected.revision_id,'controls':controls}
+        with self._lock:source=self._source.copy();expected=self.source_identity
         def execute(ctx):
-            ctx.check_cancelled();return build_analysis(source,self.sample_rate_hz,controls,revision_seed=seed,checkpoint=ctx.check_cancelled,progress=ctx.progress)
+            ctx.check_cancelled();return build_analysis(source,self.sample_rate_hz,controls,before_identity=expected,checkpoint=ctx.check_cancelled,progress=ctx.progress)
         jid=self.scheduler.submit(JobClass.ANALYSIS,expected.revision_id,execute,estimated_memory_bytes=max(8*1024*1024,int(source.nbytes*48)))
         with self._lock:self._jobs[jid]={'expected_revision_id':expected.revision_id,'controls':deepcopy(controls)}
         return {'job_id':jid,'expected_revision_id':expected.revision_id,'controls':controls}
