@@ -25,6 +25,7 @@ def evaluate_template(bundle,template,*,tolerance_cents=35.):
 def evaluate_union(bundle,templates,*,tolerance_cents=35.):
     d=bundle.to_dict() if hasattr(bundle,'to_dict') else bundle;sr=d['asset']['sample_rate_hz']
     teeth=tuple(sorted({x for template in templates for x in usable_teeth(template,sr)}))
+    if not 1<=len(teeth)<=128:raise ChordnessError('combined selected target must contain 1..128 unique teeth below Nyquist')
     target=_values(target_comb_observations(bundle,teeth,tolerance_cents=tolerance_cents))
     rough=_values([roughness_observation(bundle)])['roughness_pairwise']
     return {'target_teeth_hz':list(teeth),'target':target,'roughness':rough}
