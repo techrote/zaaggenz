@@ -1,4 +1,4 @@
-"""Phase-coherent retuning, multi-comb shaping and explicit nonlinear placement experiments."""
+"""Phase-coherent retuning, multi-comb shaping, placement and band-selective DSP experiments."""
 from .model import (METHOD_ID,METHOD_VERSION,SpectralRetuneError,LatticeVoice,LatticeSegment,
                     SpectralRetuneRequest,TargetTooth,FrameDecision)
 from .lattice import (cents_distance,cents_ratio,build_target_lattice,build_target_schedule,
@@ -18,6 +18,8 @@ from .placement_jobs import (estimate_placement_memory_bytes,make_placement_exec
                              make_family_executor,submit_placement_family_job)
 from .placement_metrics import (pcm_sha256,spectral_metrics,level_metrics,transient_metrics,
                                 summarize_audio,difference_metrics)
+from .band_selective import (BandSelectiveError,BandSlotSpec,BandSelectiveRequest,BandSelectiveResult,
+                             process_band_selective)
 
 __all__=['METHOD_ID','METHOD_VERSION','SpectralRetuneError','LatticeVoice','LatticeSegment',
          'SpectralRetuneRequest','TargetTooth','FrameDecision','cents_distance','cents_ratio',
@@ -30,4 +32,5 @@ __all__=['METHOD_ID','METHOD_VERSION','SpectralRetuneError','LatticeVoice','Latt
          'estimate_chordness_memory_bytes','make_chordness_executor','submit_chordness_job',
          'PlacementError','NonlinearStageSpec','PlacementRequest','PlacementResult','run_placement','run_family','PLACEMENTS',
          'estimate_placement_memory_bytes','make_placement_executor','submit_placement_job','make_family_executor','submit_placement_family_job',
-         'pcm_sha256','spectral_metrics','level_metrics','transient_metrics','summarize_audio','difference_metrics']
+         'pcm_sha256','spectral_metrics','level_metrics','transient_metrics','summarize_audio','difference_metrics',
+         'BandSelectiveError','BandSlotSpec','BandSelectiveRequest','BandSelectiveResult','process_band_selective']
