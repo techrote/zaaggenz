@@ -8,9 +8,9 @@ from zaaggenz_tuning import (AdaptiveState,AdaptiveTuningRequest,AdaptiveVoice,A
 def voice(id,root_hz,nominal,*,role='voice',locked=False,confidence=1.):
     return AdaptiveVoice(id,nominal,harmonic_spectrum(id+'spec',root_hz,partials=8,confidence=confidence),role,locked)
 
-def request(*,desired=0.,second_cents=705.,second_confidence=1.,max_total=30.,max_step=12.,min_sep=20.,pedal=False):
+def request(*,desired=0.,second_cents=705.,second_confidence=1.,max_total=30.,max_step=12.,min_sep=20.,pedal=False,root_lock=True):
     root=voice('root',220.,0.,role='root');second=voice('upper',220.*2**(second_cents/1200.),second_cents,role='pedal' if pedal else 'voice',confidence=second_confidence)
-    return AdaptiveTuningRequest((root,second),(0.,498.,702.,1200.),'root',desired_tension=desired,
+    return AdaptiveTuningRequest((root,second),(0.,498.,702.,1200.),'root',desired_tension=desired,root_lock=root_lock,
         max_total_drift_cents=max_total,max_step_cents=max_step,search_step_cents=1.,min_separation_cents=min_sep,
         weights=AdaptiveWeights(tension=12.,voice_leading=.02,drift=.02,candidate_proximity=.1))
 
@@ -21,6 +21,13 @@ class AdaptiveTuningTests(unittest.TestCase):
         self.assertEqual(offsets['root'],0.);self.assertLess(offsets['upper'],0.)
         self.assertLess(abs((705.+offsets['upper'])-702.),abs(705.-702.))
         self.assertLessEqual(abs(offsets['upper']),12.);self.assertTrue(proposal.to_dict()['manual_review_required'])
+
+    def test_unlocked_root_can_move_within_same_hard_bounds(self):
+        proposal=propose_adaptive_tuning(request(desired=0.,root_lock=False))
+        self.assertEqual(proposal.status,'proposed');offsets=proposal.offset_mapping()
+        self.assertNotEqual(offsets['root'],0.);self.assertLessEqual(abs(offsets['root']),12.)
+        adjusted=dict(proposal.adjusted_cents);self.assertGreaterEqual(abs(adjusted['upper']-adjusted['root']),20.-1e-9)
+        self.assertFalse(proposal.request.root_lock)
 
     def test_desired_tension_changes_proposal_without_muting_any_voice(self):
         low=propose_adaptive_tuning(request(desired=0.));high=propose_adaptive_tuning(request(desired=.2))
