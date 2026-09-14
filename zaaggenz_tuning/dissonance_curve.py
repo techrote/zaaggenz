@@ -72,9 +72,13 @@ def dissonance_curve(a,b,grid=None,model=None):
     grid=grid or IntervalGrid();model=model or DissonanceModelSpec()
     return DissonanceCurve(a.id,b.id,grid,model,tuple(interaction_roughness(a,b,c,model) for c in grid.values()))
 
+def _valid_max(values):
+    found=[float(x) for x in values if x is not None]
+    return max(found) if found else None
+
 def local_minima(curve,*,window_cents=40.):
     if not isinstance(curve,DissonanceCurve):raise DissonanceError('DissonanceCurve required')
-    points=curve.points;values=[p.value for p in points];out=[]
+    points=curve.points;values=[p.value for p in points];out=[];radius=max(1,int(round(window_cents/curve.grid.step_cents)))
     for i,p in enumerate(points):
         if p.value is None:continue
         left=values[i-1] if i else None;right=values[i+1] if i+1<len(values) else None
@@ -82,10 +86,9 @@ def local_minima(curve,*,window_cents=40.):
         if right is not None and p.value>right:continue
         if left is None and right is not None and p.value>right:continue
         if right is None and left is not None and p.value>left:continue
-        radius=max(1,int(round(window_cents/curve.grid.step_cents)));neighbors=[]
-        for j in range(max(0,i-radius),min(len(points),i+radius+1)):
-            if j!=i and values[j] is not None:neighbors.append(values[j])
-        prominence=max(0.,(min(max(values[max(0,i-radius):i] or [p.value]),max(values[i+1:min(len(values),i+radius+1)] or [p.value]))-p.value)) if neighbors else 0.
+        left_max=_valid_max(values[max(0,i-radius):i]);right_max=_valid_max(values[i+1:min(len(values),i+radius+1)])
+        boundaries=[x for x in (left_max,right_max) if x is not None]
+        prominence=max(0.,min(boundaries)-p.value) if boundaries else 0.
         out.append(IntervalCandidate(p.interval_cents,p.value,p.confidence,prominence,1.,1,1))
     return tuple(out)
 
@@ -99,8 +102,7 @@ def sensitivity_candidates(a,b,grid=None,model=None,*,bandwidth_scales=(.9,1.,1.
     for candidate in base_min:
         hits=sum(any(abs(other.cents-candidate.cents)<=match_tolerance_cents for other in minima) for minima in scenarios)
         fraction=hits/max(count,1);confidence=candidate.confidence*fraction
-        if fraction>=min_stability:
-            candidates.append(IntervalCandidate(candidate.cents,candidate.value,confidence,candidate.prominence,fraction,hits,count))
+        if fraction>=min_stability:candidates.append(IntervalCandidate(candidate.cents,candidate.value,confidence,candidate.prominence,fraction,hits,count))
     candidates.sort(key=lambda x:(-x.stability_fraction,x.value,-x.prominence,x.cents))
     return base,tuple(candidates),{'bandwidth_scales':list(map(float,bandwidth_scales)),'amplitude_exponents':list(map(float,amplitude_exponents)),
         'match_tolerance_cents':float(match_tolerance_cents),'min_stability':float(min_stability),'scenario_count':count,
