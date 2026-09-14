@@ -1,0 +1,68 @@
+{
+  "kind": "ZaagFamilyExampleSuite",
+  "version": "1.0.0",
+  "protected_anchor": {
+    "id": "locked_bloom",
+    "canonical_json_sha256": "6a6e5a55f04f978e57e90b9e582d2b830b3d82192aec7d0f727112ef75b5afe2",
+    "mutable": false
+  },
+  "registry_expectation": {
+    "candidate_ids": [
+      "zaag.relaxed-punch",
+      "zaag.vowel-sway",
+      "zaag.upper-bounce",
+      "zaag.complementary-pulse",
+      "zaag.grit-skip",
+      "zaag.harmonic-turn"
+    ],
+    "contrast_ids": [
+      "contrast.piep",
+      "contrast.noise-wall",
+      "contrast.overflattened"
+    ],
+    "new_default": null,
+    "owner_approval_required": true
+  },
+  "examples": [
+    {
+      "id": "zg022-one-shot",
+      "bars": 1,
+      "bpm": 190.0,
+      "generator": "one_shot_manifest",
+      "primary_family": "zaag.relaxed-punch",
+      "purpose": "single-note source character and attack/tail check"
+    },
+    {
+      "id": "zg022-four-bar-bounce",
+      "bars": 4,
+      "bpm": 190.0,
+      "generator": "four_bar_manifest",
+      "primary_family": "zaag.upper-bounce",
+      "event_count": 32,
+      "degree_pattern": [0, 3, 5, 7, 5, 3, 10, 7],
+      "purpose": "bouncy melodic identity with repeated source reuse"
+    },
+    {
+      "id": "zg022-sixteen-bar-turn",
+      "bars": 16,
+      "bpm": 190.0,
+      "generator": "sixteen_bar_manifest",
+      "event_count": 64,
+      "section_families": [
+        "zaag.harmonic-turn",
+        "zaag.vowel-sway",
+        "zaag.complementary-pulse",
+        "zaag.grit-skip"
+      ],
+      "section_roots_degrees": [0, -2, 0, -3],
+      "purpose": "explicit harmonic/source-family progression without hidden chord inference"
+    }
+  ],
+  "audition": {
+    "status": "pending-owner",
+    "target_rms_dbfs": -14.0,
+    "endpoints": ["bounce", "melodic_identity", "source_character", "usefulness"],
+    "preference_inference_from_descriptors": false,
+    "rejected_variants_retained": true
+  }
+}
