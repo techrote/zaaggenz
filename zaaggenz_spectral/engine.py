@@ -3,9 +3,9 @@ from copy import deepcopy
 from dataclasses import dataclass
 import math
 import numpy as np
-from zaaggenz_contracts import Contract
+from zaaggenz_contracts import Contract,validate
 from zaaggenz_components import ComponentAnalysis,exact_bypass,reconstruct_components
-from .lattice import build_target_lattice,cents_distance,cents_ratio,nearest_tooth
+from .lattice import build_target_schedule,cents_distance,cents_ratio,lattice_at,nearest_tooth
 from .model import (METHOD_ID,METHOD_VERSION,FrameDecision,SpectralRetuneError,
                     SpectralRetuneRequest,TargetTooth)
 
@@ -18,13 +18,15 @@ class SpectralRetunePlan:
     request:SpectralRetuneRequest
     teeth:tuple[TargetTooth,...]
     decisions:tuple[FrameDecision,...]
+    target_starts:tuple[int,...]
     method_id:str=METHOD_ID
     version:str=METHOD_VERSION
     def inspection(self):
-        return {'method':{'id':self.method_id,'version':self.version},
+        return {'method':{'id':self.method_id,'version':self.version},'request':self.request.to_dict(),
+                'target_starts':list(self.target_starts),
                 'teeth':[dict(id=x.id,voice_index=x.voice_index,degree=x.degree,
-                              partial_index=x.partial_index,ratio=x.ratio,
-                              frequency_hz=x.frequency_hz,label=x.label) for x in self.teeth],
+                              partial_index=x.partial_index,ratio=x.ratio,frequency_hz=x.frequency_hz,
+                              label=x.label,segment_index=x.segment_index) for x in self.teeth],
                 'frames':[x.to_dict() for x in self.decisions]}
 
 @dataclass(frozen=True)
@@ -40,6 +42,7 @@ class SpectralRetuneResult:
     diagnostics:dict
     def __post_init__(self):
         if not isinstance(self.bundle,Contract) or self.bundle.to_dict().get('kind')!='PartialTrackBundle':raise SpectralRetuneError('PartialTrackBundle required')
+        validate(self.bundle.to_dict(),'PartialTrackBundle')
         shape=np.asarray(self.source).shape
         for name in ('source','audio','sinusoidal','transient','residual'):
             a=np.asarray(getattr(self,name))
@@ -56,13 +59,16 @@ def _preserve_reason(track,row,request):
     return None
 
 def _plan_and_bundle(analysis,request,checkpoint=None,progress=None):
-    source=analysis.bundle.to_dict();out=deepcopy(source);teeth=build_target_lattice(request);decisions=[]
+    source=analysis.bundle.to_dict();out=deepcopy(source);schedule=build_target_schedule(request);decisions=[]
+    all_teeth=tuple(tooth for _,_,teeth in schedule for tooth in teeth)
     total=max(1,sum(len(t['frames']) for t in source['tracks']));done=0;sr=source['asset']['sample_rate_hz']
-    for ti,(src_track,dst_track) in enumerate(zip(source['tracks'],out['tracks'])):
-        prev_anchor=None;prev_corr=0.;prev_delta=0.;prev_phase=0.;prev_tooth=None
+    for src_track,dst_track in zip(source['tracks'],out['tracks']):
+        prev_anchor=None;prev_corr=0.;prev_delta=0.;prev_phase=0.;prev_tooth=None;prev_segment=0
         for fi,(row,newrow) in enumerate(zip(src_track['frames'],dst_track['frames'])):
             if checkpoint and done%16==0:checkpoint()
             f=float(row['frequency_hz']);anchor=int(row['support']['anchor_sample']);confidence=float(row['confidence'])
+            segment,teeth=lattice_at(schedule,anchor)
+            if segment!=prev_segment:prev_tooth=None
             reason=_preserve_reason(src_track,row,request);tooth=None;requested=None;corr=0.;phasecorr=0.;realised=f;decision='preserve'
             if request.amount==0:
                 reason='amount-zero-exact-bypass'
@@ -89,10 +95,12 @@ def _plan_and_bundle(analysis,request,checkpoint=None,progress=None):
                 newrow['phases_radians']=list(row['phases_radians']);delta=0.
             else:delta=realised-f
             decisions.append(FrameDecision(src_track['id'],fi,anchor,f,requested,float(realised),float(corr),confidence,
-                                           row.get('action','preserve'),decision,reason,tooth.id if tooth else None,float(phasecorr)))
-            prev_anchor=anchor;prev_corr=corr;prev_delta=delta;prev_phase=phasecorr;done+=1
+                                           row.get('action','preserve'),decision,reason,tooth.id if tooth else None,
+                                           float(phasecorr),segment))
+            prev_anchor=anchor;prev_corr=corr;prev_delta=delta;prev_phase=phasecorr;prev_segment=segment;done+=1
             if progress:progress(min(.8,.8*done/total))
-    return SpectralRetunePlan(request,teeth,tuple(decisions)),Contract(out)
+    bundle=Contract(out)
+    return SpectralRetunePlan(request,all_teeth,tuple(decisions),tuple(x[0] for x in schedule)),bundle
 
 def retune_components(analysis,request,*,checkpoint=None,progress=None):
     if not isinstance(analysis,ComponentAnalysis):raise SpectralRetuneError('ComponentAnalysis required')
@@ -109,8 +117,8 @@ def retune_components(analysis,request,*,checkpoint=None,progress=None):
     if progress:progress(.95)
     transformed=[d for d in plan.decisions if d.decision=='transform'];preserved=len(plan.decisions)-len(transformed)
     errors=[abs(cents_distance(d.realised_hz,d.requested_hz)) for d in transformed if d.requested_hz]
-    diag={'method':METHOD_ID,'version':METHOD_VERSION,'frames':len(plan.decisions),'transformed_frames':len(transformed),
-          'changed_frames':len(changed),'preserved_frames':preserved,'identity_path':not changed,
+    diag={'method':METHOD_ID,'version':METHOD_VERSION,'frames':len(plan.decisions),'target_segments':len(plan.target_starts),
+          'transformed_frames':len(transformed),'changed_frames':len(changed),'preserved_frames':preserved,'identity_path':not changed,
           'max_abs_correction_cents':max((abs(d.correction_cents) for d in plan.decisions),default=0.),
           'median_target_error_cents':float(np.median(errors)) if errors else None,
           'transient_unchanged':True,'residual_unchanged':True,'stereo_phase_policy':'shared-correction-per-track'}
