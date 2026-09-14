@@ -1,0 +1,65 @@
+name: ZG-024a inverse laboratory
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_*/**'
+      - 'tests/inverse/**'
+      - 'tools/inverse_foundation_report.py'
+      - 'examples/zg024a_inverse_calibration.json.gz'
+      - 'docs/inverse/**'
+      - 'docs/zaaggenz/RAG_INDEX.md'
+      - 'baseline/recovered_source/**'
+      - 'requirements-*.txt'
+      - '.github/workflows/zg024a-lab.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  foundations:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - uses: actions/setup-node@v4
+        with: {node-version: '24'}
+      - name: Materialize authenticated unmodified baseline
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install declared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Inverse contracts, leakage, adversarial, determinism and resume acceptance
+        run: python -m unittest discover -s tests/inverse -v
+      - name: Inherited prerequisite regressions (fail on any suite)
+        run: >-
+          python -c "import subprocess,sys;
+          suites=('project','jobs','qc','analysis','components','descriptors','dsp','spectral','tuning');
+          [subprocess.run([sys.executable,'-m','unittest','discover','-s','tests/'+s,'-v'],check=True) for s in suites]"
+      - name: Browser job transport regression
+        run: node tests/jobs/browser_transport.mjs
+      - name: Reproduce frozen calibration and independent holdouts
+        run: >-
+          python tools/inverse_foundation_report.py
+          --out inverse-evidence.json
+          --full-out inverse-full.json
+          --telemetry-out inverse-timing.json
+          --check examples/zg024a_inverse_calibration.json.gz
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg024a-inverse-${{ matrix.os }}
+          path: |
+            inverse-evidence.json
+            inverse-full.json
+            inverse-timing.json
+          retention-days: 7
+          compression-level: 9

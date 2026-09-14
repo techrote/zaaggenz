@@ -60,3 +60,9 @@ Stable IDs are the join key across documentation, commits, tests and issues.
 ## Retrieval discipline
 
 Search for the stable ID, contract name or exact musical/DSP term first. Prefer one authoritative section plus neighbouring context to a large pile of disconnected snippets. If the expected document/artefact is missing, treat that as a blocker or documentation debt; do not fill the gap by inventing prior decisions.
+
+### ZG-024 serial inverse-search passes
+`docs/inverse/README.md` defines the ZG-024a laboratory and reuse boundaries;
+`docs/inverse/RECOVERED_BASELINE.md` preserves predecessor provenance;
+`docs/inverse/ZG024_RESEARCH_HANDOFF_1.md` records the first calibration and next research questions.
+Issue #25 remains open: the first pass is substrate plus a bounded grid, not the final optimizer.
