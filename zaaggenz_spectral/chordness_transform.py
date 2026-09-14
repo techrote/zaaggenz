@@ -43,7 +43,8 @@ def transform_bundle(analysis,request,selected_templates,*,checkpoint=None,progr
                         if abs(corr)>1e-12:parts.append('retune')
                     else:reason='assigned-retune-outside-displacement'
                 if request.mode in ('reweight','hybrid'):
-                    fit=math.exp(-.5*(distance/request.tolerance_cents)**2);desired_gain=request.max_gain_db*request.reweight_amount*(2.*fit-1.)
+                    gain_distance=abs(cents_distance(target,realised));fit=math.exp(-.5*(gain_distance/request.tolerance_cents)**2)
+                    desired_gain=request.max_gain_db*request.reweight_amount*(2.*fit-1.)
                     if prev_anchor is None:gain=desired_gain
                     else:
                         dt=max(0.,(anchor-prev_anchor)/sr);step=request.max_gain_slew_db_per_second*dt
