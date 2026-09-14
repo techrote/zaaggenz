@@ -83,7 +83,6 @@ def _aggregate(core_rows):
             'median_physical_render_calls': statistics.median(r['physical_render_calls'] for r in rows),
             'mean_pareto_candidates': sum(r['pareto_candidates'] for r in rows)/len(rows),
         }
-    # Paired fit wins count exact/tolerant ties as a win for every tied method.
     wins = {m: 0 for m in METHODS}
     for name in CORE_NAMES:
         for seed in SEARCH_SEEDS:
@@ -157,10 +156,23 @@ def build_report():
     return report, full_runs, telemetry
 
 
-def portable_projection(report):
-    # Exclude exact environment/source hashes already retained by full result records.
-    return {k: report[k] for k in ('kind','version','base_commit','scope','design','core_runs',
-                                   'strategy_aggregates','holdout_sentinel_runs')}
+_CAL_FIELDS = ('fixture', 'seed', 'method_id', 'declared_budget', 'consumed_evaluations',
+               'proposal_attempts', 'eligible_candidates', 'pareto_candidates', 'best_ordinal',
+               'best_parameters', 'best_fit_score', 'best_holdout_score', 'whole_signal_score',
+               'overfit_warning', 'parameter_error', 'nonidentifiable_manifold_error',
+               'physical_render_calls')
+
+
+def calibration_reference(report):
+    """Compact portable freeze; complete components/lineage remain in CI evidence artifacts."""
+    return {
+        'kind': 'ZG024bStrategyCalibration', 'version': '1.0.0',
+        'base_commit': report['base_commit'], 'design': report['design'],
+        'strategy_aggregates': report['strategy_aggregates'],
+        'core_runs': [{k: row[k] for k in _CAL_FIELDS} for row in report['core_runs']],
+        'holdout_sentinel_runs': [{k: row[k] for k in _CAL_FIELDS} for row in report['holdout_sentinel_runs']],
+        'note': 'portable frozen outcomes; full per-component candidate evidence remains in CI artifacts',
+    }
 
 
 def compare_reports(actual, expected):
@@ -184,7 +196,7 @@ def compare_reports(actual, expected):
                 walk(av, ev, path+f'/{i}')
         else:
             failures.append(path + ': unsupported evidence type')
-    walk(portable_projection(actual), portable_projection(expected), '')
+    walk(calibration_reference(actual), expected, '')
     return failures
 
 
@@ -221,7 +233,7 @@ def main():
         write_json(args.full_out, full, compact=True)
     if args.telemetry_out:
         write_json(args.telemetry_out, telemetry)
-    reference = portable_projection(report)
+    reference = calibration_reference(report)
     if args.reference_out:
         write_json(args.reference_out, reference, compact=True)
     failures = compare_reports(report, read_json(args.check)) if args.check else []
