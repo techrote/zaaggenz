@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from copy import deepcopy
-import math,re
+import json,math,re
 
 class ChordnessError(ValueError):pass
 ID=re.compile(r'^[a-z][a-z0-9_.-]{0,63}$')
@@ -18,6 +18,14 @@ def _bound(v,name,lo,hi):
     if not lo<=v<=hi:raise ChordnessError(f'{name} must be in [{lo},{hi}]')
     return v
 
+def _json_source(v):
+    if v is None:return {}
+    if type(v)is not dict:raise ChordnessError('source must be a mapping')
+    try:text=json.dumps(v,allow_nan=False,sort_keys=True,separators=(',',':'))
+    except (TypeError,ValueError) as exc:raise ChordnessError('source metadata must be JSON serialisable') from exc
+    if len(text.encode('utf-8'))>8192:raise ChordnessError('source metadata too large')
+    return deepcopy(v)
+
 @dataclass(frozen=True)
 class CombTemplate:
     id:str
@@ -33,8 +41,7 @@ class CombTemplate:
         if any(a>=b for a,b in zip(teeth,teeth[1:])):raise ChordnessError('comb teeth must be strictly increasing')
         if type(self.tooth_capacity)is not int or type(self.tooth_capacity)is bool or not 1<=self.tooth_capacity<=16:raise ChordnessError('tooth_capacity must be integer 1..16')
         if type(self.label)is not str or len(self.label)>128:raise ChordnessError('invalid comb label')
-        if self.source is not None and type(self.source)is not dict:raise ChordnessError('source must be a mapping')
-        object.__setattr__(self,'teeth_hz',teeth);object.__setattr__(self,'source',deepcopy(self.source or {}))
+        object.__setattr__(self,'teeth_hz',teeth);object.__setattr__(self,'source',_json_source(self.source))
     def to_dict(self):return {'id':self.id,'teeth_hz':list(self.teeth_hz),'tooth_capacity':self.tooth_capacity,'label':self.label,'source':deepcopy(self.source)}
 
 @dataclass(frozen=True)
