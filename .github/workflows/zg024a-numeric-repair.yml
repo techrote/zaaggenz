@@ -1,0 +1,63 @@
+name: ZG-024a verified numerical-policy repair
+on:
+  push:
+    branches: [work/zg024a-lab-20260914]
+    paths: ['.github/workflows/zg024a-numeric-repair.yml', '_zg024a_numeric_repair.gz']
+permissions:
+  contents: write
+jobs:
+  repair:
+    if: github.repository == 'techrote/zaaggenz' && github.ref == 'refs/heads/work/zg024a-lab-20260914'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env: {PYTHONUTF8: '1', OPENBLAS_NUM_THREADS: '1', OMP_NUM_THREADS: '1'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Apply exact locally tested numerical-policy repair
+        shell: python
+        run: |
+          import gzip, hashlib, subprocess, json
+          from pathlib import Path
+          payload = Path('_zg024a_numeric_repair.gz').read_bytes()
+          if len(payload) != 7583 or hashlib.sha256(payload).hexdigest() != '1063d92be1565d1f63523ec067f2eab3fa6bcd091e51076da92efb04b96dd348':
+              raise SystemExit('Repair checksum mismatch')
+          patch = gzip.decompress(payload)
+          expected = {'zaaggenz_components/model.py', 'zaaggenz_components/tracker.py', 'zaaggenz_inverse/objectives.py', 'tests/components/test_assignment_policy.py', 'tests/inverse/test_numerical_policy.py', 'tools/inverse_foundation_report.py', 'docs/inverse/README.md', 'docs/inverse/ZG024_RESEARCH_HANDOFF_1.md'}
+          names = {line.split('\t',2)[2] for line in subprocess.check_output(['git','apply','--numstat','-'], input=patch).decode().splitlines()}
+          if names != expected:
+              raise SystemExit('Unexpected repair scope')
+          subprocess.run(['git','apply','--check','-'], input=patch, check=True)
+          subprocess.run(['git','apply','-'], input=patch, check=True)
+          Path('/tmp/zg024a-repair-paths.json').write_text(json.dumps(sorted(expected)))
+      - name: Install inherited dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Materialise recovered baseline
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: All foundation and component regression tests
+        run: |
+          python -m unittest discover -s tests/inverse -v
+          python -m unittest discover -s tests/components -v
+      - name: Record explicit repaired-policy calibration with independent repeats
+        run: python tools/inverse_foundation_report.py --out examples/zg024a_inverse_baseline.json --full-dir /tmp/zg024a-fixed-records
+      - name: Publish verified repair and remove temporary transport
+        shell: python
+        run: |
+          import json, subprocess
+          from pathlib import Path
+          paths = json.loads(Path('/tmp/zg024a-repair-paths.json').read_text())
+          subprocess.run(['git','add','--',*paths,'examples/zg024a_inverse_baseline.json'], check=True)
+          subprocess.run(['git','rm','--','_zg024a_numeric_repair.gz'], check=True)
+          subprocess.run(['git','config','user.name','github-actions[bot]'], check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'], check=True)
+          subprocess.run(['git','commit','-m','ZG-024a: stabilise explicit component association and regenerate calibrated evidence'], check=True)
+          subprocess.run(['git','push','origin','HEAD:refs/heads/work/zg024a-lab-20260914'], check=True)
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg024a-repaired-policy-evidence
+          path: |
+            examples/zg024a_inverse_baseline.json
+            /tmp/zg024a-fixed-records/
+          retention-days: 14
