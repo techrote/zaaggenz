@@ -1,0 +1,43 @@
+name: ZG-021 band-selective DSP
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_dsp/**'
+      - 'zaaggenz_spectral/**'
+      - 'tests/dsp/**'
+      - 'tests/spectral/**'
+      - 'tools/band_selective_report.py'
+      - 'examples/zg021_band_selective.json'
+      - 'docs/dsp/ZG021_BAND_SELECTIVE_DSP.md'
+      - '.github/workflows/zg021-band-selective.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  band-selective:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env: {PYTHONUTF8: '1', OPENBLAS_NUM_THREADS: '1', OMP_NUM_THREADS: '1'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Materialize authenticated legacy baseline
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: DSP acceptance and regressions
+        run: python -m unittest discover -s tests/dsp -v
+      - name: Spectral acceptance and regressions
+        run: python -m unittest discover -s tests/spectral -v
+      - name: Frozen 48 kHz band isolation evidence
+        run: python tools/band_selective_report.py --out band-selective-evidence.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: band-selective-evidence-${{ matrix.os }}
+          path: band-selective-evidence.json
