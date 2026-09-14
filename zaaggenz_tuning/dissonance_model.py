@@ -32,9 +32,10 @@ class TimbreSpectrum:
     source:dict|None=None
     def __post_init__(self):
         if type(self.id)is not str or not ID.fullmatch(self.id):raise DissonanceError('invalid spectrum id')
+        if len(self.frequencies_hz)!=len(self.amplitudes):raise DissonanceError('frequency/amplitude lengths must match')
         try:rows=sorted((float(f),float(a)) for f,a in zip(self.frequencies_hz,self.amplitudes))
         except Exception as exc:raise DissonanceError('numeric frequency/amplitude values required') from exc
-        if len(rows)!=len(self.frequencies_hz) or not 1<=len(rows)<=64:raise DissonanceError('spectrum requires 1..64 matched partials')
+        if not 1<=len(rows)<=64:raise DissonanceError('spectrum requires 1..64 matched partials')
         if any(not math.isfinite(f) or f<=0 or not math.isfinite(a) or a<0 for f,a in rows) or not any(a>0 for _,a in rows):raise DissonanceError('invalid spectrum values')
         if self.source is not None and type(self.source)is not dict:raise DissonanceError('source must be a mapping')
         object.__setattr__(self,'frequencies_hz',tuple(f for f,_ in rows));object.__setattr__(self,'amplitudes',tuple(a for _,a in rows))
