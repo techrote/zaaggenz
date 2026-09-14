@@ -24,9 +24,10 @@ def transform_bundle(analysis,request,selected_templates,*,checkpoint=None,progr
         for fi,(row,newrow) in enumerate(zip(track['frames'],dst_track['frames'])):
             if checkpoint and done%16==0:checkpoint()
             key=(ti,fi);assignment=assignments.get(key);reason=preserved.get(key);f=float(row['frequency_hz']);anchor=int(row['support']['anchor_sample']);confidence=float(row['confidence'])
-            source_amp=_amp(row);realised=f;corr=0.;phasecorr=0.;gain=0.;decision='preserve';delta=0.
+            source_amp=_amp(row);realised=f;corr=0.;phasecorr=0.;gain=0.;decision='preserve';delta=0.;assignment_confidence=None
             if reason is None and assignment is not None:
                 distance=float(assignment['distance_cents']);target=float(assignment['target_hz']);parts=[]
+                assignment_confidence=float(confidence*math.exp(-.5*(distance/request.tolerance_cents)**2))
                 if request.mode in ('retune','hybrid'):
                     if distance<=request.max_displacement_cents:
                         desired=cents_distance(target,f)*request.retune_amount
@@ -38,22 +39,19 @@ def transform_bundle(analysis,request,selected_templates,*,checkpoint=None,progr
                         realised=f*cents_ratio(corr);delta=realised-f
                         if prev_anchor is not None:
                             dt=max(0.,(anchor-prev_anchor)/sr);phasecorr=_wrap(prev_phase+2*math.pi*.5*(prev_delta+delta)*dt)
-                        newrow['frequency_hz']=float(realised)
-                        newrow['phases_radians']=[_wrap(p+phasecorr) for p in row['phases_radians']]
+                        newrow['frequency_hz']=float(realised);newrow['phases_radians']=[_wrap(p+phasecorr) for p in row['phases_radians']]
                         if abs(corr)>1e-12:parts.append('retune')
                     else:reason='assigned-retune-outside-displacement'
                 if request.mode in ('reweight','hybrid'):
-                    fit=math.exp(-.5*(distance/request.tolerance_cents)**2)
-                    desired_gain=request.max_gain_db*request.reweight_amount*(2.*fit-1.)
+                    fit=math.exp(-.5*(distance/request.tolerance_cents)**2);desired_gain=request.max_gain_db*request.reweight_amount*(2.*fit-1.)
                     if prev_anchor is None:gain=desired_gain
                     else:
                         dt=max(0.,(anchor-prev_anchor)/sr);step=request.max_gain_slew_db_per_second*dt
                         gain=_clamp(desired_gain,prev_gain-step,prev_gain+step)
-                    gain=_clamp(gain,-request.max_gain_db,request.max_gain_db)
-                    scale=10.**(gain/20.);newrow['amplitudes']=[float(x*scale) for x in row['amplitudes']]
+                    gain=_clamp(gain,-request.max_gain_db,request.max_gain_db);scale=10.**(gain/20.)
+                    newrow['amplitudes']=[float(x*scale) for x in row['amplitudes']]
                     if abs(gain)>1e-12:parts.append('reweight')
-                if parts:
-                    decision='+'.join(parts);reason='assigned'
+                if parts:decision='+'.join(parts);reason='assigned'
                 elif reason is None:reason='assigned-no-nonzero-change'
             else:
                 if reason is None:reason='unassigned'
@@ -66,8 +64,8 @@ def transform_bundle(analysis,request,selected_templates,*,checkpoint=None,progr
             if abs(realised-f)>1e-10 or any(abs(a-b)>1e-12 for a,b in zip(newrow['amplitudes'],row['amplitudes'])):changed+=1
             a=assignment or {}
             decisions.append(ChordnessFrameDecision(track['id'],fi,anchor,f,float(realised),source_amp,realised_amp,float(corr),float(gain),confidence,
-                                                     decision,reason,a.get('template_id'),a.get('tooth_index'),a.get('target_hz'),a.get('distance_cents'),
-                                                     a.get('occupancy'),a.get('capacity'),float(phasecorr)))
+                                                     assignment_confidence,decision,reason,a.get('template_id'),a.get('tooth_index'),a.get('target_hz'),
+                                                     a.get('distance_cents'),a.get('occupancy'),a.get('capacity'),float(phasecorr)))
             done+=1
             if progress:progress(min(.75,.75*done/total))
     bundle=Contract(out);validate(bundle.to_dict(),'PartialTrackBundle')
