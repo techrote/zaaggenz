@@ -1,15 +1,7 @@
 from __future__ import annotations
 import unittest
-import numpy as np
-from zaaggenz_components import analyse_components
 from zaaggenz_tuning import (DissonanceError,DissonanceModelSpec,IntervalGrid,TimbreSpectrum,dissonance_curve,harmonic_spectrum,
                              interaction_roughness,local_minima,sensitivity_candidates,spectrum_from_partial_bundle)
-
-SR=12000
-
-def tone(f,duration=.7):
-    t=np.arange(round(SR*duration),dtype=np.float64)/SR
-    return (.5*np.cos(2*np.pi*f*t+.17)).astype(np.float32)
 
 class DissonanceMapTests(unittest.TestCase):
     def test_harmonic_spectrum_has_stable_fifth_region_candidate(self):
@@ -41,9 +33,14 @@ class DissonanceMapTests(unittest.TestCase):
         self.assertTrue(local_minima(a))
 
     def test_component_window_adapter_preserves_unscaled_amplitudes_and_confidence(self):
-        analysis=analyse_components(tone(445.),SR);bundle=analysis.bundle.to_dict();anchor=bundle['tracks'][0]['frames'][0]['support']['anchor_sample']
-        spectrum=spectrum_from_partial_bundle(analysis.bundle,anchor,max_components=8)
-        self.assertTrue(spectrum.frequencies_hz);self.assertGreater(spectrum.confidence,0.);self.assertLessEqual(spectrum.confidence,1.)
+        bundle={'kind':'PartialTrackBundle','asset':{'sample_rate_hz':12000},'tracks':[
+            {'id':'track-a','continuity':'continuous','frames':[{'frequency_hz':445.,'amplitudes':[.5],
+             'confidence':.8,'support':{'anchor_sample':128},'action':'transform'}]},
+            {'id':'track-b','continuity':'continuous','frames':[{'frequency_hz':668.,'amplitudes':[.25],
+             'confidence':.6,'support':{'anchor_sample':130},'action':'transform'}]}]}
+        spectrum=spectrum_from_partial_bundle(bundle,128,max_components=8)
+        self.assertEqual(spectrum.frequencies_hz,(445.,668.));self.assertEqual(spectrum.amplitudes,(.5,.25))
+        self.assertAlmostEqual(spectrum.confidence,(.5*.8+.25*.6)/.75)
         self.assertEqual(spectrum.source['confidence_policy'],'amplitude-weighted component confidence; amplitudes themselves are not confidence-scaled')
 
     def test_audible_band_abstains_when_shifted_spectrum_leaves_model_band(self):
