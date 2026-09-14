@@ -10,16 +10,17 @@ from .chordness_request import ChordnessRequest
 class ChordnessFrameDecision:
     track_id:str;frame_index:int;anchor_sample:int;source_hz:float;realised_hz:float
     source_amplitude:float;realised_amplitude:float;correction_cents:float;gain_db:float
-    confidence:float;decision:str;reason:str;template_id:str|None;tooth_index:int|None
+    confidence:float;assignment_confidence:float|None;decision:str;reason:str;template_id:str|None;tooth_index:int|None
     target_hz:float|None;assignment_distance_cents:float|None;occupancy:int|None;capacity:int|None
     phase_correction_radians:float
     def to_dict(self):
         return dict(track_id=self.track_id,frame_index=self.frame_index,anchor_sample=self.anchor_sample,
                     source_hz=self.source_hz,realised_hz=self.realised_hz,source_amplitude=self.source_amplitude,
                     realised_amplitude=self.realised_amplitude,correction_cents=self.correction_cents,gain_db=self.gain_db,
-                    confidence=self.confidence,decision=self.decision,reason=self.reason,template_id=self.template_id,
-                    tooth_index=self.tooth_index,target_hz=self.target_hz,assignment_distance_cents=self.assignment_distance_cents,
-                    occupancy=self.occupancy,capacity=self.capacity,phase_correction_radians=self.phase_correction_radians)
+                    confidence=self.confidence,assignment_confidence=self.assignment_confidence,decision=self.decision,reason=self.reason,
+                    template_id=self.template_id,tooth_index=self.tooth_index,target_hz=self.target_hz,
+                    assignment_distance_cents=self.assignment_distance_cents,occupancy=self.occupancy,capacity=self.capacity,
+                    phase_correction_radians=self.phase_correction_radians)
 
 @dataclass(frozen=True)
 class ChordnessResult:
@@ -48,9 +49,10 @@ class ChordnessResult:
             a=np.asarray(getattr(self,name))
             if a.shape!=shape or not np.isfinite(a).all():raise ChordnessError(name+' invalid')
             a.setflags(write=False)
-        object.__setattr__(self,'selected_template_ids',tuple(self.selected_template_ids))
-        object.__setattr__(self,'decisions',tuple(self.decisions));object.__setattr__(self,'candidate_evaluations',tuple(deepcopy(self.candidate_evaluations)))
-        object.__setattr__(self,'occupancy',tuple(deepcopy(self.occupancy)));object.__setattr__(self,'diagnostics',deepcopy(self.diagnostics))
+        object.__setattr__(self,'selected_template_ids',tuple(self.selected_template_ids));object.__setattr__(self,'decisions',tuple(self.decisions))
+        object.__setattr__(self,'candidate_evaluations',tuple(deepcopy(self.candidate_evaluations)));object.__setattr__(self,'occupancy',tuple(deepcopy(self.occupancy)))
+        for name in ('descriptor_before','descriptor_after','objective_before','objective_after','diagnostics'):
+            object.__setattr__(self,name,deepcopy(getattr(self,name)))
     @property
     def inspection(self):
         return {'method':{'id':'zg.multi_comb_chordness.v1','version':'1.0.0'},'request':self.request.to_dict(),
