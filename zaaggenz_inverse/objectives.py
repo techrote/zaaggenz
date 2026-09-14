@@ -9,7 +9,7 @@ import numpy as np
 
 from zaaggenz_contracts import digest, loads
 from zaaggenz_analysis import STFTSpec, stft, AnalysisCache
-from zaaggenz_components import analyse_components
+from zaaggenz_components import analyse_components, ComponentTrackerSpec
 from zaaggenz_descriptors import DescriptorAnalysisSpec, analyse_descriptors
 from zaaggenz_qc.metrics import diagnose
 from zaaggenz_spectral.chordness_model import CombTemplate
@@ -35,7 +35,7 @@ LOSS_SPECS = {
     'dissonance_profile': ('unitless', 1., .1),
 }
 AXES = tuple(LOSS_SPECS)
-FEATURE_METHOD = 'zg.inverse.measured-window.v1'
+FEATURE_METHOD = 'zg.inverse.measured-window.v1.1'
 RMS_FLOOR = 1e-8
 SPECTRUM_FLOOR = 1e-6
 
@@ -43,11 +43,14 @@ SPECTRUM_FLOOR = 1e-6
 @dataclass(frozen=True, init=False)
 class ObjectivePlan(Snapshot):
     def __init__(self, *, weights=None, scales=None, templates=(), stft_spec=STFTSpec(256, 64, 256),
-                 descriptor_spec=DescriptorAnalysisSpec(max_samples=MAX_FRAMES), dissonance_intervals=(0., 702.)):
+                 descriptor_spec=DescriptorAnalysisSpec(max_samples=MAX_FRAMES), dissonance_intervals=(0., 702.),
+                 component_spec=ComponentTrackerSpec(assignment_cost_policy='integer-microcent-v1')):
         require(isinstance(stft_spec, STFTSpec) and stft_spec.role == 'observation', 'observation STFTSpec required')
         require(stft_spec.window_samples <= 4096 and stft_spec.fft_samples <= 4096, 'bounded inverse STFT required')
         require(isinstance(descriptor_spec, DescriptorAnalysisSpec), 'DescriptorAnalysisSpec required')
         require(descriptor_spec.max_samples <= MAX_FRAMES, 'descriptor bound exceeds inverse PCM bound')
+        require(isinstance(component_spec, ComponentTrackerSpec), 'ComponentTrackerSpec required')
+        require(component_spec.max_tracks <= 16, 'inverse component cap exceeds 16')
         weights = {} if weights is None else weights
         scales = {} if scales is None else scales
         require(type(weights) is dict and set(weights) <= set(AXES), 'unknown objective weight')
@@ -63,20 +66,21 @@ class ObjectivePlan(Snapshot):
         intervals = tuple(finite(x, 'dissonance interval', -2400, 2400) for x in dissonance_intervals)
         require(1 <= len(intervals) <= 8 and len(set(intervals)) == len(intervals), '1..8 distinct dissonance probes required')
         super().__init__(document('InverseObjectivePlan', metrics=metrics, axes=list(AXES),
-            stft=stft_spec.metadata(), descriptors=descriptor_spec.to_dict(), templates=[t.to_dict() for t in templates],
+            stft=stft_spec.metadata(), descriptors=descriptor_spec.to_dict(), components=component_spec.metadata(), templates=[t.to_dict() for t in templates],
             dissonance_intervals_cents=list(intervals), level_policy='unmatched-unclamped',
             rms_floor=RMS_FLOOR, spectrum_amplitude_floor=SPECTRUM_FLOOR,
             unavailable_policy='target-only-applicability; candidate-abstention-is-not-zero'))
 
     @classmethod
     def from_dict(cls, data):
-        keys = ('metrics', 'axes', 'stft', 'descriptors', 'templates', 'dissonance_intervals_cents',
+        keys = ('metrics', 'axes', 'stft', 'descriptors', 'components', 'templates', 'dissonance_intervals_cents',
                 'level_policy', 'rms_floor', 'spectrum_amplitude_floor', 'unavailable_policy')
         fields(data, keys, 'InverseObjectivePlan')
         require(type(data['metrics']) is dict and set(data['metrics']) == set(AXES), 'objective inventory mismatch')
         out = cls(weights={k: v['weight'] for k, v in data['metrics'].items()},
                   scales={k: v['scale'] for k, v in data['metrics'].items()},
                   stft_spec=STFTSpec(**data['stft']), descriptor_spec=DescriptorAnalysisSpec(**data['descriptors']),
+                  component_spec=ComponentTrackerSpec(**data['components']),
                   templates=tuple(CombTemplate(**t) for t in data['templates']),
                   dissonance_intervals=tuple(data['dissonance_intervals_cents']))
         require(out.to_dict() == data, 'unsupported or noncanonical objective configuration')
@@ -100,7 +104,7 @@ def _measure(buffer, plan):
     a, rate = buffer.audio, buffer.rate
     cfg = plan.to_dict()
     spec = DescriptorAnalysisSpec(**cfg['descriptors'])
-    components = analyse_components(a, rate)
+    components = analyse_components(a, rate, ComponentTrackerSpec(**cfg['components']))
     desc = analyse_descriptors(a, rate, partials=components.bundle, spec=spec).descriptors
     observations = {o.metric: o.to_dict() for o in desc.observations}
     templates = tuple(CombTemplate(**v) for v in cfg['templates'])

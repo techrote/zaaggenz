@@ -238,3 +238,21 @@ identity, while its candidate records, trace and frozen set match uninterrupted
 execution. Divergent replay fails without overwriting the previous checkpoint.
 Changed code/bounds/seed/budget require a new request with explicit parent lineage.
 No distributed worker, model training or online optimisation service is required.
+
+## Explicit component-association numerical policy
+
+`ObjectivePlan.components` embeds the existing `ComponentTrackerSpec`, including
+its opt-in `integer-microcent-v1` assignment cost policy. This avoids
+last-bit floating-sum tie decisions fragmenting tracks and changing sonority
+measurements across platforms. Only assignment costs are rounded (ties-to-even,
+1e-6 cent); reported physical frequency/amplitude/phase observations are not.
+The inherited default remains `legacy-float-v1`, with identical legacy metadata
+and processing. Integer cost bounds fail closed rather than overflow.
+
+The feature method is `zg.inverse.measured-window.v1.1`; component configuration
+is identity- and cache-relevant, separately from objective weights. Read the
+handoff's cross-platform finding for the observed failed experiment and repair.
+Portable comparisons retain the original tolerances and now also enforce
+identical budgets, domains, grids, windows, seeds, stages, objective/gate policies
+and fixture generation metadata. Exact bit identity remains a same-execution
+assertion, not a universal numeric guarantee.

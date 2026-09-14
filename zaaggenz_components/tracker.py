@@ -11,6 +11,26 @@ from .reconstruct import reconstruct_components
 
 METHOD='zg-component-tracker-v1'
 
+def _assignment_cost(cost, policy):
+    """Opt-in numerical association policy; observations are never quantised.
+
+    L1 distances in log frequency have exact assignment ties. Binary64 libm
+    rounding can resolve those ties differently and fragment whole trajectories.
+    Integer microcents make the solver's sums/subtractions exact for bounded
+    matrices. Existing active-track and frequency order plus the recorded SciPy
+    version resolve remaining exact ties. No epsilon is added to the objective.
+    """
+    if policy == 'legacy-float-v1':
+        return cost
+    if policy != 'integer-microcent-v1':
+        raise ComponentError('unknown assignment cost policy')
+    units = np.rint(np.asarray(cost, dtype=np.float64) * 1_000_000.)
+    bound = (2**53) // (8 * max(1, *units.shape))
+    if not np.isfinite(units).all() or np.any(units < 0) or np.any(units > bound):
+        raise ComponentError('assignment costs exceed exact integer arithmetic bound')
+    return units
+
+
 def _audio(x):
     a=np.asarray(x)
     mono=a.ndim==1
@@ -104,7 +124,7 @@ def _track(frame_rows,spec):
             cost=np.full((len(active),len(cands)),1e9,dtype=np.float64)
             for i,p in enumerate(preds):
                 for j,c in enumerate(cands):cost[i,j]=1200*abs(math.log2(c['frequency_hz']/p))
-            rr,cc=optimize.linear_sum_assignment(cost)
+            rr,cc=optimize.linear_sum_assignment(_assignment_cost(cost, spec.assignment_cost_policy))
             for i,j in zip(rr,cc):
                 if cost[i,j]>spec.max_jump_cents:continue
                 row=deepcopy(cands[j]);active[i]['rows'].append(row);active[i]['missed']=0;active[i]['ambiguous']|=row['ambiguous'];active[i]['had_gap']|=(frame-active[i]['last_frame']>1);active[i]['last_frame']=frame;matched_t.add(i);matched_c.add(j)

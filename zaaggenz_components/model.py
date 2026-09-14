@@ -25,7 +25,10 @@ class ComponentTrackerSpec:
     min_support_fraction:float=.55
     transient_sigma:float=5.
     transient_guard_ms:float=6.
+    assignment_cost_policy:str='legacy-float-v1'
     def __post_init__(self):
+        if self.assignment_cost_policy not in ('legacy-float-v1', 'integer-microcent-v1'):
+            raise ComponentError('unknown assignment cost policy')
         numeric=(self.window_seconds,self.min_hz,self.max_hz,self.min_snr_db,self.max_flatness,
                  self.min_confidence,self.transform_confidence,self.max_jump_cents,self.ambiguity_cents,
                  self.min_support_fraction,self.transient_sigma,self.transient_guard_ms)
@@ -38,11 +41,16 @@ class ComponentTrackerSpec:
         if not 0<=self.max_flatness<=1 or not 0<=self.min_confidence<=self.transform_confidence<=1:raise ComponentError('invalid confidence/flatness setting')
         if not 1<=self.min_track_frames<=32 or not 0<=self.max_gap_frames<=16:raise ComponentError('invalid track duration/gap bound')
         if not 0<=self.min_support_fraction<=1:raise ComponentError('invalid support fraction')
-    def metadata(self):return dict(window_seconds=self.window_seconds,hop_fraction=self.hop_fraction,fft_factor=self.fft_factor,
+    def metadata(self):
+        data=dict(window_seconds=self.window_seconds,hop_fraction=self.hop_fraction,fft_factor=self.fft_factor,
         min_hz=self.min_hz,max_hz=self.max_hz,max_tracks=self.max_tracks,min_snr_db=self.min_snr_db,max_flatness=self.max_flatness,
         min_confidence=self.min_confidence,transform_confidence=self.transform_confidence,max_jump_cents=self.max_jump_cents,
         ambiguity_cents=self.ambiguity_cents,max_gap_frames=self.max_gap_frames,min_track_frames=self.min_track_frames,
         min_support_fraction=self.min_support_fraction,transient_sigma=self.transient_sigma,transient_guard_ms=self.transient_guard_ms)
+        # Frozen legacy metadata and default audio/track identities are unchanged.
+        if self.assignment_cost_policy != 'legacy-float-v1':
+            data['assignment_cost_policy'] = self.assignment_cost_policy
+        return data
 
 @dataclass(frozen=True)
 class ComponentAnalysis:

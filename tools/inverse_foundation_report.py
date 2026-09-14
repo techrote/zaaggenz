@@ -150,6 +150,11 @@ def compare_reports(actual, expected):
     for new, old in zip(a['fixtures'], e['fixtures'], strict=True):
         if new['name'] != old['name'] or new['evaluations'] != old['evaluations']:
             raise AssertionError('fixture inventory/budget changed')
+        for key in ('budget', 'domain', 'grid', 'windows', 'seed', 'stage', 'method', 'objectives', 'validation'):
+            if new['request'][key] != old['request'][key]:
+                raise AssertionError(f"{new['name']}: request {key} changed")
+        if new['generation'] != old['generation'] or new['ground_truth_parameters'] != old['ground_truth_parameters']:
+            raise AssertionError(f"{new['name']}: fixture generation changed")
         nr = {r['grid_index']: r for r in new['retained']}; er = {r['grid_index']: r for r in old['retained']}
         if nr.keys() != er.keys(): raise AssertionError('retained candidate set changed')
         for index, row in nr.items():
@@ -161,7 +166,8 @@ def compare_reports(actual, expected):
                 if x['applicable'] != y['applicable'] or x['complete'] != y['complete']:
                     raise AssertionError('objective applicability changed')
                 np.testing.assert_allclose([v if v is not None else np.nan for v in x['vector']],
-                                           [v if v is not None else np.nan for v in y['vector']], rtol=1e-5, atol=1e-6, equal_nan=True)
+                                           [v if v is not None else np.nan for v in y['vector']], rtol=1e-5, atol=1e-6, equal_nan=True,
+                                           err_msg=f"{new['name']} grid={index} {split} axes={AXES}")
                 if [w['validation_codes'] for w in x['windows']] != [w['validation_codes'] for w in y['windows']]:
                     raise AssertionError('window gate outcomes changed')
     if a['recovered_baseline']['source_sha256'] != e['recovered_baseline']['source_sha256']:

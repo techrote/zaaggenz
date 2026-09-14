@@ -166,7 +166,7 @@ Run foundation tests, inherited regressions, then:
 python tools/inverse_foundation_report.py --out inverse-evidence.json --full-dir inverse-records --compare examples/zg024a_inverse_baseline.json
 ```
 
-Local inherited acceptance passed: **373 tests across 11 suites**, **13 recovered
+Local inherited acceptance passed: **378 tests across 11 suites**, **13 recovered
 smoke scripts**, and the existing browser transport regression. The dedicated
 Ubuntu/Windows Python 3.13 workflow repeats foundation tests, those inherited
 checks, exact-repeat evidence and portable metric comparison. Its full sidecars
@@ -176,3 +176,45 @@ Continue under **ZG-024 / #25**. This pass does not complete the multi-stage
 production integration, editable UI application, advanced proposal strategies,
 real-reference evaluation or optional differentiable ablation. Keep the issue
 open and carry forward null, ambiguous and failed-gate results, not only wins.
+
+## Cross-platform finding: association ties, not different PCM
+
+The first Linux/Windows matrix (run `34889037449`, pre-repair head
+`01854d4e75cd42be7eb7419a31ee0a7979c9738b`) exposed a real weakness:
+all tests passed, but Windows disagreed with frozen Linux evidence for three
+off-truth rich-fixture candidates (grid ordinals 16, 20, 17). Source, target and
+candidate PCM hashes were identical. Roughness, comb fit and dissonance metrics
+differed because tiny frequency roundoff changed component track association.
+The largest observed whole-signal comb-fit loss discrepancy was approximately
+0.04447 versus 0.03848 at ordinal 20: not an acceptable rounding tolerance.
+The original frozen core remains available in PR history as
+`967f6169ed6daf63d64f74e0a850c886a4ce9661e3382cabc5e8a38ac9a59532`.
+
+L1 log-frequency assignment costs can have mathematically equal permutation
+sums. Perturbing frame frequencies by `1e-10 Hz` reproduced altered trajectory
+fragmentation locally, despite no materially changed observation. The repair
+adds **opt-in `ComponentTrackerSpec.assignment_cost_policy =
+'integer-microcent-v1'`** to the existing component tracker. Solver costs are
+rounded ties-to-even to integer microcents (one millionth of a cent); bounded
+integer-valued binary64 arithmetic avoids order-dependent floating tie sums.
+Existing stable active-track/frequency order and the recorded SciPy version
+resolve exact remaining ties. Raw frequency/amplitude/phase observations remain
+unchanged. Legacy/default association and its metadata are preserved exactly.
+
+The inverse objective explicitly stores the full component-tracker specification
+and uses this policy; feature method `zg.inverse.measured-window.v1.1` plus
+policy/code hashes invalidate old feature caches and candidate identities.
+Tests cover exact additive assignment ties, invalid cost bounds, unchanged
+legacy metadata, policy identity/cache separation, and 30 rich-candidate
+perturbation trials. Cross-platform metric tolerances remain **rtol=1e-5,
+atol=1e-6**, with all axes/gates and all six fixtures retained. The committed
+evidence is regenerated for the explicit repaired measurement policy, not
+relabelled as the earlier experiment.
+
+This does not make peak selection, confidence thresholds, crossings or
+quantisation-boundary decisions globally continuous. Future strategies should
+study descriptor robustness near those discrete boundaries, retain uncertainty,
+and avoid spending an optimizer's budget exploiting unstable track identities.
+Do not introduce a scalar tie-breaking epsilon large enough to alter acoustic
+objectives, silently widen comparison tolerances, or call different operating
+systems bit-identical merely because one fixture matches.
