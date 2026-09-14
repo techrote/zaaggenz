@@ -26,7 +26,7 @@ class BitcrushSpec:
         if not math.isfinite(wet) or not 0<=wet<=1:raise BitcrushError('wet must be in [0,1]')
         if self.dither!='none':raise BitcrushError('v1 is deterministic and supports dither=none only')
         object.__setattr__(self,'full_scale',fs);object.__setattr__(self,'wet',wet)
-    def to_dict(self):return {'bit_depth':self.bit_depth,'hold_samples':self.hold_samples,'full_scale':self.full_scale,'wet':self.wet,'dither':self.dither,'quantizer':'signed uniform round-to-nearest; no hidden normalization','hold_phase':'sample 0 anchored'}
+    def to_dict(self):return {'bit_depth':self.bit_depth,'hold_samples':self.hold_samples,'full_scale':self.full_scale,'wet':self.wet,'dither':self.dither,'quantizer':'signed uniform round-to-nearest; no hidden normalization','hold_phase':'sample 0 anchored','alias_policy':'intentional unfiltered quantization/sample-hold images; caller must opt into crossover-delta confinement when spill is undesired'}
 
 @dataclass(frozen=True)
 class BitcrushResult:
@@ -35,7 +35,7 @@ class BitcrushResult:
     held_sample_fraction:float
     spec:BitcrushSpec
     @property
-    def diagnostics(self):return {'quantization_step':self.quantization_step,'hold_samples':self.spec.hold_samples,'held_sample_fraction':self.held_sample_fraction,'dither':self.spec.dither,'declared_latency_samples':0}
+    def diagnostics(self):return {'quantization_step':self.quantization_step,'hold_samples':self.spec.hold_samples,'held_sample_fraction':self.held_sample_fraction,'dither':self.spec.dither,'alias_policy':self.spec.to_dict()['alias_policy'],'declared_latency_samples':0}
 
 def bitcrush(x,spec):
     if not isinstance(spec,BitcrushSpec):raise BitcrushError('BitcrushSpec required')
