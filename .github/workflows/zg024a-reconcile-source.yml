@@ -1,0 +1,22 @@
+name: ZG-024a accepted-source snapshot
+on:
+  push:
+    branches: [work/zg024a-association-stability]
+    paths: ['.github/workflows/zg024a-reconcile-source.yml']
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 7316a6ceeeeac11a48264c925b639d6dfad07f53
+          persist-credentials: false
+      - run: git archive --format=zip -o /tmp/zg024a-accepted.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zg024a-accepted-source
+          path: /tmp/zg024a-accepted.zip
+          retention-days: 1
