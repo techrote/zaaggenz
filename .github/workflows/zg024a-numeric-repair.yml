@@ -24,6 +24,9 @@ jobs:
           if len(payload) != 7583 or hashlib.sha256(payload).hexdigest() != '1063d92be1565d1f63523ec067f2eab3fa6bcd091e51076da92efb04b96dd348':
               raise SystemExit('Repair checksum mismatch')
           patch = gzip.decompress(payload)
+          for name in ('tests/components/test_assignment_policy.py', 'tests/inverse/test_numerical_policy.py'):
+              header = f'diff --git a/{name} b/{name}\n'.encode()
+              patch = patch.replace(header, header + b'new file mode 100644\n', 1)
           expected = {'zaaggenz_components/model.py', 'zaaggenz_components/tracker.py', 'zaaggenz_inverse/objectives.py', 'tests/components/test_assignment_policy.py', 'tests/inverse/test_numerical_policy.py', 'tools/inverse_foundation_report.py', 'docs/inverse/README.md', 'docs/inverse/ZG024_RESEARCH_HANDOFF_1.md'}
           names = {line.split('\t',2)[2] for line in subprocess.check_output(['git','apply','--numstat','-'], input=patch).decode().splitlines()}
           if names != expected:
