@@ -1,0 +1,40 @@
+{
+  "version": "1.0.0",
+  "scope": "synthetic engineering benchmark; no listening preference claim",
+  "placement_fixture": {
+    "sample_rate_hz": 48000,
+    "duration_seconds": 1.0,
+    "source": {
+      "tones": [
+        {"frequency_hz": 445.0, "amplitude": 0.34, "phase_radians": 0.17},
+        {"frequency_hz": 667.0, "amplitude": 0.22, "phase_radians": 0.41}
+      ],
+      "transient": {"sample": 20640, "amplitude": 0.65}
+    },
+    "spectral_target": {
+      "tuning_fixture": "12tet-a440",
+      "degree": 0,
+      "partial_ratios": [1.0, 1.5, 2.0, 3.0],
+      "amount": 1.0,
+      "min_confidence": 0.4,
+      "min_hz": 100.0,
+      "max_hz": 5000.0,
+      "max_displacement_cents": 180.0,
+      "max_correction_slew_cents_per_second": 2400.0
+    },
+    "stage_a": {"kind": "tanh", "mode": "antialiased", "oversample": 4, "drive_db": 15.0, "mix": 1.0},
+    "stage_b": {"kind": "hard_clip", "mode": "antialiased", "oversample": 4, "threshold": 0.58, "mix": 1.0},
+    "placements": ["pre", "inter", "post"],
+    "output": {"master_gain_db": 0.0, "normalization": "none"}
+  },
+  "alias_fixture": {
+    "sample_rate_hz": 48000,
+    "duration_seconds": 1.0,
+    "source_tone_hz": 9000.0,
+    "source_amplitude": 0.6,
+    "shaper": {"kind": "tanh", "drive_db": 18.0, "mix": 1.0},
+    "production_factors": [1, 2, 4],
+    "reference_factor": 8,
+    "filter_policy": "zg.kaiser_polyphase_zero_phase.v1"
+  }
+}
