@@ -1,7 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from copy import deepcopy
-import hashlib,json,math
+import hashlib,math
 import numpy as np
 from zaaggenz_melody.pitch import pitch_shift_static,cosine_taper
 from .model import ZaagFamilyError,canonical_sha256
@@ -56,7 +56,7 @@ def four_bar_manifest(sr=48000):
     return ArrangementManifest('zg022-four-bar-bounce',4,190.,sr,tuple(events),'Four-bar half-beat source-derived upper-bounce phrase with a stable melodic return.')
 
 def sixteen_bar_manifest(sr=48000):
-    events=[];roots=(0,5,3,7);families=('zaag.harmonic-turn','zaag.vowel-sway','zaag.complementary-pulse','zaag.grit-skip')
+    events=[];roots=(0,-2,0,-3);families=('zaag.harmonic-turn','zaag.vowel-sway','zaag.complementary-pulse','zaag.grit-skip')
     for bar in range(16):
         root=roots[(bar//4)%len(roots)];fid=families[(bar//4)%len(families)]
         chord=(root,root+3,root+7) if bar%4 in (1,3) else (root,)
