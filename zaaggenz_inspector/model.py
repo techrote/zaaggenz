@@ -110,10 +110,15 @@ def _classify(decision,confidence,threshold,changed):
     return 'moved' if changed else 'unaffected'
 
 
-def snapshot_from_chordness(result,before_audio,after_audio,sample_rate_hz,*,controls,compatibility=(),revision_seed=None):
+def snapshot_from_chordness(result,before_audio,after_audio,sample_rate_hz,*,controls,compatibility=(),revision_seed=None,before_identity=None):
     try:request=result.request;frames=result.decisions;residual=result.residual;inspection=result.inspection
     except Exception as exc:raise InspectorError('ChordnessResult-like value required') from exc
-    before=slot_identity('A',before_audio,sample_rate_hz,'Before · source',revision_seed=revision_seed)
+    if before_identity is None:before=slot_identity('A',before_audio,sample_rate_hz,'Before · source',revision_seed=revision_seed)
+    else:
+        if not isinstance(before_identity,SlotIdentity) or before_identity.slot!='A':raise InspectorError('before_identity must be slot A')
+        expected=pcm_sha256(np.asarray(before_audio,dtype=np.float32))
+        if before_identity.audio_sha256!=expected or before_identity.sample_rate_hz!=sample_rate_hz:raise InspectorError('before_identity does not match source audio')
+        before=before_identity
     after=slot_identity('B',after_audio,sample_rate_hz,'After · explicit transform',revision_seed={'source_revision':before.revision_id,'request':request.to_dict()})
     templates=[]
     selected=set(result.selected_template_ids)
