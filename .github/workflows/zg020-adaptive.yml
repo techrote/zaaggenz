@@ -1,0 +1,41 @@
+name: ZG-020 adaptive dissonance tuning
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_tuning/**'
+      - 'tests/tuning/**'
+      - 'tools/adaptive_tuning_report.py'
+      - 'examples/zg020_adaptive_tuning.json'
+      - 'docs/analysis/ZG020_ADAPTIVE_TUNING.md'
+      - '.github/workflows/zg020-adaptive.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  adaptive:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env: {PYTHONUTF8: '1', OPENBLAS_NUM_THREADS: '1', OMP_NUM_THREADS: '1'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Install dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Tuning and adaptive acceptance tests
+        run: python -m unittest discover -s tests/tuning -v
+      - name: Descriptor and component regressions
+        run: |
+          python -m unittest discover -s tests/descriptors -v
+          python -m unittest discover -s tests/components -v
+      - name: Frozen adaptive-tuning evidence
+        run: python tools/adaptive_tuning_report.py --out adaptive-tuning-evidence.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: adaptive-tuning-evidence-${{ matrix.os }}
+          path: adaptive-tuning-evidence.json
