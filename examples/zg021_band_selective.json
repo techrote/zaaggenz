@@ -1,0 +1,32 @@
+{
+  "version": "1.0.0",
+  "scope": "synthetic engineering evidence for band isolation, spill and texture; no preference claim",
+  "sample_rate_hz": 48000,
+  "duration_seconds": 0.75,
+  "crossovers_hz": [105.0, 520.0, 3600.0],
+  "source": {
+    "sub": {"frequency_hz": 60.0, "amplitude": 0.42, "phase_radians": 0.11},
+    "synthline": {"frequency_hz": 330.0, "amplitude": 0.25, "phase_radians": 0.37},
+    "selected_highmid": {"frequency_hz": 890.0, "amplitude": 0.20, "phase_radians": 0.23},
+    "air_reference": {"frequency_hz": 5200.0, "amplitude": 0.10, "phase_radians": 0.53}
+  },
+  "selected_band": "highmid",
+  "bitcrush": {"bit_depth": 5, "hold_samples": 5, "full_scale": 1.0, "wet": 0.7},
+  "compression": {"threshold_db": -20.0, "ratio": 4.0, "attack_ms": 5.0, "release_ms": 80.0, "knee_db": 3.0, "makeup_db": 0.0, "wet": 1.0},
+  "spectral": {
+    "tuning_fixture": "12tet-a440",
+    "degree": 12,
+    "partial_ratios": [1.0],
+    "amount": 1.0,
+    "min_confidence": 0.35,
+    "min_hz": 650.0,
+    "max_hz": 1400.0,
+    "max_displacement_cents": 120.0,
+    "max_correction_slew_cents_per_second": 3000.0
+  },
+  "stage_order": ["compression", "spectral", "bitcrush", "gain"],
+  "gain_db": 0.0,
+  "confined_leakage_limit_relative_to_selected": 0.15,
+  "spill_gain_required_over_confined_sub": 2.0,
+  "output": {"normalization": "none", "master_gain_db": 0.0}
+}
