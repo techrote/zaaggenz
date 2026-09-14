@@ -1,0 +1,33 @@
+{
+  "version": "1.0.0",
+  "scope": "synthetic engineering compatibility evidence; not a preferred scale or listening prediction",
+  "dissonance": {
+    "root_hz": 220.0,
+    "partials": 8,
+    "amplitude_power": 1.0,
+    "harmonic_stretch": 1.0,
+    "stretched_stretch": 1.01,
+    "grid": {"start_cents": 450.0, "stop_cents": 750.0, "step_cents": 2.0},
+    "sensitivity": {
+      "bandwidth_scales": [0.9, 1.0, 1.1],
+      "amplitude_exponents": [0.85, 1.0, 1.15],
+      "match_tolerance_cents": 12.0,
+      "min_stability": 0.6
+    }
+  },
+  "adaptive": {
+    "nominal_interval_cents": 705.0,
+    "candidate_intervals_cents": [0.0, 498.0, 702.0, 1200.0],
+    "low_tension": 0.0,
+    "high_tension": 0.2,
+    "max_total_drift_cents": 30.0,
+    "max_step_cents": 12.0,
+    "search_step_cents": 1.0,
+    "min_separation_cents": 20.0,
+    "sequence_steps": 20,
+    "sequence_tension": 0.3,
+    "sequence_max_total_drift_cents": 20.0,
+    "sequence_max_step_cents": 5.0,
+    "weights": {"tension": 12.0, "voice_leading": 0.02, "drift": 0.02, "candidate_proximity": 0.1}
+  }
+}
