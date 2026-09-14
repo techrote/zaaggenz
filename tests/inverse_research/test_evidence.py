@@ -44,7 +44,7 @@ class EvidenceCalibrationTests(unittest.TestCase):
         self.assertNotIn('selected_optimizer', encoded)
         self.assertNotIn('production_optimizer', encoded)
         self.assertIn('full per-component candidate/lineage evidence remains in ci artifacts',
-                      self.data['note'])
+                      self.data['note'].lower())
 
     def test_gate_confounded_missing_results_are_not_filled_with_fake_scores(self):
         grid_envelope = next(x for x in self.data['fixture_results']
