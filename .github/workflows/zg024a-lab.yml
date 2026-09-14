@@ -1,0 +1,21 @@
+name: ZG-024a inverse laboratory
+on:
+  push:
+    branches: [work/zg024a-inverse-foundations]
+    paths: ['.github/workflows/zg024a-lab.yml']
+permissions:
+  contents: read
+jobs:
+  source-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - name: Export tracked source for isolated local validation
+        run: git archive --format=zip -o /tmp/zg024a-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zg024a-source-snapshot
+          path: /tmp/zg024a-source.zip
+          retention-days: 1
