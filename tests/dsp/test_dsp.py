@@ -45,6 +45,30 @@ class GraphTests(unittest.TestCase):
         with self.assertRaises(GraphError):execute_graph(self.x,12000,[a,b],'a')
     def test_output_error_policy(self):
         with self.assertRaises(GraphError):apply_output_policy(self.x*5,{'master_gain_db':0,'clipping':'error'})
+    def test_unbounded_float_preserves_finite_over_full_scale(self):
+        x=np.asarray([1.25,-3.5,0.0],dtype=np.float64);out,diag=apply_output_policy(x,{'master_gain_db':0,'clipping':'unbounded_float'})
+        np.testing.assert_array_equal(out,x.astype(np.float32));self.assertEqual(out.dtype,np.float32);self.assertEqual(diag['output_peak'],3.5)
+    def test_unbounded_float_exact_float32_range_boundary(self):
+        m=np.float64(np.finfo(np.float32).max);out,_=apply_output_policy(np.asarray([m,-m]),{'master_gain_db':0,'clipping':'unbounded_float'})
+        self.assertTrue(np.isfinite(out).all());self.assertEqual(float(out[0]),float(np.finfo(np.float32).max))
+        with self.assertRaisesRegex(GraphError,'finite float32 range'):
+            apply_output_policy(np.asarray([m*1.0000001]),{'master_gain_db':0,'clipping':'unbounded_float'})
+    def test_contract_valid_gain_chain_cannot_publish_float32_inf(self):
+        nodes=[];previous='source'
+        for i in range(40):
+            key=f'g{i}';nodes.append(node(key,'core.gain.v1',previous,{'gain_db':24}));previous=key
+        y=execute_graph(np.asarray([1.0],dtype=np.float64),48000,nodes,previous,capture_taps=False).output
+        self.assertTrue(np.isfinite(y).all());self.assertGreater(float(abs(y[0])),float(np.finfo(np.float32).max))
+        with self.assertRaisesRegex(GraphError,'finite float32 range'):
+            apply_output_policy(y,{'master_gain_db':0,'clipping':'unbounded_float'})
+    def test_master_overflow_fails_before_clipping_can_hide_it(self):
+        x=np.asarray([np.finfo(np.float64).max],dtype=np.float64)
+        for policy in ('clip_at_full_scale','error','unbounded_float'):
+            with self.subTest(policy=policy),self.assertRaisesRegex(GraphError,'non-finite output'):
+                apply_output_policy(x,{'master_gain_db':24,'clipping':policy})
+    def test_unbounded_float_stereo_remains_finite_and_unclamped(self):
+        x=np.asarray([[2.0,-2.0],[5.25,-7.5]],dtype=np.float64);out,_=apply_output_policy(x,{'master_gain_db':0,'clipping':'unbounded_float'})
+        np.testing.assert_array_equal(out,x.astype(np.float32));self.assertTrue(np.isfinite(out).all())
 
 class BandTests(unittest.TestCase):
     def setUp(self):
