@@ -22,6 +22,7 @@ class ReverseDependencyCI(unittest.TestCase):
         _, _, audits = ci.build_audit(ROOT)
         self.assertEqual(31, len(audits))
         self.assertIn("zg001-recovery.yml", audits)
+        self.assertTrue(audits["zg002-contracts.yml"].always_native)
         self.assertIn("zg024a-lab.yml", audits)
         self.assertIn("zg024b-strategies.yml", audits)
         self.assertIn("zg032-vocal.yml", audits)
@@ -59,6 +60,7 @@ class ReverseDependencyCI(unittest.TestCase):
         result = ci.classify_changed_paths(["zaaggenz_contracts/validation.py"], ROOT)
         dispatch = {row["workflow"] for row in result["dispatch"]}
         self.assertIn("ZG-002", result["direct_stable_ids"])
+        self.assertIn("zg002-contracts.yml", result["native"])
         self.assertIn("zg016-dsp.yml", dispatch)
         self.assertIn("zg023-inspector.yml", dispatch)
         self.assertIn("zg032-vocal.yml", dispatch)
@@ -83,10 +85,16 @@ class ReverseDependencyCI(unittest.TestCase):
         self.assertEqual([], result["dispatch"])
         self.assertEqual([], result["direct_stable_ids"])
 
+    def test_workflow_definition_change_validates_without_product_fanout(self) -> None:
+        result = ci.classify_changed_paths([".github/workflows/zg017-spectral.yml"], ROOT)
+        self.assertEqual([], result["dispatch"])
+        self.assertEqual([], result["direct_stable_ids"])
+
     def test_cross_cutting_requirements_have_explicit_owner(self) -> None:
         contract = ci.classify_changed_paths(["requirements-contracts.txt"], ROOT)
         jobs = ci.classify_changed_paths(["requirements-jobs.txt"], ROOT)
         self.assertIn("ZG-002", contract["direct_stable_ids"])
+        self.assertIn("zg002-contracts.yml", contract["native"])
         self.assertIn("ZG-004", jobs["direct_stable_ids"])
 
 
