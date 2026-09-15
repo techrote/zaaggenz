@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "description": "Audit/dispatch ownership for dependency-aware GitHub Actions. Stable ZG IDs remain authoritative; this file only maps accepted workflow files to those IDs and records cross-cutting source owners that are not safely inferable from workflow-local paths.",
+  "description": "Audit/dispatch ownership for dependency-aware GitHub Actions. Stable ZG IDs remain authoritative; this file maps accepted workflow files to those IDs and records cross-cutting or otherwise non-inferable implementation source owners.",
   "workflow_owners": {
     "zg001-recovery.yml": "ZG-001",
     "zg002-contracts.yml": "ZG-002",
@@ -36,6 +36,7 @@
   },
   "special_path_owners": {
     "baseline/recovered_source/**": ["ZG-001"],
+    "zaaggenz_contracts/**": ["ZG-002"],
     "requirements-contracts.txt": ["ZG-002"],
     "requirements-jobs.txt": ["ZG-004"],
     "web/jobs_transport.mjs": ["ZG-004"]
