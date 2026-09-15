@@ -26,4 +26,13 @@ const poisoned=message(g2,r2,'e'.repeat(64),k,'preview',[9],[9]);
 assert.equal(t.accept('preview',poisoned),false,'mismatch must not replace accepted audio/scopes');
 assert.strictEqual(t.current('preview'),current);assert.deepEqual(t.current('preview').scopes,{waveform:[1]});assert.deepEqual([...t.current('preview').audio],[1,2]);
 t.stop('preview');assert.equal(t.current('preview'),null);assert.equal(t.accept('preview',message(g2,r2)),false,'stop invalidates late decode/playback');
-console.log(JSON.stringify({stale_rejected:true,complete_identity_bound:true,mismatch_not_playable:true,atomic_transport_snapshot:true,stop_invalidates:true}));
+
+const timeline=new RenderTransport(),renderProduct='render';
+const rg=timeline.begin('timeline',r2,q,k,renderProduct);
+assert.equal(timeline.accept('timeline',message(rg,r2,q,k,renderProduct,[0.25],[7,8])),true,'non-preview consumers must bind their exact artifact product explicitly');
+assert.equal(timeline.current('timeline').product,renderProduct);
+assert.deepEqual(timeline.current('timeline').scopes,{waveform:[0.25]});
+assert.equal(timeline.accept('timeline',message(rg,r2,q,k,'preview',[9],[9])),false,'a different product cannot replace an explicitly bound render');
+assert.equal(timeline.current('timeline').product,renderProduct);
+assert.deepEqual([...timeline.current('timeline').audio],[7,8]);
+console.log(JSON.stringify({stale_rejected:true,complete_identity_bound:true,mismatch_not_playable:true,atomic_transport_snapshot:true,stop_invalidates:true,explicit_non_preview_product:true}));
