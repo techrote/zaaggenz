@@ -1,14 +1,14 @@
 from __future__ import annotations
-from dataclasses import asdict
+from dataclasses import asdict,replace
 from copy import deepcopy
-import io,math,threading
+import hashlib,io,math,threading
 import numpy as np
 from scipy.io import wavfile
 from zaaggenz_components import analyse_components
-from zaaggenz_jobs import JobClass,JobError,JobScheduler,SchedulerLimits
+from zaaggenz_jobs import JobClass,JobError,JobScheduler,RenderArtifact,SchedulerLimits
 from zaaggenz_spectral import ChordnessRequest,apply_chordness,harmonic_comb
 from zaaggenz_tuning import IntervalGrid,dissonance_curve,harmonic_spectrum
-from .model import InspectorError,compatibility_rows,slot_identity,snapshot_from_chordness
+from .model import InspectorError,SlotIdentity,compatibility_rows,slot_identity,snapshot_from_chordness
 
 SONORITIES={'major-third':5/4,'fourth':4/3,'fifth':3/2,'minor-sixth':8/5}
 DEFAULT_CONTROLS={'amount':.72,'root_hz':220.,'sonority':'fifth','anchor':'source'}
@@ -44,7 +44,7 @@ def fixture_source(sample_rate_hz,*,variant=0):
     peak=float(np.max(np.abs(x),initial=1e-12));x*=.72/max(peak,1e-12)
     return x.astype(np.float32)
 
-def build_analysis(source,sample_rate_hz,controls,*,revision_seed=None,before_identity=None,checkpoint=None,progress=None):
+def build_analysis(source,sample_rate_hz,controls,*,revision_seed=None,before_identity=None,source_binding=None,checkpoint=None,progress=None):
     controls=validate_controls(controls);src=np.asarray(source,dtype=np.float32)
     if src.ndim!=1 or len(src)<64 or not np.isfinite(src).all():raise InspectorError('finite mono source required')
     if checkpoint:checkpoint()
@@ -64,44 +64,104 @@ def build_analysis(source,sample_rate_hz,controls,*,revision_seed=None,before_id
     lower=harmonic_spectrum('compat.root',root,partials=8);upper_spec=harmonic_spectrum('compat.upper',upper,partials=8)
     curve=dissonance_curve(lower,upper_spec,IntervalGrid(0.,1200.,20.))
     snapshot=snapshot_from_chordness(result,src,result.audio,sample_rate_hz,controls=controls,compatibility=compatibility_rows(curve),revision_seed=revision_seed,before_identity=before_identity)
+    if source_binding is not None:
+        provenance=deepcopy(source_binding)
+        snapshot=replace(snapshot,expert={**snapshot.expert,'source_binding':provenance})
     if progress:progress(1.)
     return {'source':src.copy(),'after':np.asarray(result.audio,dtype=np.float32).copy(),'snapshot':snapshot}
 
 def _wav(audio,sample_rate_hz):
     buffer=io.BytesIO();wavfile.write(buffer,sample_rate_hz,np.asarray(audio,dtype=np.float32));return buffer.getvalue()
 
+def _rms(audio):
+    a=np.asarray(audio,dtype=np.float64);return float(np.sqrt(np.mean(a*a))) if len(a) else 0.
+
 class InspectorService:
-    def __init__(self,sample_rate_hz=12000):
-        self.sample_rate_hz=int(sample_rate_hz);self.scheduler=JobScheduler(SchedulerLimits(interactive_workers=1,background_workers=1,max_queued_jobs=8,max_background_queued_jobs=4,max_history_jobs=16))
-        self._lock=threading.RLock();self._jobs={};self._published=set();self._history=[];self._frozen=None;self._source_seed='initial'
-        initial=build_analysis(fixture_source(self.sample_rate_hz),self.sample_rate_hz,DEFAULT_CONTROLS,revision_seed=self._source_seed)
-        self._source=np.asarray(initial['source'],dtype=np.float32);self._after=np.asarray(initial['after'],dtype=np.float32);self._snapshot=initial['snapshot'];self._working=self._snapshot.before
+    def __init__(self,sample_rate_hz=12000,*,demo_fixture=False):
+        if type(sample_rate_hz)is not int or not 8000<=sample_rate_hz<=192000:raise InspectorError('sample rate out of range')
+        self.sample_rate_hz=sample_rate_hz;self.scheduler=JobScheduler(SchedulerLimits(interactive_workers=1,background_workers=1,max_queued_jobs=8,max_background_queued_jobs=4,max_history_jobs=16))
+        self._lock=threading.RLock();self._jobs={};self._published=set();self._history=[];self._frozen=None
+        self._source=None;self._source_bytes=None;self._source_identity=None;self._source_binding=None;self._after=None;self._snapshot=None;self._working=None
+        if demo_fixture:self.bind_demo_fixture(0,analyse=True)
     def close(self):self.scheduler.shutdown(cancel=True,timeout=5)
-    def _stale(self):return self._snapshot.before.revision_id!=self.source_identity.revision_id
+    def _stale(self):return self._snapshot is not None and self._snapshot.before.revision_id!=self.source_identity.revision_id
     @property
-    def source_identity(self):return slot_identity('A',self._source,self.sample_rate_hz,'Before · source',revision_seed=self._source_seed)
+    def source_identity(self):
+        if self._source_identity is None:raise InspectorError('no inspector source is bound')
+        return self._source_identity
     @property
-    def after_identity(self):return self._snapshot.after
+    def after_identity(self):
+        if self._snapshot is None:raise InspectorError('no analysed B slot is available')
+        return self._snapshot.after
+    def _clear_analysis_for_source(self,source,source_bytes,identity,binding,sample_rate_hz):
+        self.sample_rate_hz=int(sample_rate_hz);self._source=source;self._source_bytes=source_bytes;self._source_identity=identity;self._source_binding=deepcopy(binding)
+        self._after=None;self._snapshot=None;self._working=identity;self._history.clear();self._frozen=None
+    def bind_artifact(self,artifact):
+        if not isinstance(artifact,RenderArtifact):raise InspectorError('RenderArtifact required for production inspector binding')
+        asset=artifact.asset
+        if asset.get('identity_domain')!='pcm-f32le-interleaved-v1':raise InspectorError('inspector requires pcm-f32le-interleaved-v1 audio')
+        if asset.get('channels')!=1 or asset.get('channel_layout')!='mono':raise InspectorError('inspector requires mono render audio')
+        frames=asset.get('frame_count');sample_rate=asset.get('sample_rate_hz')
+        if type(frames)is not int or frames<64:raise InspectorError('inspector source must contain at least 64 frames')
+        if type(sample_rate)is not int or not 8000<=sample_rate<=192000:raise InspectorError('sample rate out of range')
+        content=hashlib.sha256(artifact.audio_bytes).hexdigest()
+        if content!=asset.get('content_sha256'):raise InspectorError('render artifact content identity mismatch')
+        source=np.frombuffer(artifact.audio_bytes,dtype='<f4')
+        if len(source)!=frames or not np.isfinite(source).all():raise InspectorError('finite mono render audio required')
+        binding={'kind':'render-artifact-v1','revision_id':artifact.revision_id,'recipe_sha256':artifact.recipe_sha256,'cache_key':artifact.cache_key,
+                 'product':artifact.product,'content_sha256':content,'identity_domain':asset['identity_domain'],'sample_rate_hz':sample_rate,
+                 'channels':1,'frame_count':frames}
+        identity=SlotIdentity('A',artifact.revision_id,content,sample_rate,frames,'Before · bound render artifact',_rms(source),float(np.max(np.abs(source),initial=0.)))
+        with self._lock:
+            self._clear_analysis_for_source(source,artifact.audio_bytes,identity,binding,sample_rate)
+            return self.state()
+    def bind_demo_fixture(self,variant=0,*,analyse=True):
+        """Explicit deterministic demo/test source. Production callers should bind RenderArtifact."""
+        if type(variant)is not int:raise InspectorError('fixture variant must be an integer')
+        source=fixture_source(self.sample_rate_hz,variant=variant);seed='initial' if variant==0 else f'test-{variant}'
+        if analyse:
+            initial=build_analysis(source,self.sample_rate_hz,DEFAULT_CONTROLS,revision_seed=seed)
+            source=np.asarray(initial['source'],dtype=np.float32);source_bytes=source.astype('<f4',copy=False).tobytes();identity=initial['snapshot'].before
+            binding={'kind':'demo-fixture','variant':variant,'revision_id':identity.revision_id,'content_sha256':identity.audio_sha256,'sample_rate_hz':self.sample_rate_hz,'frame_count':len(source)}
+            with self._lock:
+                self._source=np.frombuffer(source_bytes,dtype='<f4');self._source_bytes=source_bytes;self._source_identity=identity;self._source_binding=binding
+                self._after=np.asarray(initial['after'],dtype=np.float32);self._snapshot=initial['snapshot'];self._working=identity;self._history.clear();self._frozen=None
+                return self.state()
+        source_bytes=source.astype('<f4',copy=False).tobytes();source_view=np.frombuffer(source_bytes,dtype='<f4');identity=slot_identity('A',source_view,self.sample_rate_hz,'Before · source',revision_seed=seed)
+        binding={'kind':'demo-fixture','variant':variant,'revision_id':identity.revision_id,'content_sha256':identity.audio_sha256,'sample_rate_hz':self.sample_rate_hz,'frame_count':len(source_view)}
+        with self._lock:
+            self._clear_analysis_for_source(source_view,source_bytes,identity,binding,self.sample_rate_hz)
+            return self.state()
     def compensation(self):
+        if self._source is None or self._after is None:return None
         a=np.asarray(self._source,dtype=np.float64);b=np.asarray(self._after,dtype=np.float64);ra=float(np.sqrt(np.mean(a*a)));rb=float(np.sqrt(np.mean(b*b)));raw=ra/max(rb,1e-12);peak=float(np.max(np.abs(b),initial=0.));safe=(.98/max(peak,1e-12)) if peak>0 else raw;gain=min(raw,safe)
         return {'gain_linear':float(gain),'gain_db':float(20*math.log10(max(gain,1e-12))),'target_rms':ra,'source_rms':rb,'peak_limited':bool(safe<raw)}
     def state(self):
         with self._lock:
-            return {'method':'zg.harmonic_comb_inspector.v1','slots':{'A':self.source_identity.to_dict(),'B':self.after_identity.to_dict()},'snapshot':self._snapshot.to_dict(),
-                    'snapshot_stale':self._stale(),'frozen_snapshot_id':None if self._frozen is None else self._frozen.snapshot_id,
-                    'working':self._working.to_dict(),'undo_depth':len(self._history),'compensation':self.compensation(),
-                    'policy':{'analysis_auto_apply':False,'apply_requires_explicit_action':True,'stale_result_rejected':True,'normalization':'none'}}
+            policy={'analysis_auto_apply':False,'apply_requires_explicit_action':True,'stale_result_rejected':True,'normalization':'none','production_source_requires_artifact_binding':True,'fixture_requires_explicit_demo':True}
+            if self._source_identity is None:
+                return {'method':'zg.harmonic_comb_inspector.v1','bound':False,'source_binding':None,'slots':{'A':None,'B':None},'snapshot':None,'snapshot_stale':False,
+                        'frozen_snapshot_id':None,'working':None,'undo_depth':0,'compensation':None,'policy':policy}
+            return {'method':'zg.harmonic_comb_inspector.v1','bound':True,'source_binding':deepcopy(self._source_binding),
+                    'slots':{'A':self.source_identity.to_dict(),'B':None if self._snapshot is None else self.after_identity.to_dict()},
+                    'snapshot':None if self._snapshot is None else self._snapshot.to_dict(),'snapshot_stale':self._stale(),
+                    'frozen_snapshot_id':None if self._frozen is None else self._frozen.snapshot_id,'working':self._working.to_dict(),
+                    'undo_depth':len(self._history),'compensation':self.compensation(),'policy':policy}
     def audio(self,slot,*,compensated=False):
         if slot not in ('A','B'):raise InspectorError('slot must be A or B')
         with self._lock:
+            if self._source is None:raise InspectorError('no inspector source is bound')
+            if slot=='B' and self._after is None:raise InspectorError('no analysed B slot is available')
             audio=self._source if slot=='A' else self._after
             if compensated and slot=='B':audio=np.asarray(audio,dtype=np.float64)*self.compensation()['gain_linear']
             return _wav(audio,self.sample_rate_hz),self.source_identity.revision_id if slot=='A' else self.after_identity.revision_id
     def submit_analysis(self,controls):
         controls=validate_controls(controls)
-        with self._lock:source=self._source.copy();expected=self.source_identity
+        with self._lock:
+            if self._source is None:raise InspectorError('bind an immutable render artifact before analysis')
+            source=self._source.copy();expected=self.source_identity;sample_rate=self.sample_rate_hz;binding=deepcopy(self._source_binding)
         def execute(ctx):
-            ctx.check_cancelled();return build_analysis(source,self.sample_rate_hz,controls,before_identity=expected,checkpoint=ctx.check_cancelled,progress=ctx.progress)
+            ctx.check_cancelled();return build_analysis(source,sample_rate,controls,before_identity=expected,source_binding=binding,checkpoint=ctx.check_cancelled,progress=ctx.progress)
         jid=self.scheduler.submit(JobClass.ANALYSIS,expected.revision_id,execute,estimated_memory_bytes=max(8*1024*1024,int(source.nbytes*48)))
         with self._lock:self._jobs[jid]={'expected_revision_id':expected.revision_id,'controls':deepcopy(controls)}
         return {'job_id':jid,'expected_revision_id':expected.revision_id,'controls':controls}
@@ -119,12 +179,12 @@ class InspectorService:
             return {**response,'published':True,'stale':False,'state_payload':self.state()}
     def freeze(self,snapshot_id):
         with self._lock:
-            if snapshot_id!=self._snapshot.snapshot_id:raise InspectorError('snapshot is not current')
+            if self._snapshot is None or snapshot_id!=self._snapshot.snapshot_id:raise InspectorError('snapshot is not current')
             if self._stale():raise InspectorError('cannot freeze stale snapshot')
             self._frozen=self._snapshot;return {'frozen_snapshot_id':snapshot_id}
     def apply(self,snapshot_id):
         with self._lock:
-            candidate=self._snapshot if snapshot_id==self._snapshot.snapshot_id else self._frozen if self._frozen and snapshot_id==self._frozen.snapshot_id else None
+            candidate=self._snapshot if self._snapshot is not None and snapshot_id==self._snapshot.snapshot_id else self._frozen if self._frozen and snapshot_id==self._frozen.snapshot_id else None
             if candidate is None:raise InspectorError('unknown snapshot')
             if candidate.before.revision_id!=self.source_identity.revision_id:raise InspectorError('cannot apply transform to different source revision')
             self._history.append(self._working);self._working=candidate.after
@@ -134,7 +194,5 @@ class InspectorService:
             if not self._history:raise InspectorError('nothing to undo')
             self._working=self._history.pop();return {'working':self._working.to_dict(),'undo_depth':len(self._history)}
     def replace_source_for_test(self,variant=1):
-        """Test-only direct rebinding hook: production HTTP exposes no implicit source replacement."""
-        with self._lock:
-            self._source=fixture_source(self.sample_rate_hz,variant=int(variant));self._source_seed=f'test-{int(variant)}';self._working=self.source_identity;self._history.clear()
-            return self.source_identity
+        """Test-only explicit fixture rebinding hook; production uses bind_artifact()."""
+        return self.bind_demo_fixture(int(variant),analyse=False)['slots']['A']
