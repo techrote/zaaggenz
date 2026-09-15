@@ -67,8 +67,8 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       fail-fast: false
-      # Keep dispatch concurrency below the installation API-rate budget. Each
-      # watcher polls Actions state, and several repair PRs can be active at once.
+      # Bound installation-token pressure across repair PRs. The dispatch command
+      # already returns the exact run URL, so no run-list discovery polling is needed.
       max-parallel: 2
       matrix:
         include: ${{ fromJSON(needs.impact.outputs.matrix) }}
@@ -86,37 +86,20 @@ jobs:
         run: |
           set -euo pipefail
 
-          latest_for_head() {
-            gh run list \
-              --repo "$GITHUB_REPOSITORY" \
-              --workflow "$WORKFLOW" \
-              --branch "$REF" \
-              --event workflow_dispatch \
-              --limit 30 \
-              --json databaseId,headSha,createdAt \
-            | python -c 'import json, os, sys; rows=[r for r in json.load(sys.stdin) if r.get("headSha") == os.environ["HEAD_SHA"]]; rows.sort(key=lambda r: r.get("createdAt", ""), reverse=True); print(rows[0]["databaseId"] if rows else "")'
-          }
+          echo "Dispatching $WORKFLOW ($STABLE_ID) at $REF / $HEAD_SHA"
+          dispatch_output="$(gh workflow run "$WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$REF" 2>&1)"
+          printf '%s\n' "$dispatch_output"
 
-          before_id="$(latest_for_head)"
-          echo "Dispatching $WORKFLOW ($STABLE_ID) at $REF / $HEAD_SHA; previous run: ${before_id:-none}"
-          gh workflow run "$WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$REF"
-
-          run_id=""
-          for _ in $(seq 1 60); do
-            candidate="$(latest_for_head)"
-            if [ -n "$candidate" ] && [ "$candidate" != "$before_id" ]; then
-              run_id="$candidate"
-              break
-            fi
-            sleep 2
-          done
-          if [ -z "$run_id" ]; then
-            echo "Timed out locating dispatched run for $WORKFLOW at $HEAD_SHA" >&2
+          # Current gh emits the created run URL directly. Consume that authoritative
+          # response instead of hammering the Actions list API to rediscover the run.
+          run_id="$(printf '%s\n' "$dispatch_output" | sed -nE 's#^.*[/]actions[/]runs[/]([0-9]+).*$#\1#p' | tail -n 1)"
+          if ! [[ "$run_id" =~ ^[0-9]+$ ]]; then
+            echo "Dispatch succeeded but no Actions run id was present in gh output for $WORKFLOW" >&2
             exit 1
           fi
 
           echo "Waiting for run $run_id with bounded API polling"
-          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --interval 30 --exit-status
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --interval 60 --exit-status
 
   fork-policy:
     needs: impact
