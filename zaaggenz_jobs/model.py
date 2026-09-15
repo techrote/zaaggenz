@@ -97,8 +97,6 @@ def _json_snapshot(value,name='scopes'):
 
 
 def _json_restore(payload):
-    # json.loads always creates fresh mutable containers, so callers cannot obtain
-    # a reference to the validated canonical snapshot held by RenderArtifact.
     return json.loads(payload.decode('utf-8'))
 
 
@@ -117,9 +115,6 @@ class RenderArtifact:
         if product not in PRODUCTS: raise JobError('unknown render product')
         if not isinstance(audio_bytes,bytes): raise JobError('audio payload must be immutable bytes')
         if len(audio_bytes)>512*1024*1024: raise JobError('audio payload exceeds artifact bound')
-        # Snapshot first, then validate exactly the bytes-backed metadata that the
-        # artifact will retain. Caller-owned dictionaries are never authoritative
-        # after this point.
         asset_json=_json_snapshot(asset,'asset');scopes_json=_json_snapshot(scopes,'scopes')
         canonical_asset=_json_restore(asset_json)
         try: validate(canonical_asset,'AudioAssetRef')
@@ -140,7 +135,6 @@ class RenderArtifact:
     def scopes(self): return _json_restore(self._scopes_json)
     @property
     def cache_bytes(self):
-        # Count actual immutable audio plus serialized public metadata rather than an arbitrary slab estimate.
         return len(self.audio_bytes)+len(json.dumps(self.metadata(),ensure_ascii=False,allow_nan=False,sort_keys=True,separators=(',',':')).encode('utf-8'))
     def metadata(self):
         return dict(revision_id=self.revision_id,recipe_sha256=self.recipe_sha256,product=self.product,
@@ -164,12 +158,6 @@ def atomic_publish_bytes(path,payload,token=None):
 
 
 def numeric_thread_limit(limit=1):
-    """Apply an explicit process-wide native threadpool cap when threadpoolctl is installed."""
-    if type(limit)is not int or not 1<=limit<=8: raise JobError('numeric thread limit must be 1..8')
-    for name in ('OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','NUMEXPR_NUM_THREADS','VECLIB_MAXIMUM_THREADS'):
-        os.environ[name]=str(limit)
-    try:
-        from threadpoolctl import threadpool_limits
-    except ImportError:
-        return None
-    return threadpool_limits(limits=limit)
+    """Compatibility entry point for the shared process numerical runtime."""
+    from .numeric_runtime import numeric_thread_limit as acquire
+    return acquire(limit)
