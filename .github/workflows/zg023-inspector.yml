@@ -4,11 +4,17 @@ on:
     paths:
       - 'zaaggenz_inspector/**'
       - 'zaaggenz_timeline/**'
+      - 'zaaggenz_listening/**'
+      - 'zaaggenz_vocal/**'
+      - 'zaaggenz_runtime/**'
       - 'web/inspector/**'
       - 'tests/inspector/**'
       - 'tests/timeline/**'
+      - 'tests/runtime/**'
       - 'tools/inspector_fixture_report.py'
       - 'docs/analysis/ZG023_INSPECTOR.md'
+      - 'docs/runtime/**'
+      - 'docs/zaaggenz/briefs/ARCHITECTURE.md'
       - '.github/workflows/zg023-inspector.yml'
   workflow_dispatch:
 permissions:
@@ -24,7 +30,7 @@ jobs:
           - os: windows-latest
             pythonpath: 'app;.'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 35
+    timeout-minutes: 40
     env:
       PYTHONUTF8: '1'
       OPENBLAS_NUM_THREADS: '1'
@@ -63,8 +69,12 @@ jobs:
           python -m unittest discover -s tests/tuning -v
       - name: Timeline renderer and model regression
         run: python -m unittest discover -s tests/timeline -p 'test_*.py' -v
+      - name: Unified runtime ownership, capability, staleness and shutdown regressions
+        run: python -m unittest discover -s tests/runtime -p 'test_*.py' -v
       - name: Real Chromium Compose render binding, A/B workflow and stale gate
         run: python tests/inspector/browser.py --out inspector-browser --sample-rate 12000
+      - name: Real Chromium unified Compose/Research route and identity flow
+        run: python tests/runtime/browser.py --out runtime-browser --sample-rate 12000
       - name: Explicit reduced-rate synthetic fixture evidence
         run: python tools/inspector_fixture_report.py --sample-rate 12000 --out inspector-evidence-12k.json
       - uses: actions/upload-artifact@v4
@@ -73,6 +83,7 @@ jobs:
           name: zg023-inspector-${{ matrix.os }}
           path: |
             inspector-browser/
+            runtime-browser/
             inspector-evidence-12k.json
   fullrate:
     runs-on: ubuntu-latest
