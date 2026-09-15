@@ -54,6 +54,11 @@ class CacheTests(unittest.TestCase):
         return {'kind':'AudioAssetRef','version':'1.0.0','content_sha256':hashlib.sha256(payload).hexdigest(),
         'identity_domain':'encoded-file-bytes-v1','sample_rate_hz':48000,'channels':1,'channel_layout':'mono','frame_count':1,
         'level_domain':'post_master','sample_policy':'unclamped_float'}
+    def pcm_asset(self,payload,frame_count,channels=1):
+        return {'kind':'AudioAssetRef','version':'1.0.0','content_sha256':hashlib.sha256(payload).hexdigest(),
+        'identity_domain':'pcm-f32le-interleaved-v1','sample_rate_hz':48000,'channels':channels,
+        'channel_layout':'mono' if channels==1 else 'stereo-lr','frame_count':frame_count,
+        'level_domain':'post_master','sample_policy':'unclamped_float'}
     def test_key_changes_with_recipe_engine_product(self):
         r='1'*64;e='2'*64
         self.assertEqual(cache_key(r,e,'synth'),cache_key(r,e,'synth'))
@@ -69,10 +74,77 @@ class CacheTests(unittest.TestCase):
             self.assertLessEqual(c.bytes_used,6);self.assertIsNone(c.get(k1));self.assertEqual(c.get(k2),b'efgh')
             (Path(td)/(k2+'.bin')).write_bytes(b'BAD!')
             with self.assertRaises(ProjectError):c.get(k2)
+    def test_encoded_asset_roundtrip_and_reopen(self):
+        with tempfile.TemporaryDirectory() as td:
+            payload=b'encoded-audio';key='a'*64;a=self.asset(payload)
+            c=ArtifactCache(td,100);c.put(key,payload,a)
+            self.assertEqual(c.get(key),payload)
+            reopened=ArtifactCache(td,100)
+            self.assertEqual(reopened.get(key),payload)
+            self.assertEqual(reopened.index['entries'][key]['blob_sha256'],a['content_sha256'])
     def test_asset_hash_mismatch(self):
         with tempfile.TemporaryDirectory() as td:
             c=ArtifactCache(td,100);a=self.asset(b'a')
             with self.assertRaises(ProjectError):c.put('a'*64,b'b',a)
+    def test_pcm_asset_identity_shape_and_reopen(self):
+        mono=np.asarray([0.25,-0.5],dtype='<f4').tobytes()
+        stereo=np.asarray([[0.25,-0.25],[0.5,-0.5]],dtype='<f4').tobytes()
+        with tempfile.TemporaryDirectory() as td:
+            c=ArtifactCache(td,100)
+            c.put('a'*64,mono,self.pcm_asset(mono,2,1))
+            c.put('b'*64,stereo,self.pcm_asset(stereo,2,2))
+            self.assertEqual(c.get('a'*64),mono);self.assertEqual(c.get('b'*64),stereo)
+            reopened=ArtifactCache(td,100)
+            self.assertEqual(reopened.get('a'*64),mono);self.assertEqual(reopened.get('b'*64),stereo)
+    def test_zero_frame_pcm_identity_is_exact(self):
+        with tempfile.TemporaryDirectory() as td:
+            c=ArtifactCache(td,100);a=self.pcm_asset(b'',0,1);c.put('a'*64,b'',a)
+            self.assertEqual(c.get('a'*64),b'')
+    def test_pcm_asset_hash_mismatch_fails_before_publication(self):
+        good=np.asarray([0.25],dtype='<f4').tobytes();bad=np.asarray([0.5],dtype='<f4').tobytes();key='a'*64
+        with tempfile.TemporaryDirectory() as td:
+            c=ArtifactCache(td,100);a=self.pcm_asset(good,1,1)
+            with self.assertRaises(ProjectError):c.put(key,bad,a)
+            self.assertFalse((Path(td)/(key+'.bin')).exists());self.assertNotIn(key,c.index['entries'])
+    def test_pcm_length_mismatch_fails_before_publication(self):
+        one=np.asarray([0.25],dtype='<f4').tobytes();two=np.asarray([0.25,0.5],dtype='<f4').tobytes()
+        with tempfile.TemporaryDirectory() as td:
+            c=ArtifactCache(td,100)
+            for suffix,payload,frames in (('a',one,2),('b',two,1)):
+                key=suffix*64
+                with self.subTest(payload_bytes=len(payload),frames=frames):
+                    with self.assertRaises(ProjectError):c.put(key,payload,self.pcm_asset(payload,frames,1))
+                    self.assertFalse((Path(td)/(key+'.bin')).exists());self.assertNotIn(key,c.index['entries'])
+    def test_rejected_overwrite_preserves_verified_entry(self):
+        old=np.asarray([0.25],dtype='<f4').tobytes();new=np.asarray([0.5],dtype='<f4').tobytes();key='a'*64
+        with tempfile.TemporaryDirectory() as td:
+            c=ArtifactCache(td,100);old_asset=self.pcm_asset(old,1,1);c.put(key,old,old_asset)
+            with self.assertRaises(ProjectError):c.put(key,new,old_asset)
+            self.assertEqual(c.get(key),old);self.assertEqual(c.index['entries'][key]['asset'],old_asset)
+    def test_prefixed_false_declared_identity_fails_on_reopen(self):
+        pcm=np.asarray([0.25,-0.5],dtype='<f4').tobytes();key='a'*64
+        with tempfile.TemporaryDirectory() as td:
+            c=ArtifactCache(td,100);c.put(key,pcm,self.pcm_asset(pcm,2,1))
+            index_path=Path(td,'index.json');d=json.loads(index_path.read_text(encoding='utf-8'))
+            d['entries'][key]['asset']['content_sha256']='0'*64
+            index_path.write_text(json.dumps(d),encoding='utf-8')
+            with self.assertRaises(ProjectError):ArtifactCache(td,100)
+    def test_cache_index_private_and_declared_hash_disagreement_fails_closed(self):
+        payload=b'encoded-audio';key='a'*64
+        with tempfile.TemporaryDirectory() as td:
+            c=ArtifactCache(td,100);c.put(key,payload,self.asset(payload))
+            index_path=Path(td,'index.json');d=json.loads(index_path.read_text(encoding='utf-8'))
+            d['entries'][key]['blob_sha256']='0'*64
+            index_path.write_text(json.dumps(d),encoding='utf-8')
+            with self.assertRaises(ProjectError):ArtifactCache(td,100)
+    def test_pcm_index_shape_mismatch_fails_on_load(self):
+        pcm=np.asarray([0.25,-0.5],dtype='<f4').tobytes();key='a'*64
+        with tempfile.TemporaryDirectory() as td:
+            c=ArtifactCache(td,100);c.put(key,pcm,self.pcm_asset(pcm,2,1))
+            index_path=Path(td,'index.json');d=json.loads(index_path.read_text(encoding='utf-8'))
+            d['entries'][key]['asset']['frame_count']=1
+            index_path.write_text(json.dumps(d),encoding='utf-8')
+            with self.assertRaises(ProjectError):ArtifactCache(td,100)
     def test_put_owns_defensive_asset_copy(self):
         with tempfile.TemporaryDirectory() as td:
             c=ArtifactCache(td,100);a=self.asset(b'a');c.put('a'*64,b'a',a);a['frame_count']=999
