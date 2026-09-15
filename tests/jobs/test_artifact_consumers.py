@@ -23,7 +23,7 @@ class ArtifactConsumerSnapshotTests(unittest.TestCase):
         exposed_asset=a.asset;exposed_scopes=a.scopes
         exposed_asset['content_sha256']='0'*64;exposed_asset['frame_count']=999
         exposed_scopes['waveform'].append(99);exposed_scopes['region']['end_frame']=999
-        ticket=RequestTicket('preview',1,R,None,'dedupe',True)
+        ticket=RequestTicket('preview',1,R,None,'dedupe',True,Q,K,'preview')
         result=RenderCoordinator(None)._accepted(ticket,a)
         self.assertTrue(result['accepted'])
         self.assertEqual(result['artifact'],expected)
