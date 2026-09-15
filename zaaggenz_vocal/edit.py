@@ -8,7 +8,7 @@ from zaaggenz_contracts import digest
 from zaaggenz_contracts.legacy import envelope
 from zaaggenz_contracts.model import fraction
 from zaaggenz_contracts.music import beat_to_sample,sample_to_beat
-from zaaggenz_melody import note_event,rest_event,make_phrase_plan,make_melodic_recipe
+from zaaggenz_melody import note_event,rest_event,make_phrase_plan,transform_melodic_recipe
 from zaaggenz_project import Project
 from zaaggenz_timeline import TimelineDocument,default_document
 from zaaggenz_tuning import analyse_frequency,tuning_from_spec,ratio_to_cents
@@ -133,6 +133,11 @@ def np_clip(v,lo,hi):return lo if v<lo else hi if v>hi else v
 def make_render_recipe(compilation):
     if not isinstance(compilation,VocalCompilation):raise VocalCaptureError('VocalCompilation required')
     base=compilation.timeline.to_dict();source=Project.from_document(base['project']).head_recipe.to_dict()
-    recipe=make_melodic_recipe(source['source']['params'],source['time_map'],source['tuning'],compilation.phrase,quality='standard',tail_mode='truncate',master_gain_db=base['master_gain_db'])
-    if recipe.to_dict()['source']!=source['source']:raise AssertionError('vocal compilation changed protected source')
+    try:recipe=transform_melodic_recipe(source,compilation.phrase,master_gain_db=base['master_gain_db'])
+    except Exception as exc:raise VocalCaptureError('base recipe is incompatible with source-preserving vocal rendering: '+str(exc)) from exc
+    rendered=recipe.to_dict()
+    if rendered['source']!=source['source']:raise AssertionError('vocal compilation changed protected source')
+    if source['render_mode']=='synth' and source['arrangement'] is None and source['reversebass'] is None:
+        for key in ('nodes','output_node','sculpt'):
+            if rendered[key]!=source[key]:raise AssertionError('vocal compilation changed protected base topology')
     return recipe

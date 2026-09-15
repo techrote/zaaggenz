@@ -40,3 +40,77 @@ def make_melodic_recipe(synth_params,time_map,tuning,phrase,*,mode=NoteMode.SOUR
     d['tail']=dict(mode=tail_mode,maximum_samples=tail_maximum_samples);d['quality']=quality;d['output']['master_gain_db']=_number(master_gain_db,'master_gain_db')
     try:return Contract(d)
     except Exception as exc:raise MelodyError('melodic recipe violates shared contract') from exc
+
+def _check_graph_topology(d):
+    """Preflight graph identity/connectivity without executing user audio."""
+    nodes=d['nodes'];source=d['source']['id'];output=d['output_node']
+    if not nodes:
+        if output!=source:raise MelodyError('base recipe has an output node without an explicit DSP graph')
+        return
+    by={n['id']:n for n in nodes}
+    if len(by)!=len(nodes) or source in by:raise MelodyError('base recipe has invalid DSP node identity')
+    if output not in by:raise MelodyError('base recipe DSP output node is missing')
+    all_ids=set(by)|{source}
+    from zaaggenz_contracts.registry import node_definition
+    for node in nodes:
+        if node['channels']!=d['channels']:raise MelodyError('base DSP node channel count disagrees with recipe')
+        if not set(node['inputs'])<=all_ids:raise MelodyError('base recipe DSP graph has a dangling input')
+        try:definition=node_definition(node['type_id'])
+        except Exception as exc:raise MelodyError('base recipe contains an unknown DSP node type') from exc
+        if definition.get('availability')!='executable':raise MelodyError('base recipe contains a non-executable DSP node type')
+    visiting=set();done=set()
+    def visit(key):
+        if key==source or key in done:return
+        if key in visiting:raise MelodyError('base recipe DSP graph contains a cycle')
+        visiting.add(key)
+        for parent in by[key]['inputs']:visit(parent)
+        visiting.remove(key);done.add(key)
+    visit(output)
+    if done!=set(by):raise MelodyError('base recipe DSP graph contains disconnected nodes')
+
+def transform_melodic_recipe(base_recipe,phrase,*,mode=NoteMode.SOURCE_DERIVED,quality=None,tail_mode=None,master_gain_db=None):
+    """Replace only melody-owned intent while retaining compatible base render semantics.
+
+    Legacy arrangement/bass recipes are projected to their SYNTHLINE source branch; the full
+    project remains retained by TimelineDocument.  Explicit DSP topology is only inherited
+    when the base itself is an unambiguous synth recipe.  Ambiguous full-mix topology fails
+    rather than being silently rebound to the melodic branch.
+    """
+    try:mode=NoteMode(mode)
+    except ValueError as exc:raise MelodyError('unknown note render mode') from exc
+    try:
+        d=deepcopy(base_recipe.to_dict() if isinstance(base_recipe,Contract) else base_recipe);validate(d,'RenderRecipe')
+        ph=deepcopy(phrase.to_dict() if isinstance(phrase,Contract) else phrase);validate(ph,'PhrasePlan')
+    except Exception as exc:raise MelodyError('valid base RenderRecipe and PhrasePlan required') from exc
+    if d['channels']!=1:raise MelodyError('source-preserving melodic base must be mono in v1')
+    source_id=d['source']['id']
+    if ph['tuning_id']!=d['tuning']['id']:raise MelodyError('phrase tuning differs from base recipe tuning')
+    if set(ph['source_ids'])!={source_id} or any(e['source_id']!=source_id for e in ph['events']):
+        raise MelodyError('phrase source identity differs from base protected source')
+    synth_base=d['render_mode']=='synth' and d['arrangement'] is None and d['reversebass'] is None
+    if synth_base:
+        if d['sculpt'] is not None and d['nodes']:
+            raise MelodyError('base synth recipe combines legacy SCULPT and explicit DSP graph without a declared order')
+        _check_graph_topology(d)
+    else:
+        if d['nodes'] or d['output_node']!=source_id:
+            raise MelodyError('explicit DSP topology on a non-synth base has ambiguous layer ownership; migrate it to the synth branch before melody compilation')
+        # Arrangement/reversebass/legacy full-mix SCULPT remain in the retained project.  Applying
+        # them to SYNTHLINE here would create a new audible default and duplicate layer ownership.
+        d['nodes']=[];d['output_node']=source_id;d['sculpt']=None
+    d['render_mode']='synth';d['arrangement']=None;d['reversebass']=None;d['phrase']=ph;d['phase_policy']=mode.phase_policy
+    if quality is None:
+        if d['quality']=='legacy':d['quality']='standard'
+    else:
+        if quality not in ('standard','high'):raise MelodyError('melodic quality must be standard or high')
+        d['quality']=quality
+    if tail_mode is None:
+        if d['tail']['mode']=='legacy':d['tail']={'mode':'truncate','maximum_samples':0}
+    else:
+        if tail_mode not in ('preserve','truncate'):raise MelodyError('melodic tail mode must be preserve or truncate')
+        d['tail']['mode']=tail_mode
+    if d['quality'] not in ('standard','high') or d['tail']['mode'] not in ('preserve','truncate'):
+        raise MelodyError('base quality/tail policy is incompatible with melodic execution')
+    if master_gain_db is not None:d['output']['master_gain_db']=_number(master_gain_db,'master_gain_db')
+    try:return Contract(d)
+    except Exception as exc:raise MelodyError('base-preserving melodic transformation violates shared contract') from exc

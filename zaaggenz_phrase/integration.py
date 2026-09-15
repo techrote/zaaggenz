@@ -3,7 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import dataclass
 from zaaggenz_contracts import Contract
-from zaaggenz_melody import make_melodic_recipe
+from zaaggenz_melody import transform_melodic_recipe
 from zaaggenz_project import Project
 from zaaggenz_timeline import TimelineDocument, default_document
 from .model import PhraseRoleError, PhraseRolePlan
@@ -73,14 +73,20 @@ def plan_to_timeline(plan, base=None, *, sample_rate=48000):
     return timeline, expansion
 
 
-def compile_role_recipe(plan, base=None, *, sample_rate=48000, quality='standard', tail_mode='truncate'):
+def compile_role_recipe(plan, base=None, *, sample_rate=48000, quality=None, tail_mode=None):
     timeline, expansion = plan_to_timeline(plan, base, sample_rate=sample_rate)
     timeline_data = timeline.to_dict()
     source_recipe = Project.from_document(timeline_data['project']).head_recipe.to_dict()
     render_phrase = _render_phrase_for_source(expansion.phrase, source_recipe['source']['id'])
-    recipe = make_melodic_recipe(source_recipe['source']['params'], source_recipe['time_map'], source_recipe['tuning'],
-                                 render_phrase, quality=quality, tail_mode=tail_mode,
-                                 master_gain_db=timeline_data['master_gain_db'])
-    if recipe.to_dict()['source'] != source_recipe['source']:
+    try:
+        recipe = transform_melodic_recipe(source_recipe, render_phrase, quality=quality, tail_mode=tail_mode,
+                                          master_gain_db=timeline_data['master_gain_db'])
+    except Exception as exc:
+        raise PhraseRoleError('base recipe is incompatible with source-preserving role compilation: '+str(exc)) from exc
+    rendered=recipe.to_dict()
+    if rendered['source'] != source_recipe['source']:
         raise AssertionError('role compilation changed the retained protected source')
+    if source_recipe['render_mode']=='synth' and source_recipe['arrangement'] is None and source_recipe['reversebass'] is None:
+        for key in ('nodes','output_node','sculpt'):
+            if rendered[key]!=source_recipe[key]:raise AssertionError('role compilation changed protected base topology')
     return RoleRenderBundle(expansion, timeline, recipe)

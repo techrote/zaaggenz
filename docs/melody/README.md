@@ -26,9 +26,19 @@ A `PhrasePlan` event uses its rational `beat` and `duration_beats` directly. Eac
 
 Rolls are deliberately not full-length overlapping re-renders. They live in the separate `exciter` stem, use tapered source-derived slices, and are capped by both the local retrigger interval and `roll_slice_max_ms` (120 ms by default). `synthline` always retains the full main event independently of the roll layer. The renderer reports retrigger count, minimum interval and maximum slice length per event so dense-roll behaviour is auditable.
 
+## Base-recipe transformation and protected topology
+
+`transform_melodic_recipe()` is the shared compiler boundary used by the source-preserving phrase, gesture, linked-event, text-gesture and vocal-gesture workflows. It transforms the immutable project-head recipe instead of rebuilding a new recipe from source parameters. The phrase and named melodic phase policy are operation-owned; compatible pre-existing render state is not silently reset.
+
+For an unambiguous synth recipe, source identity, `TimeMap`, tuning, explicit DSP nodes and their automation, `output_node` routing, supported legacy SCULPT, channel/state policy, random state, output/clipping policy, quality and tail policy are retained exactly unless the caller explicitly owns and requests a quality, tail or timeline-master change. Preserved synth DSP executes after source-derived melodic construction and before the one declared final master/output stage. Deferred gesture timbre rows remain deferred: compilation never opportunistically binds them to existing protected nodes.
+
+A retained Compose project may instead be a full legacy `arrange`/`arrange_bass` project. Its BODY/AUX/SUB processing belongs to that retained project, while the melody branch owns SYNTHLINE/exciter. Such a base therefore keeps the accepted source-only SYNTHLINE projection rather than rebinding full-mix arrangement, reversebass or legacy SCULPT to a note stem. An explicit DSP graph attached to a non-synth base is different: its layer ownership is ambiguous, so compilation fails before publication with an actionable error. It is never stripped, flattened, bypassed or guessed. This is the narrow corrective rule required before the broader ZG-029 ownership reconciliation in issue #91.
+
+The shared transform also preflights executable graph identity, output routing, channel agreement, dangling inputs, cycles and disconnected nodes. A synth recipe that simultaneously carries legacy SCULPT and an explicit graph is rejected because no ordering contract exists for that combination. These failures are deliberate preservation barriers, not fallback paths.
+
 ## Output and jobs
 
-The renderer exposes `synthline`, `exciter` and `pre_master` stems. The recipe's final `master_gain_db` is applied once after their sum, followed only by the declared clipping policy. No upward normalisation is introduced.
+The renderer exposes `synthline`, `exciter` and `pre_master` stems. `pre_master` is after any explicitly preserved synth-owned topology and before final output gain. The recipe's final `master_gain_db` is applied exactly once, followed only by the declared clipping policy. No upward normalisation or compensating gain is introduced.
 
 `make_render_executor()` binds recipe SHA-256, project revision, melodic-render-spec identity, float32 PCM identity and waveform/event scopes into a ZG-004 `RenderArtifact`. Cancellation is checked before/after source renders and throughout event/roll construction. Long construction work therefore has cooperative cancellation points rather than only a pre/post wrapper.
 
@@ -42,10 +52,10 @@ python -m unittest discover -s tests/melody -v
 python tools/melody_fixture_report.py --out melody-report.json --audio-dir melody-listening
 ```
 
-The tests cover exact neutral source identity, tails/gates, static pitch shift, stereo antiphase, non-octave and negative degrees, tempo-change timing without accumulated drift, glide endpoints, slow/extreme-BPM roll slicing, explicit density rejection, unsupported-axis rejection, the distinct target-note path, final master gain and ZG-004 artifact binding.
+The tests cover exact neutral source identity, tails/gates, static pitch shift, stereo antiphase, non-octave and negative degrees, tempo-change timing without accumulated drift, glide endpoints, slow/extreme-BPM roll slicing, explicit density rejection, unsupported-axis rejection, the distinct target-note path, final master gain and ZG-004 artifact binding. Corrective regressions additionally cover graph/SCULPT preservation and execution, protected node automation and non-lexical output routing, zero/one/128-node graph boundaries, explicit tail ownership, immutable-head selection, all five higher-level compiler surfaces, and fail-closed ambiguous topology.
 
 The report also emits a generated-source A/B pair: source-derived versus target-note degree 7, with B RMS-matched to A and common attenuation only if headroom requires it. These files are for listening inspection; no acoustic metric is treated as proof of artistic quality.
 
 ## Compatibility boundary
 
-No existing preset, default web render, SCULPT setting or reversebass path is changed by this issue. The inherited ZG-001/ZG-002/QC workflows remain the authority for protected v1.2.1 behaviour. ZG-008 adds a new consumer for recipes containing phrase intent; the legacy thawer continues to reject such recipes rather than silently ignore them.
+No existing preset, default web render, retained Compose layer setting or reversebass path is changed by this corrective rule. Default full-project source-preserving compilation still produces the accepted source-only SYNTHLINE branch; explicit compatible synth topology is now preserved instead of being silently discarded. The inherited ZG-001/ZG-002/QC workflows remain the authority for protected v1.2.1 behaviour. The legacy thawer continues to reject recipes containing new phrase intent rather than silently ignore it.
