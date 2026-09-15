@@ -42,7 +42,11 @@ class Handler(webapp.Handler):
         path = urlparse(self.path).path
         try:
             if path == '/api/timeline/bootstrap':
-                return self._json({'document': self.server.initial_document.to_dict(), 'token': self.server.token})
+                payload = {'document': self.server.initial_document.to_dict(), 'token': self.server.token}
+                session = getattr(self.server, 'session', None)
+                if session is not None:
+                    payload['session'] = session.snapshot()
+                return self._json(payload)
             match = JOB.fullmatch(path)
             if match:
                 if match[2]:
@@ -86,15 +90,23 @@ class Handler(webapp.Handler):
             data = loads(self._read_body(limit=2_000_000))
             if path == '/api/timeline/validate':
                 exact(data, {'document'}, 'validation request')
-                return self._json(self.server.timeline.validate(data['document']))
+                result = self.server.timeline.validate(data['document'])
+                session = getattr(self.server, 'session', None)
+                if session is not None:
+                    result['session'] = session.accept_document(data['document'])
+                return self._json(result)
             if path == '/api/timeline/render':
                 exact(data, {'document', 'region', 'name'}, 'render request')
-                return self._json(self.server.timeline.submit(data['document'], data['region'], data['name']), 202)
+                result = self.server.timeline.submit(data['document'], data['region'], data['name'])
+                session = getattr(self.server, 'session', None)
+                if session is not None:
+                    result['session'] = session.accept_document(data['document'])
+                return self._json(result, 202)
             if path == '/api/timeline/cancel':
                 exact(data, {'job_id'}, 'cancellation request')
                 if type(data['job_id']) is not str or not re.fullmatch('[0-9a-f]{32}', data['job_id']):
                     raise ValueError('invalid job ID')
-                return self._json({'cancelled': self.server.timeline.scheduler.cancel(data['job_id'])})
+                return self._json({'cancelled': self.server.timeline.cancel(data['job_id'])})
             return self._error('unknown timeline route', 404)
         except (ValueError, JobError, KeyError, TypeError) as exc:
             return self._error(str(exc), 400)
