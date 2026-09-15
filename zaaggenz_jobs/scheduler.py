@@ -54,6 +54,9 @@ class JobScheduler:
         return hashlib.sha256(raw).hexdigest()[:32]
     def _hex64(self,value,name):
         if type(value)is not str or len(value)!=64 or any(c not in '0123456789abcdef' for c in value):raise JobError(f'invalid {name}')
+    def _lane_memory_capacity(self,job_class):
+        return (self.limits.max_memory_bytes if job_class.interactive else
+                self.limits.max_memory_bytes-self.limits.interactive_memory_reserve_bytes)
     def submit(self,job_class,revision_id,executor,*,estimated_memory_bytes,generation=0,dedupe_key=None):
         try:job_class=JobClass(job_class)
         except (TypeError,ValueError) as exc:raise JobError('unknown job class') from exc
@@ -61,6 +64,9 @@ class JobScheduler:
         if not callable(executor):raise JobError('executor must be callable')
         if type(estimated_memory_bytes)is not int or not 0<=estimated_memory_bytes<=self.limits.max_job_memory_bytes:raise JobError('invalid job memory estimate')
         if job_class is JobClass.PREVIEW and estimated_memory_bytes>self.limits.max_preview_memory_bytes:raise JobError('preview exceeds reserved memory bound')
+        lane='interactive' if job_class.interactive else 'background'
+        if estimated_memory_bytes>self._lane_memory_capacity(job_class):
+            raise JobError(f'job memory estimate exceeds permanent {lane} lane capacity')
         if type(generation)is not int or not 0<=generation<=2**53-1:raise JobError('invalid generation')
         if dedupe_key is not None and (type(dedupe_key)is not str or not 1<=len(dedupe_key)<=256):raise JobError('invalid dedupe key')
         with self._cv:
