@@ -6,7 +6,7 @@ import json, math
 from copy import deepcopy
 from zaaggenz_contracts import Contract,digest
 from zaaggenz_contracts.model import fraction
-from zaaggenz_melody import note_event,make_phrase_plan,make_melodic_recipe
+from zaaggenz_melody import note_event,make_phrase_plan,transform_melodic_recipe
 from zaaggenz_project import Project
 from zaaggenz_timeline import TimelineDocument,default_document
 from zaaggenz_tuning import tuning_from_spec,analyse_frequency
@@ -97,8 +97,14 @@ def plan_to_timeline(plan,variant,base=None,*,sample_rate=48000):
     if timeline.to_dict()['project']!=retained:raise AssertionError('linked timeline adapter changed retained project')
     return timeline,exp
 
-def compile_linked_recipe(plan,variant,base=None,*,sample_rate=48000,quality='standard',tail_mode='truncate'):
-    timeline,exp=plan_to_timeline(plan,variant,base,sample_rate=sample_rate);td=timeline.to_dict();source=Project.from_document(td['project']).head_recipe.to_dict();recipe=make_melodic_recipe(source['source']['params'],source['time_map'],source['tuning'],exp.phrase,quality=quality,tail_mode=tail_mode,master_gain_db=td['master_gain_db'])
-    if recipe.to_dict()['source']!=source['source']:raise AssertionError('linked compilation changed protected source')
-    if recipe.to_dict()['nodes'] or recipe.to_dict()['sculpt'] is not None:raise AssertionError('linked compilation rewrote protected topology')
+def compile_linked_recipe(plan,variant,base=None,*,sample_rate=48000,quality=None,tail_mode=None):
+    timeline,exp=plan_to_timeline(plan,variant,base,sample_rate=sample_rate);td=timeline.to_dict();source=Project.from_document(td['project']).head_recipe.to_dict()
+    try:
+        recipe=transform_melodic_recipe(source,exp.phrase,quality=quality,tail_mode=tail_mode,master_gain_db=td['master_gain_db'])
+    except Exception as exc:raise LinkedEventError('base recipe is incompatible with source-preserving linked compilation: '+str(exc)) from exc
+    rendered=recipe.to_dict()
+    if rendered['source']!=source['source']:raise AssertionError('linked compilation changed protected source')
+    if source['render_mode']=='synth' and source['arrangement'] is None and source['reversebass'] is None:
+        for key in ('nodes','output_node','sculpt'):
+            if rendered[key]!=source[key]:raise AssertionError('linked compilation changed protected base topology')
     return LinkedRenderBundle(exp,timeline,recipe)

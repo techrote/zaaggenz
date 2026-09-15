@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 from zaaggenz_contracts import Contract,digest
 from zaaggenz_contracts.model import fraction
-from zaaggenz_melody import note_event,make_phrase_plan,make_melodic_recipe
+from zaaggenz_melody import note_event,make_phrase_plan,transform_melodic_recipe
 from zaaggenz_project import Project
 from zaaggenz_timeline import TimelineDocument,default_document
 from .model import DirectionalGesture,GestureError
@@ -83,13 +83,18 @@ def compile_gesture(plan,tuning_id,*,source_id='source'):
                 'note':'Deferred rows require an explicit compatible graph/stem consumer; source-preserving render does not apply them silently.'}
     return GestureCompilation(phrase,automation,tuple(trace),plan.sha256)
 
-def compile_gesture_recipe(plan,base=None,*,sample_rate=48000,quality='standard',tail_mode='truncate'):
+def compile_gesture_recipe(plan,base=None,*,sample_rate=48000,quality=None,tail_mode=None):
     document=default_document(sample_rate) if base is None else base
     if not isinstance(document,TimelineDocument): raise GestureError('base must be a TimelineDocument')
-    project=document.to_dict()['project']; source_recipe=Project.from_document(project).head_recipe.to_dict()
+    document_data=document.to_dict();project=document_data['project'];source_recipe=Project.from_document(project).head_recipe.to_dict()
     compilation=compile_gesture(plan,source_recipe['tuning']['id'],source_id=source_recipe['source']['id'])
-    recipe=make_melodic_recipe(source_recipe['source']['params'],source_recipe['time_map'],source_recipe['tuning'],compilation.phrase,
-                               quality=quality,tail_mode=tail_mode,master_gain_db=document.to_dict()['master_gain_db'])
-    if recipe.to_dict()['source']!=source_recipe['source']: raise AssertionError('gesture compilation changed protected source')
-    if recipe.to_dict()['nodes'] or recipe.to_dict()['sculpt'] is not None: raise AssertionError('gesture compilation rewrote protected topology')
+    try:
+        recipe=transform_melodic_recipe(source_recipe,compilation.phrase,quality=quality,tail_mode=tail_mode,
+                                        master_gain_db=document_data['master_gain_db'])
+    except Exception as exc:raise GestureError('base recipe is incompatible with source-preserving gesture compilation: '+str(exc)) from exc
+    rendered=recipe.to_dict()
+    if rendered['source']!=source_recipe['source']: raise AssertionError('gesture compilation changed protected source')
+    if source_recipe['render_mode']=='synth' and source_recipe['arrangement'] is None and source_recipe['reversebass'] is None:
+        for key in ('nodes','output_node','sculpt'):
+            if rendered[key]!=source_recipe[key]:raise AssertionError('gesture compilation changed protected base topology')
     return GestureRenderBundle(compilation,recipe,project)

@@ -65,7 +65,8 @@ def _curve_value(curve,event_beat,time_map,offset_beat,default=0.):
 def _validate_consumer(recipe,spec):
     d=recipe.to_dict();validate(d,'RenderRecipe')
     if d['render_mode']!='synth' or d['arrangement'] is not None or d['reversebass'] is not None:raise MelodyError('ZG-008 consumes synth-mode melodic recipes only')
-    if d['sculpt'] is not None or d['nodes']:raise MelodyError('DSP/SCULPT must be applied by the graph consumer after melodic construction')
+    if d['sculpt'] is not None and d['nodes']:raise MelodyError('legacy SCULPT plus explicit DSP graph has no declared melodic ordering')
+    if not d['nodes'] and d['output_node']!=d['source']['id']:raise MelodyError('melodic recipe output node is not backed by a DSP graph')
     if d['source']['method']!='legacy.synth.1.2.1':raise MelodyError('unsupported source method')
     if d['phrase'] is None:raise MelodyError('melodic recipe requires PhrasePlan')
     if d['phase_policy']!=spec.mode.phase_policy:raise MelodyError('recipe phase policy disagrees with named note mode')
@@ -136,6 +137,21 @@ def _roll_density(curve,spec):
     if rounded>spec.max_roll_density:raise MelodyError('roll density exceeds declared render bound')
     return int(rounded)
 
+def _apply_preserved_topology(pre,d):
+    """Apply topology that the base-preserving compiler has kept on SYNTHLINE."""
+    if d['sculpt'] is not None:
+        if d['nodes']:raise MelodyError('legacy SCULPT plus explicit DSP graph has no declared melodic ordering')
+        try:
+            from uptempo_harmony.multiband import SpectralSculptParams,process_spectral_sculpt
+            return np.asarray(process_spectral_sculpt(np.asarray(pre,dtype=np.float32),d['time_map']['sample_rate_hz'],SpectralSculptParams(**d['sculpt'])),dtype=np.float64)
+        except (ImportError,TypeError,ValueError) as exc:raise MelodyError('preserved legacy SCULPT could not execute on melodic output') from exc
+    if d['nodes']:
+        try:
+            from zaaggenz_dsp.graph import execute_graph,GraphError
+            return np.asarray(execute_graph(pre,d['time_map']['sample_rate_hz'],d['nodes'],d['output_node'],d['source']['id'],False).output,dtype=np.float64)
+        except GraphError as exc:raise MelodyError('preserved DSP graph could not execute on melodic output: '+str(exc)) from exc
+    return np.asarray(pre,dtype=np.float64)
+
 def render_phrase(recipe,spec=MelodicRenderSpec(),*,job_context=None):
     if not isinstance(spec,MelodicRenderSpec):raise MelodyError('MelodicRenderSpec required')
     c=_contract(recipe);d=_validate_consumer(c,spec);phrase=d['phrase'];tm=d['time_map'];tuning=tuning_from_spec(d['tuning']);base_params=legacy_object('synth',d['source']['params']);gestures=_gesture_map(phrase)
@@ -180,16 +196,14 @@ def render_phrase(recipe,spec=MelodicRenderSpec(),*,job_context=None):
                             source_samples=len(wave),output_samples=len(main),pitch_ratio_start=float(ratios[0]),pitch_ratio_end=float(ratios[min(len(ratios)-1,max(0,min(gate_n-1,len(ratios)-1)))]),
                             gain_db=float(ev['gain_db']),roll_density=density,roll_retriggers=rolls,roll_slice_samples_max=roll_slice_max,roll_interval_samples_min=roll_interval_min))
     _checkpoint(job_context,.86)
-    n=max(len(synthline),len(exciter));synthline=_ensure(synthline,n);exciter=_ensure(exciter,n);pre=synthline+exciter;master_db=_finite_db(d['output']['master_gain_db']);master=pre*(10**(master_db/20));policy=d['output']['clipping']
-    if policy=='clip_at_full_scale':mix=np.clip(master,-1.,1.)
-    elif policy=='error':
-        if np.max(np.abs(master),initial=0)>1.:raise MelodyError('output clipping policy is error and phrase exceeds full scale')
-        mix=master
-    elif policy=='unbounded_float':mix=master
-    else:raise MelodyError('unsupported output clipping policy')
+    n=max(len(synthline),len(exciter));synthline=_ensure(synthline,n);exciter=_ensure(exciter,n);raw_pre=synthline+exciter;pre=_apply_preserved_topology(raw_pre,d)
+    try:
+        from zaaggenz_dsp.graph import apply_output_policy,GraphError
+        mix,master_diag=apply_output_policy(pre,d['output'])
+    except GraphError as exc:raise MelodyError('melodic final output policy failed: '+str(exc)) from exc
     diag=dict(contract_version=d['version'],render_spec_sha256=spec.sha256,recipe_sha256=c.sha256,mode=spec.mode.value,sample_rate_hz=base_params.sr,
               phrase_start_sample=phrase_start,nominal_phrase_samples=nominal,rendered_samples=n,source_samples=len(base_source),notes=sum(not r['rest'] for r in records),rests=sum(r['rest'] for r in records),
-              roll_retriggers=roll_total,pre_master_peak=float(np.max(np.abs(pre),initial=0)),master_peak=float(np.max(np.abs(mix),initial=0)),clipped_fraction=float(np.mean(np.abs(master)>1.)) if len(master) else 0.)
+              roll_retriggers=roll_total,pre_master_peak=float(np.max(np.abs(pre),initial=0)),master_peak=float(master_diag['output_peak']),clipped_fraction=float(master_diag['clip_fraction']))
     _checkpoint(job_context,.92)
     return MelodicRenderResult(np.asarray(mix,dtype=np.float32),{'synthline':np.asarray(synthline,dtype=np.float32),'exciter':np.asarray(exciter,dtype=np.float32),'pre_master':np.asarray(pre,dtype=np.float32)},tuple(records),diag)
 

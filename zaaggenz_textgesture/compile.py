@@ -6,7 +6,7 @@ import math
 from zaaggenz_contracts import Contract,digest
 from zaaggenz_contracts.legacy import envelope
 from zaaggenz_contracts.model import fraction
-from zaaggenz_melody import note_event,make_phrase_plan,make_melodic_recipe
+from zaaggenz_melody import note_event,make_phrase_plan,transform_melodic_recipe
 from zaaggenz_project import Project
 from zaaggenz_timeline import TimelineDocument,default_document
 from zaaggenz_tuning import tuning_from_spec
@@ -111,7 +111,6 @@ def compile_text(text,registry,dictionary_id,base=None,*,sample_rate=48000):
         _trajectory('roughness_fraction','ratio',points('roughness_fraction',float)),
         _trajectory('spectral_occupancy_fraction','ratio',points('spectral_occupancy_fraction',float)),
         _trajectory('spectral_width_fraction','ratio',points('spectral_width_fraction',float))]
-    landmark_beats={Fraction(0):'entry',landing_at:'landing',end:'endpoint'}
     landmarks=[{'id':'entry','beat':'0/1','kind':'entry'}]
     internal=sorted({beat for beat,_,_ in curve_points[1:-1]})
     for index,beat in enumerate(internal):landmarks.append({'id':f'turn-{index:03d}','beat':_rat(beat),'kind':'turn'})
@@ -143,7 +142,11 @@ def compile_text(text,registry,dictionary_id,base=None,*,sample_rate=48000):
 def make_render_recipe(compilation):
     if not isinstance(compilation,TextCompilation):raise TextGestureError('TextCompilation required')
     base=compilation.timeline.to_dict();source_recipe=Project.from_document(base['project']).head_recipe.to_dict()
-    recipe=make_melodic_recipe(source_recipe['source']['params'],source_recipe['time_map'],source_recipe['tuning'],compilation.phrase,
-                               quality='standard',tail_mode='truncate',master_gain_db=base['master_gain_db'])
-    if recipe.to_dict()['source']!=source_recipe['source']:raise AssertionError('text gesture changed protected source')
+    try:recipe=transform_melodic_recipe(source_recipe,compilation.phrase,master_gain_db=base['master_gain_db'])
+    except Exception as exc:raise TextGestureError('base recipe is incompatible with source-preserving text-gesture rendering: '+str(exc)) from exc
+    rendered=recipe.to_dict()
+    if rendered['source']!=source_recipe['source']:raise AssertionError('text gesture changed protected source')
+    if source_recipe['render_mode']=='synth' and source_recipe['arrangement'] is None and source_recipe['reversebass'] is None:
+        for key in ('nodes','output_node','sculpt'):
+            if rendered[key]!=source_recipe[key]:raise AssertionError('text gesture changed protected base topology')
     return recipe
