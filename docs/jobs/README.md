@@ -8,6 +8,8 @@ This layer keeps expensive offline work from stealing the only execution lane ne
 
 Defaults: 1 interactive worker, 2 background workers, 64 total queued jobs, 48 queued background jobs, 512 MiB declared running-memory budget, 64 MiB interactive reserve, 256 MiB per-job bound, 64 MiB preview bound, 96 MiB/32-entry preview result cache and one native numerical thread per BLAS/OpenMP pool. `max_history_jobs` must be large enough to hold the maximum queued work plus every worker. History pruning scans for the oldest terminal records rather than stopping behind an old running job, and pruning occurs on later admission so a just-completed result remains observable to its waiter. `threadpoolctl` applies the native limit after libraries are loaded; OMP/OpenBLAS/MKL/NumExpr/Accelerate environment limits are also set.
 
+Admission distinguishes permanent impossibility from temporary backpressure. Every accepted job must fit the immutable memory capacity of its assigned lane when that lane is otherwise idle: interactive work may use up to the process reservation subject to its existing per-job/preview bounds, while background work must fit `max_memory_bytes - interactive_memory_reserve_bytes`. A request that can never fit is rejected synchronously before queue mutation; a feasible job that is only blocked by currently running work remains queueable and starts once memory is released.
+
 Memory accounting is admission/reservation metadata, not a claim that Python can prevent an executor from allocating more than declared. Future subprocess isolation may add hard RSS enforcement if profiling justifies it.
 
 ## State and cancellation
