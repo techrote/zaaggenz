@@ -100,8 +100,8 @@ class NonFiniteFailClosedTests(unittest.TestCase):
 
     def test_huge_finite_master_ratio_math_remains_defined_or_fails(self):
         huge=np.asarray([np.finfo(np.float64).max/4,-np.finfo(np.float64).max/4])
-        result=check_master_gain(huge,huge,0)
-        self.assertTrue(np.isfinite(result['measured_ratio']));self.assertEqual(result['measured_ratio'],1.)
+        with self.assertRaisesRegex(QCError,'no unclipped samples'):
+            check_master_gain(huge,huge,0)
 
     def test_silence_and_constant_source_preservation_semantics_are_explicit(self):
         z=np.zeros(8);same=np.full(8,.25);scaled=np.full(8,.5)
