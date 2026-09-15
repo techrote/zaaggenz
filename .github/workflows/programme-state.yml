@@ -1,0 +1,40 @@
+name: Programme evidence state
+
+on:
+  pull_request:
+    paths:
+      - 'programme/task_state.json'
+      - 'programme/tasks.json'
+      - 'programme/dependency_graph.json'
+      - 'programme/issue_map.json'
+      - 'tools/validate_programme_state.py'
+      - 'tests/programme/test_programme_state.py'
+      - 'docs/zaaggenz/OVERVIEW.md'
+      - 'docs/zaaggenz/RAG_INDEX.md'
+      - 'docs/zaaggenz/briefs/AGENT_OPERATING_RULES.md'
+      - '.github/workflows/programme-state.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    env:
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Validate evidence-aware task state
+        run: python tools/validate_programme_state.py --validate
+      - name: Programme-state regression tests
+        run: python -m unittest discover -s tests/programme -p 'test_programme_state.py' -v
+      - name: Emit readiness report
+        run: python tools/validate_programme_state.py --report

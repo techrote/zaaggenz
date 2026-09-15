@@ -4,7 +4,9 @@ These instructions accompany every issue and are part of its acceptance contract
 
 ## Before coding
 
-Resolve the repository/branch and confirm the issue's actual hard dependencies from `programme/issue_map.json` plus the deployed issue map when available. A dependency counts only when its acceptance evidence is merged or an explicitly approved equivalent is recorded. Check current code and tests; historical conversation file paths are discovery clues. Do not manufacture missing source from screenshots. If baseline is absent, stop implementation at ZG-001's documented blocked state.
+Resolve the repository/branch and confirm the issue's actual hard dependencies from `programme/tasks.json` / `programme/dependency_graph.json`, then consult `programme/task_state.json` for the current evidence/gate decision on those stable IDs. `programme/issue_map.json` maps stable IDs to deployed GitHub issue numbers; GitHub open/closed state is an informational mirror only and never establishes or revokes dependency satisfaction. A dependency counts only when `task_state.json` records its accepted evidence as dependency-satisfying, or an explicitly approved equivalent is recorded and the state file is updated through review. Check current code and tests; historical conversation file paths are discovery clues. Do not manufacture missing source from screenshots. If baseline is absent, stop implementation at ZG-001's documented blocked state.
+
+When programme evidence changes, update the orthogonal state dimensions rather than overloading one status word: implementation, evidence, research, owner gate, blockers and `dependency_satisfied`. Add accepted evidence references where practical. Validate with `python tools/validate_programme_state.py --validate` and the programme-state tests. A GitHub close/reopen operation alone must never change dependency readiness.
 
 Work in a dedicated branch/worktree named for the stable ID. Obtain the listed shared integration locks before editing the relevant shared file/contract. Disjoint module prototypes may run concurrently under frozen interfaces, but no agent owns another issue's central file implicitly. Use small commits; no forced updates, destructive branch resets or silent format migrations.
 
@@ -22,7 +24,7 @@ Run the recovered baseline tests and the issue-specific fixtures. Add positive, 
 
 For experiments, freeze design and stimuli before looking at confirmatory outcomes. Never erase null data or silently redefine an endpoint. No claims of dopamine/adrenaline measurement, universal pleasure or authentic cultural reproduction without appropriate evidence.
 
-Update the issue's evidence links, new contract/ADR versions and any revised dependency. Do not mark downstream tasks ready just because an upstream issue was closed as abandoned. Hand back one clear completion record or one precise blocker; avoid large speculative parallel rewrites.
+Update the issue's evidence links, new contract/ADR versions and any revised dependency. Update `programme/task_state.json` when accepted evidence, research state, an owner gate or a true readiness blocker changes. Do not mark downstream tasks ready just because an upstream issue was closed as abandoned. Hand back one clear completion record or one precise blocker; avoid large speculative parallel rewrites.
 
 ## Definition of done
 
