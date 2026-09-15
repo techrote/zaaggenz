@@ -31,6 +31,9 @@ class NumericRuntimeLease:
     __slots__=('limit','degraded','_released')
     def __init__(self,limit,degraded):
         self.limit=limit;self.degraded=degraded;self._released=False
+    def __enter__(self): return self
+    def __exit__(self,exc_type,exc,tb):
+        self.restore_original_limits();return False
     def restore_original_limits(self):
         global _LIMIT,_OWNERS,_ORIGINAL_ENV,_NATIVE_GUARD,_DEGRADED
         with _LOCK:
