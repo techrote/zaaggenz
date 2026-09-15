@@ -1,0 +1,50 @@
+{
+  "format_version": 1,
+  "description": "Audit/dispatch ownership for dependency-aware GitHub Actions. Stable ZG IDs remain authoritative; this file only maps accepted workflow files to those IDs and records cross-cutting source owners that are not safely inferable from workflow-local paths.",
+  "workflow_owners": {
+    "zg001-recovery.yml": "ZG-001",
+    "zg002-contracts.yml": "ZG-002",
+    "zg003-project.yml": "ZG-003",
+    "zg004-jobs.yml": "ZG-004",
+    "zg005-qc.yml": "ZG-005",
+    "zg006-reference.yml": "ZG-006",
+    "zg007-tuning.yml": "ZG-007",
+    "zg008-melody.yml": "ZG-008",
+    "zg009-timeline.yml": "ZG-009",
+    "zg010-harmony.yml": "ZG-010",
+    "zg011-grammar.yml": "ZG-011",
+    "zg012-analysis.yml": "ZG-012",
+    "zg013-components.yml": "ZG-013",
+    "zg014-descriptors.yml": "ZG-014",
+    "zg015-listening.yml": "ZG-015",
+    "zg016-dsp.yml": "ZG-016",
+    "zg017-spectral.yml": "ZG-017",
+    "zg018-chordness.yml": "ZG-018",
+    "zg019-placement.yml": "ZG-019",
+    "zg020-adaptive.yml": "ZG-020",
+    "zg021-band-selective.yml": "ZG-021",
+    "zg022-zaag-families.yml": "ZG-022",
+    "zg023-inspector.yml": "ZG-023",
+    "zg024a-lab.yml": "ZG-024",
+    "zg024b-strategies.yml": "ZG-024",
+    "zg025-phrase.yml": "ZG-025",
+    "zg026-meter.yml": "ZG-026",
+    "zg027-gesture.yml": "ZG-027",
+    "zg028-linked.yml": "ZG-028",
+    "zg031-textgesture.yml": "ZG-031",
+    "zg032-vocal.yml": "ZG-032"
+  },
+  "special_path_owners": {
+    "baseline/recovered_source/**": ["ZG-001"],
+    "requirements-contracts.txt": ["ZG-002"],
+    "requirements-jobs.txt": ["ZG-004"],
+    "web/jobs_transport.mjs": ["ZG-004"]
+  },
+  "validation_only_paths": [
+    "programme/dependency_graph.json",
+    "programme/ci_reverse_dependencies.json",
+    "tools/ci_reverse_dependencies.py",
+    "tests/programme/test_ci_reverse_dependencies.py",
+    ".github/workflows/zg000-ci-impact.yml"
+  ]
+}
