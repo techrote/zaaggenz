@@ -111,7 +111,7 @@ def retune_components(analysis,request,*,checkpoint=None,progress=None):
     if not changed:
         audio=exact_bypass(analysis.source);sin=np.asarray(analysis.sinusoidal,dtype=np.float32).copy()
     else:
-        raw=reconstruct_components(bundle);mask=np.asarray(analysis.transient_mask,dtype=np.float32)
+        raw=reconstruct_components(bundle,source=analysis.source,sample_rate_hz=analysis.sample_rate_hz);mask=np.asarray(analysis.transient_mask,dtype=np.float32)
         sin=np.asarray(raw,dtype=np.float32)*(1-mask if np.asarray(raw).ndim==1 else (1-mask[:,None]))
         audio=np.asarray(sin,dtype=np.float32)+np.asarray(analysis.transient,dtype=np.float32)+np.asarray(analysis.residual,dtype=np.float32)
     if progress:progress(.95)
