@@ -6,6 +6,7 @@ from unittest import mock
 
 import numpy as np
 from zaaggenz_jobs import JobClass,JobError,JobScheduler,SchedulerLimits,runtime_state
+from zaaggenz_jobs.model import numeric_thread_limit as legacy_numeric_thread_limit
 import zaaggenz_jobs.numeric_runtime as runtime
 
 _ENV=runtime._ENV_NAMES
@@ -56,6 +57,15 @@ class NumericRuntimeTests(unittest.TestCase):
                 self.assertEqual(runtime_state()['owners'],1);self.assertEqual(factory.guards[0].restores,0)
                 self.assertTrue(second.shutdown());self.schedulers.remove(second)
                 self.assertEqual(runtime_state()['owners'],0);self.assertEqual(factory.guards[0].restores,1)
+
+    def test_legacy_entry_point_and_scheduler_share_the_same_runtime(self):
+        factory=_Factory()
+        with mock.patch.object(runtime,'_load_threadpool_limits',return_value=factory):
+            lease=legacy_numeric_thread_limit(1);self.leases.append(lease);s=self.scheduler(1)
+            self.assertEqual(runtime_state()['owners'],2);self.assertEqual(len(factory.guards),1)
+            s.shutdown();self.schedulers.remove(s);self.assertEqual(runtime_state()['owners'],1)
+            lease.restore_original_limits();self.leases.remove(lease)
+            self.assertEqual(factory.guards[0].restores,1)
 
     def test_conflicting_limits_fail_before_second_scheduler_owns_runtime(self):
         factory=_Factory()
