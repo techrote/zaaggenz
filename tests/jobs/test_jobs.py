@@ -1,6 +1,7 @@
 from __future__ import annotations
 import hashlib,tempfile,threading,time,unittest
 from pathlib import Path
+from zaaggenz_contracts import digest
 from zaaggenz_jobs import *
 from zaaggenz_jobs.model import CancellationToken
 
@@ -10,8 +11,11 @@ def asset(payload,frames=1):
     return dict(kind='AudioAssetRef',version='1.0.0',content_sha256=hashlib.sha256(payload).hexdigest(),
                 identity_domain='pcm-f32le-interleaved-v1',sample_rate_hz=48000,channels=1,
                 channel_layout='mono',frame_count=frames,level_domain='source',sample_policy='unclamped_float')
-def artifact(revision=R,payload=b'1234'):
-    return RenderArtifact(revision,Q,'preview',K,payload,asset(payload,len(payload)//4),{'waveform':[0,1],'timecode_s':0.0})
+def artifact(revision=R,payload=b'1234',recipe=Q,cache_key=K,product='preview'):
+    return RenderArtifact(revision,recipe,product,cache_key,payload,asset(payload,len(payload)//4),{'waveform':[0,1],'timecode_s':0.0})
+def preview_dedupe(revision=R,recipe=Q,cache_key=K):
+    return digest({'domain':'zaaggenz.preview-request-v1','revision_id':revision,
+                   'recipe_sha256':recipe,'cache_key':cache_key})
 
 class SchedulerTests(unittest.TestCase):
     def tearDown(self):
@@ -110,7 +114,7 @@ class CoordinatorTests(unittest.TestCase):
         slow=threading.Event()
         t1=self.c.request_preview('preview',R,Q,K,lambda ctx:(slow.wait(1),artifact(R))[1],estimated_memory_bytes=10)
         r2='d'*64;q2='e'*64;k2='f'*64
-        t2=self.c.request_preview('preview',r2,q2,k2,lambda ctx:artifact(r2),estimated_memory_bytes=10)
+        t2=self.c.request_preview('preview',r2,q2,k2,lambda ctx:artifact(r2,recipe=q2,cache_key=k2),estimated_memory_bytes=10)
         slow.set();self.assertEqual(self.c.poll(t1)['state'],'stale')
         end=time.time()+1
         while time.time()<end:
@@ -124,6 +128,7 @@ class CoordinatorTests(unittest.TestCase):
         t1=self.c.request_preview('p',R,Q,K,render,estimated_memory_bytes=1)
         t2=self.c.request_preview('p',R,Q,K,render,estimated_memory_bytes=1)
         self.assertEqual(t1.job_id,t2.job_id);self.assertEqual(t2.generation,t1.generation+1);self.assertEqual(self.c.poll(t1)['state'],'stale')
+        self.assertEqual(t2.identity,(R,Q,K,'preview'))
         go.set();end=time.time()+1
         while time.time()<end:
             result=self.c.poll(t2)
@@ -138,14 +143,39 @@ class CoordinatorTests(unittest.TestCase):
         while self.c.poll(t)['state']!='completed':time.sleep(.005)
         t2=self.c.request_preview('p',R,Q,K,lambda ctx:(_ for _ in ()).throw(AssertionError('cache miss')),estimated_memory_bytes=1)
         self.assertTrue(t2.cache_hit);result=self.c.poll(t2);self.assertTrue(result['accepted']);self.assertEqual(result['generation'],t.generation+1)
-    def test_revision_mismatch_fails_not_publishes(self):
-        t=self.c.request_preview('p',R,Q,K,lambda ctx:artifact('d'*64),estimated_memory_bytes=1)
-        end=time.time()+1
-        while time.time()<end:
-            try:self.c.poll(t)
-            except JobError:break
-            time.sleep(.005)
-        else:self.fail('revision mismatch should fail closed')
+        t3=self.c.request_preview('p',R,Q,K,lambda ctx:(_ for _ in ()).throw(AssertionError('repeat cache miss')),estimated_memory_bytes=1)
+        self.assertTrue(t3.cache_hit);self.assertTrue(self.c.poll(t3)['accepted']);self.assertEqual(t3.identity,(R,Q,K,'preview'))
+    def test_fresh_identity_mismatches_fail_closed_without_cache_poison(self):
+        cases=(
+            ('revision_id',artifact('d'*64)),
+            ('recipe_sha256',artifact(recipe='d'*64)),
+            ('cache_key',artifact(cache_key='d'*64)),
+            ('product',artifact(product='analysis')),
+        )
+        for i,(field,bad) in enumerate(cases):
+            with self.subTest(field=field):
+                t=self.c.request_preview(f'p{i}',R,Q,K,lambda ctx,value=bad:value,estimated_memory_bytes=1)
+                self.assertEqual(self.s.wait(t.job_id,1).state,'failed')
+                with self.assertRaisesRegex(JobError,rf'preview identity mismatch: {field}'):
+                    self.c.poll(t)
+                self.assertIsNone(self.s.cached_preview(t.dedupe_key),'rejected result must not poison preview cache')
+    def test_correct_fresh_identity_is_accepted_and_ticket_is_complete(self):
+        t=self.c.request_preview('p',R,Q,K,lambda ctx:artifact(),estimated_memory_bytes=1)
+        self.assertEqual((t.revision_id,t.recipe_sha256,t.cache_key,t.product),(R,Q,K,'preview'))
+        self.assertEqual(self.s.wait(t.job_id,1).state,'completed')
+        result=self.c.poll(t);self.assertTrue(result['accepted']);self.assertEqual(result['artifact']['recipe_sha256'],Q);self.assertEqual(result['artifact']['cache_key'],K);self.assertEqual(result['artifact']['product'],'preview')
+    def test_cache_hit_uses_same_complete_identity_check(self):
+        bad_recipe='d'*64;dedupe=preview_dedupe()
+        j=self.s.submit(JobClass.PREVIEW,R,lambda ctx:artifact(recipe=bad_recipe),estimated_memory_bytes=1,dedupe_key=dedupe)
+        self.assertEqual(self.s.wait(j,1).state,'completed');self.assertIsNotNone(self.s.cached_preview(dedupe))
+        with self.assertRaisesRegex(JobError,'preview identity mismatch: recipe_sha256'):
+            self.c.request_preview('p',R,Q,K,lambda ctx:artifact(),estimated_memory_bytes=1)
+        self.assertNotIn('p',self.c._channels,'mismatched cache entry must not become accepted channel state')
+    def test_non_render_executor_result_fails_closed_and_is_not_cached(self):
+        t=self.c.request_preview('p',R,Q,K,lambda ctx:b'not-an-artifact',estimated_memory_bytes=1)
+        self.assertEqual(self.s.wait(t.job_id,1).state,'failed')
+        with self.assertRaisesRegex(JobError,'preview executor returned non-render artifact'):self.c.poll(t)
+        self.assertIsNone(self.s.cached_preview(t.dedupe_key))
 
 class AtomicTests(unittest.TestCase):
     def test_cancelled_publish_does_not_replace_existing(self):
