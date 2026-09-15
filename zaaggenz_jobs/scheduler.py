@@ -121,6 +121,19 @@ class JobScheduler:
             held.append(item)
         for item in held:heapq.heappush(heap,item)
         return chosen
+    def _commit_completion_locked(self,rec,result):
+        """Commit one executor result while ``self._cv`` is held.
+
+        Cancellation accepted before this critical section wins publication: the
+        provisional executor result is discarded and cannot enter the preview
+        cache. Once COMPLETED is committed here, a later cancel observes a terminal
+        record and cannot revoke already-published work.
+        """
+        if rec.token.cancelled or rec.state is JobState.CANCEL_REQUESTED:
+            rec.result=None;rec.state=JobState.CANCELLED;rec.finished_at=time.monotonic();return False
+        rec.result=result;rec.progress=1.;rec.state=JobState.COMPLETED;rec.finished_at=time.monotonic()
+        if rec.job_class is JobClass.PREVIEW and rec.dedupe_key:self._cache.put(rec.dedupe_key,result)
+        return True
     def _worker(self,lane):
         while True:
             with self._cv:
@@ -143,16 +156,14 @@ class JobScheduler:
                 ctx=JobContext(rec.job_id,rec.token,progress)
                 result=rec.executor(ctx)
                 rec.token.check()
-                with self._cv:
-                    rec.result=result;rec.progress=1.;rec.state=JobState.COMPLETED
-                    if rec.job_class is JobClass.PREVIEW and rec.dedupe_key:self._cache.put(rec.dedupe_key,result)
+                with self._cv:self._commit_completion_locked(rec,result)
             except JobCancelled:
-                with self._cv:rec.state=JobState.CANCELLED;rec.result=None
+                with self._cv:rec.state=JobState.CANCELLED;rec.result=None;rec.finished_at=time.monotonic()
             except Exception as exc:
-                with self._cv:rec.state=JobState.FAILED;rec.result=None;rec.error=f'{type(exc).__name__}: {str(exc)[:512]}'
+                with self._cv:rec.state=JobState.FAILED;rec.result=None;rec.error=f'{type(exc).__name__}: {str(exc)[:512]}';rec.finished_at=time.monotonic()
             finally:
                 with self._cv:
-                    rec.finished_at=time.monotonic()
+                    if rec.finished_at is None:rec.finished_at=time.monotonic()
                     if lane=='interactive':self._running_i-=rec.estimated_memory_bytes
                     else:self._running_b-=rec.estimated_memory_bytes
                     self._finish_dedupe(rec);self._cv.notify_all()
