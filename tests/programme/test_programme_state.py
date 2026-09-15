@@ -43,7 +43,10 @@ class ProgrammeStateTests(unittest.TestCase):
         self.assertEqual("accepted", row["implementation"])
         self.assertEqual("accepted", row["evidence"])
         self.assertFalse(row["dependency_satisfied"])
-        self.assertIn("issue:#138", {b["ref"] for b in row["blockers"]})
+        refs = {b["ref"] for b in row["blockers"]}
+        self.assertIn("issue:#118", refs)
+        self.assertNotIn("issue:#138", refs)
+        self.assertIn("issue:#138:corrective-repair", row["evidence_refs"])
 
     def test_blocked_task_requires_a_blocker(self) -> None:
         bad = copy.deepcopy(self.state)
