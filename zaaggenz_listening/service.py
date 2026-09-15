@@ -12,7 +12,7 @@ class ListeningService:
     def __init__(self,timeline_service):
         self.timeline=timeline_service;self.audio=ListeningAudioStore();self.trials={};self.results={};self._participant_to_trusted={};self._trusted_to_participant={}
     def freeze_job(self,job_id,name,start_frame=0,end_frame=None):
-        try:artifact=self.timeline.scheduler.result(job_id)
+        try:artifact=self.timeline.artifact(job_id)
         except JobError as e:raise ListeningError(str(e)) from e
         if not isinstance(artifact,RenderArtifact):raise ListeningError('completed render job required')
         stimulus=self.audio.add_artifact(name,artifact,start_frame=start_frame,end_frame=end_frame)
