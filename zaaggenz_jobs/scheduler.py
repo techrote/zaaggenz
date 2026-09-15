@@ -3,7 +3,8 @@ from collections import OrderedDict
 from dataclasses import dataclass
 import hashlib,heapq,math,os,threading,time
 from .model import (JobClass,JobState,SchedulerLimits,JobError,JobCancelled,
-                    CancellationToken,JobContext,JobSnapshot,RenderArtifact,numeric_thread_limit)
+                    CancellationToken,JobContext,JobSnapshot,RenderArtifact)
+from .numeric_runtime import numeric_thread_limit
 
 @dataclass
 class _Record:
@@ -44,10 +45,18 @@ class JobScheduler:
         self._shutdown=False;self._cache=_ResultCache(limits.preview_cache_bytes,limits.preview_cache_entries)
         self._numeric_guard=numeric_thread_limit(limits.numeric_threads) if apply_numeric_limit else None
         self._threads=[]
-        for lane,count in (('interactive',limits.interactive_workers),('background',limits.background_workers)):
-            for i in range(count):
-                t=threading.Thread(target=self._worker,args=(lane,),name=f'zaaggenz-{lane}-{i}',daemon=True)
-                t.start();self._threads.append(t)
+        try:
+            for lane,count in (('interactive',limits.interactive_workers),('background',limits.background_workers)):
+                for i in range(count):
+                    t=threading.Thread(target=self._worker,args=(lane,),name=f'zaaggenz-{lane}-{i}',daemon=True)
+                    t.start();self._threads.append(t)
+        except BaseException:
+            with self._cv:
+                self._shutdown=True;self._cv.notify_all()
+            deadline=time.monotonic()+1.0
+            for t in self._threads:t.join(max(0.0,deadline-time.monotonic()))
+            if self._numeric_guard is not None:self._numeric_guard.restore_original_limits()
+            raise
     def _new_id(self):
         self._seq+=1
         raw=f'{time.time_ns()}:{self._seq}:'.encode()+os.urandom(16)
@@ -87,22 +96,18 @@ class JobScheduler:
             heap=(self._interactive if job_class.interactive else self._background)
             heapq.heappush(heap,(int(job_class),rec.sequence,jid))
             if job_class is JobClass.PREVIEW and dedupe_key:self._active_dedupe[dedupe_key]=jid
-            # Prune only while admitting new work. A completion remains observable by
-            # wait/result until a later submission creates pressure on bounded history.
             self._trim_history();self._cv.notify_all();return jid
     def cached_preview(self,dedupe_key):
         if type(dedupe_key)is not str:return None
         with self._cv:return self._cache.get(dedupe_key)
     def _trim_history(self):
-        """Remove oldest terminal records wherever they occur; a running oldest job never blocks trimming."""
         if len(self._records)<=self.limits.max_history_jobs:return
         kept=[]
         for jid in self._order:
             rec=self._records.get(jid)
             if rec is None:continue
             if len(self._records)>self.limits.max_history_jobs and rec.state.terminal:
-                self._records.pop(jid,None)
-                continue
+                self._records.pop(jid,None);continue
             kept.append(jid)
         self._order=kept
     def _can_start(self,rec,lane):
@@ -122,13 +127,6 @@ class JobScheduler:
         for item in held:heapq.heappush(heap,item)
         return chosen
     def _commit_completion_locked(self,rec,result):
-        """Commit one executor result while ``self._cv`` is held.
-
-        Cancellation accepted before this critical section wins publication: the
-        provisional executor result is discarded and cannot enter the preview
-        cache. Once COMPLETED is committed here, a later cancel observes a terminal
-        record and cannot revoke already-published work.
-        """
         if rec.token.cancelled or rec.state is JobState.CANCEL_REQUESTED:
             rec.result=None;rec.state=JobState.CANCELLED;rec.finished_at=time.monotonic();return False
         rec.result=result;rec.progress=1.;rec.state=JobState.COMPLETED;rec.finished_at=time.monotonic()
@@ -153,9 +151,7 @@ class JobScheduler:
                     if float(value)<rec.progress:raise JobError('progress cannot go backwards')
                     rec.progress=float(value);self._cv.notify_all()
             try:
-                ctx=JobContext(rec.job_id,rec.token,progress)
-                result=rec.executor(ctx)
-                rec.token.check()
+                ctx=JobContext(rec.job_id,rec.token,progress);result=rec.executor(ctx);rec.token.check()
                 with self._cv:self._commit_completion_locked(rec,result)
             except JobCancelled:
                 with self._cv:rec.state=JobState.CANCELLED;rec.result=None;rec.finished_at=time.monotonic()
@@ -184,8 +180,7 @@ class JobScheduler:
             rec=self._records.get(job_id)
             if rec is None:raise JobError('unknown job id')
             return JobSnapshot(rec.job_id,rec.job_class.name.lower(),rec.state.value,rec.revision_id,rec.generation,
-                               rec.progress,rec.estimated_memory_bytes,rec.sequence,rec.cache_hit,
-                               rec.token.cancelled,rec.error)
+                               rec.progress,rec.estimated_memory_bytes,rec.sequence,rec.cache_hit,rec.token.cancelled,rec.error)
     def wait(self,job_id,timeout=None):
         deadline=None if timeout is None else time.monotonic()+timeout
         with self._cv:
