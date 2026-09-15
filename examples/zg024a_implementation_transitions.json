@@ -33,6 +33,14 @@
       "stable_id": "ZG-003",
       "changed_paths": ["zaaggenz_dsp/graph.py", "zaaggenz_jobs/model.py", "zaaggenz_project/cache.py", "zaaggenz_qc/checks.py"],
       "reason": "Cumulative accepted implementation after #137, #106 and #113 plus #99. ArtifactCache now requires exact cached-byte identity for every supported AudioAssetRef domain, enforces canonical PCM byte shape, rejects pre-fix private/declarative identity disagreement on index load, and revalidates declared identity on retrieval without changing cache keys, DSP or musical defaults. The first #99 CI reproduction passed inverse contracts, inherited prerequisite suites and browser transport before stopping at the intentionally fail-closed unreviewed implementation-identity gate; this exact transition permits only implementation_sha256 to differ, and the rerun must still reproduce the frozen portable calibration on Ubuntu and Windows."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "3e8b2b9df9b4e23abd24fa1a3a8d180038ffe747ce445de38316d91ea1a20d27",
+      "issue": 101,
+      "stable_id": "ZG-004",
+      "changed_paths": ["zaaggenz_dsp/graph.py", "zaaggenz_jobs/api.py", "zaaggenz_jobs/model.py", "zaaggenz_project/cache.py", "zaaggenz_qc/checks.py"],
+      "reason": "Cumulative accepted implementation after #137, #106, #113 and #99 plus #101. RenderCoordinator now binds revision, recipe, cache and preview-product identity through asynchronous completion and rejects mismatched fresh or cached artifacts before publication; this changes no renderer, DSP, audio bytes, recipe hashing or cache-key derivation. The first #101 CI reproduction passed inverse contracts, all inherited prerequisite suites and browser transport on both platforms before the frozen-calibration check stopped at the intentionally fail-closed unreviewed implementation-identity transition. This exact transition permits only implementation_sha256 to differ; the rerun must still reproduce the frozen portable calibration on Ubuntu and Windows."
     }
   ]
 }
