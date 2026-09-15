@@ -51,11 +51,12 @@ Add `RHYTHM_EXPECTATION` for directional/modal/phrase semantics and `SPECTRAL_HA
 
 ## Machine-readable orchestration
 
-- `programme/tasks.json` — titles, dependencies, groups and shared locks.
+- `programme/tasks.json` — titles, planned hard dependencies, groups and shared locks.
 - `programme/dependency_graph.json` — parent DAG and topological levels.
 - `programme/issue_map.json` — deployed stable ID → GitHub issue number mapping.
+- `programme/task_state.json` — current evidence-aware implementation/research/owner-gate/blocker state and the explicit `dependency_satisfied` decision for each stable task.
 
-Stable IDs are the join key across documentation, commits, tests and issues.
+Stable IDs are the join key across documentation, commits, tests and issues. `programme/task_state.json` is the readiness authority layered over the planned DAG: GitHub issue open/closed is retained there only as an informational mirror. Validate it with `python tools/validate_programme_state.py --validate`; `--report` derives prerequisite readiness without consulting issue state.
 
 ## Retrieval discipline
 
