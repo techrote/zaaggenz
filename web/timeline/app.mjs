@@ -87,8 +87,10 @@ function redrawOutputs(){const current=$('outputs').value;$('outputs').replaceCh
   for(const slot of slots)$('outputs').add(new Option(`${slot.name} · ${slot.revision.slice(0,10)} · ${slot.region.start_beat}–${slot.region.end_beat}`,slot.id));$('outputs').value=current;}
 function publish(slot){
   if(editor.document&&JSON.stringify(editor.document)!==JSON.stringify(slot.document))throw Error('Select the output revision before playback.');
-  const generation=transport.begin('timeline',slot.revision);
-  if(!transport.accept('timeline',{accepted:true,state:'completed',generation,revision_id:slot.revision,artifact:slot.artifact,audio:slot.url}))throw Error('Stale audio rejected.');
+  const artifact=slot.artifact;
+  if(!artifact||artifact.revision_id!==slot.revision)throw Error('Mismatched artifact rejected.');
+  const generation=transport.begin('timeline',slot.revision,artifact.recipe_sha256,artifact.cache_key,artifact.product);
+  if(!transport.accept('timeline',{accepted:true,state:'completed',generation,revision_id:slot.revision,artifact,audio:slot.url}))throw Error('Stale audio rejected.');
   const snapshot=transport.current('timeline');activeSlot=slot;
   $('audio').src=snapshot.audio;$('audio').dataset.revision=snapshot.revisionId;$('play').disabled=false;
   $('playback-revision').textContent=snapshot.revisionId;$('waveform').dataset.revision=snapshot.revisionId;
