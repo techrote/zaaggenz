@@ -19,6 +19,11 @@ def make_artifact(audio,*,sample_rate=12000,channels=1,seed='0'):
     return RenderArtifact(revision,recipe,'synth',cache,payload,asset,{'test_seed':seed})
 
 
+def same_revision_artifact(revision,audio,*,seed):
+    candidate=make_artifact(audio,seed=seed)
+    return RenderArtifact(revision,candidate.recipe_sha256,candidate.product,candidate.cache_key,candidate.audio_bytes,candidate.asset,candidate.scopes)
+
+
 class InspectorModelTests(unittest.TestCase):
     def test_real_fixture_exposes_combs_motion_remainder_and_compatibility(self):
         result=build_analysis(fixture_source(12000),12000,{'amount':.72,'root_hz':220.,'sonority':'fifth','anchor':'source'},revision_seed='test')
@@ -60,6 +65,9 @@ class InspectorServiceTests(unittest.TestCase):
         job=self.service.submit_analysis({'amount':.43})['job_id'];self.service.scheduler.wait(job,20);status=self.service.status(job);self.assertTrue(status['published'])
         analysed=self.service.state();provenance=analysed['snapshot']['expert']['source_binding'];self.assertEqual(provenance,analysed['source_binding'])
         self.assertEqual(analysed['snapshot']['before']['revision_id'],artifact.revision_id);self.assertEqual(analysed['snapshot']['before']['audio_sha256'],asset['content_sha256'])
+        rebound=same_revision_artifact(artifact.revision_id,fixture_source(12000,variant=6),seed='post-publish-rebind');self.service.bind_artifact(rebound)
+        old=self.service.status(job);self.assertTrue(old['stale']);self.assertFalse(old['published']);self.assertEqual(old['current_revision_id'],artifact.revision_id)
+        self.assertNotEqual(old['expected_source_binding']['content_sha256'],old['current_source_binding']['content_sha256'])
 
     def test_actual_timeline_render_binds_without_reconstruction(self):
         timeline=TimelineService();service=InspectorService(12000)
@@ -93,7 +101,8 @@ class InspectorServiceTests(unittest.TestCase):
         job=self.service.submit_analysis({'amount':.35,'root_hz':210.,'sonority':'major-third','anchor':'upper'})['job_id'];self.service.scheduler.wait(job,20);self.service.status(job)
         state=self.service.state();self.assertEqual(state['frozen_snapshot_id'],first);self.assertNotEqual(state['snapshot']['snapshot_id'],first)
 
-    def test_stale_job_is_rejected_after_artifact_rebind(self):
+    def test_stale_job_is_rejected_after_same_revision_artifact_rebind(self):
+        first=make_artifact(fixture_source(12000,variant=2),seed='stale-first');self.service.bind_artifact(first)
         release=threading.Event();original=service_module.build_analysis
         def delayed(*args,**kwargs):
             while not release.wait(.01):
@@ -101,8 +110,12 @@ class InspectorServiceTests(unittest.TestCase):
                 if checkpoint:checkpoint()
             return original(*args,**kwargs)
         with patch.object(service_module,'build_analysis',delayed):
-            job=self.service.submit_analysis({'amount':.88})['job_id'];time.sleep(.03);artifact=make_artifact(fixture_source(12000,variant=3),seed='replacement');self.service.bind_artifact(artifact);release.set();self.service.scheduler.wait(job,20);status=self.service.status(job)
-        self.assertTrue(status['stale']);self.assertFalse(status['published']);state=self.service.state();self.assertEqual(state['slots']['A']['revision_id'],artifact.revision_id);self.assertIsNone(state['slots']['B']);self.assertIsNone(state['snapshot'])
+            job=self.service.submit_analysis({'amount':.88})['job_id'];time.sleep(.03)
+            artifact=same_revision_artifact(first.revision_id,fixture_source(12000,variant=3),seed='same-revision-replacement');self.service.bind_artifact(artifact);release.set();self.service.scheduler.wait(job,20);status=self.service.status(job)
+        self.assertTrue(status['stale']);self.assertFalse(status['published']);self.assertEqual(status['expected_revision_id'],status['current_revision_id'])
+        self.assertNotEqual(status['expected_source_binding']['recipe_sha256'],status['current_source_binding']['recipe_sha256'])
+        self.assertNotEqual(status['expected_source_binding']['content_sha256'],status['current_source_binding']['content_sha256'])
+        state=self.service.state();self.assertEqual(state['slots']['A']['revision_id'],artifact.revision_id);self.assertIsNone(state['slots']['B']);self.assertIsNone(state['snapshot'])
 
     def test_compensated_audio_is_peak_safe_and_revision_bound(self):
         wave,revision=self.service.audio('B',compensated=True);sr,audio=wavfile.read(io.BytesIO(wave));self.assertEqual(sr,12000);self.assertEqual(revision,self.service.state()['slots']['B']['revision_id']);self.assertLessEqual(float(np.max(np.abs(audio),initial=0)),.981)
