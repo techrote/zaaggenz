@@ -77,14 +77,30 @@ def _rms(audio):
     a=np.asarray(audio,dtype=np.float64);return float(np.sqrt(np.mean(a*a))) if len(a) else 0.
 
 class InspectorService:
-    def __init__(self,sample_rate_hz=12000,*,demo_fixture=False):
+    def __init__(self,sample_rate_hz=12000,*,demo_fixture=False,scheduler=None,current_revision_provider=None):
         if type(sample_rate_hz)is not int or not 8000<=sample_rate_hz<=192000:raise InspectorError('sample rate out of range')
-        self.sample_rate_hz=sample_rate_hz;self.scheduler=JobScheduler(SchedulerLimits(interactive_workers=1,background_workers=1,max_queued_jobs=8,max_background_queued_jobs=4,max_history_jobs=16))
+        if scheduler is not None and not isinstance(scheduler,JobScheduler):raise InspectorError('scheduler must be a JobScheduler')
+        if current_revision_provider is not None and not callable(current_revision_provider):raise InspectorError('current_revision_provider must be callable')
+        self.sample_rate_hz=sample_rate_hz;self._owns_scheduler=scheduler is None
+        self.scheduler=JobScheduler(SchedulerLimits(interactive_workers=1,background_workers=1,max_queued_jobs=8,max_background_queued_jobs=4,max_history_jobs=16)) if scheduler is None else scheduler
+        self._current_revision_provider=current_revision_provider;self._closed=False
         self._lock=threading.RLock();self._jobs={};self._published=set();self._history=[];self._frozen=None
         self._source=None;self._source_bytes=None;self._source_identity=None;self._source_binding=None;self._after=None;self._snapshot=None;self._working=None
         if demo_fixture:self.bind_demo_fixture(0,analyse=True)
-    def close(self):self.scheduler.shutdown(cancel=True,timeout=5)
-    def _stale(self):return self._snapshot is not None and self._snapshot.before.revision_id!=self.source_identity.revision_id
+    @property
+    def owns_scheduler(self):return self._owns_scheduler
+    def close(self):
+        if self._closed:return
+        self._closed=True
+        if self._owns_scheduler:self.scheduler.shutdown(cancel=True,timeout=5)
+    def _authoritative_revision(self):
+        return None if self._current_revision_provider is None else self._current_revision_provider()
+    def _authority_stale(self,binding=None):
+        binding=self._source_binding if binding is None else binding
+        if self._current_revision_provider is None or not binding or binding.get('kind')!='render-artifact-v1':return False
+        return self._authoritative_revision()!=binding.get('revision_id')
+    def _stale(self):
+        return self._snapshot is not None and (self._snapshot.before.revision_id!=self.source_identity.revision_id or self._authority_stale())
     @property
     def source_identity(self):
         if self._source_identity is None:raise InspectorError('no inspector source is bound')
@@ -138,11 +154,12 @@ class InspectorService:
         return {'gain_linear':float(gain),'gain_db':float(20*math.log10(max(gain,1e-12))),'target_rms':ra,'source_rms':rb,'peak_limited':bool(safe<raw)}
     def state(self):
         with self._lock:
-            policy={'analysis_auto_apply':False,'apply_requires_explicit_action':True,'stale_result_rejected':True,'normalization':'none','production_source_requires_artifact_binding':True,'fixture_requires_explicit_demo':True}
+            authority=self._authoritative_revision()
+            policy={'analysis_auto_apply':False,'apply_requires_explicit_action':True,'stale_result_rejected':True,'normalization':'none','production_source_requires_artifact_binding':True,'fixture_requires_explicit_demo':True,'authoritative_compose_revision_guard':self._current_revision_provider is not None}
             if self._source_identity is None:
-                return {'method':'zg.harmonic_comb_inspector.v1','bound':False,'source_binding':None,'slots':{'A':None,'B':None},'snapshot':None,'snapshot_stale':False,
+                return {'method':'zg.harmonic_comb_inspector.v1','bound':False,'source_binding':None,'source_stale':False,'authoritative_revision_id':authority,'slots':{'A':None,'B':None},'snapshot':None,'snapshot_stale':False,
                         'frozen_snapshot_id':None,'working':None,'undo_depth':0,'compensation':None,'policy':policy}
-            return {'method':'zg.harmonic_comb_inspector.v1','bound':True,'source_binding':deepcopy(self._source_binding),
+            return {'method':'zg.harmonic_comb_inspector.v1','bound':True,'source_binding':deepcopy(self._source_binding),'source_stale':self._authority_stale(),'authoritative_revision_id':authority,
                     'slots':{'A':self.source_identity.to_dict(),'B':None if self._snapshot is None else self.after_identity.to_dict()},
                     'snapshot':None if self._snapshot is None else self._snapshot.to_dict(),'snapshot_stale':self._stale(),
                     'frozen_snapshot_id':None if self._frozen is None else self._frozen.snapshot_id,'working':self._working.to_dict(),
@@ -159,21 +176,29 @@ class InspectorService:
         controls=validate_controls(controls)
         with self._lock:
             if self._source is None:raise InspectorError('bind an immutable render artifact before analysis')
+            if self._authority_stale():raise InspectorError('bound inspector source is stale relative to authoritative Compose revision')
             source=self._source.copy();expected=self.source_identity;sample_rate=self.sample_rate_hz;binding=deepcopy(self._source_binding)
         def execute(ctx):
             ctx.check_cancelled();return build_analysis(source,sample_rate,controls,before_identity=expected,source_binding=binding,checkpoint=ctx.check_cancelled,progress=ctx.progress)
         jid=self.scheduler.submit(JobClass.ANALYSIS,expected.revision_id,execute,estimated_memory_bytes=max(8*1024*1024,int(source.nbytes*48)))
         with self._lock:self._jobs[jid]={'expected_revision_id':expected.revision_id,'expected_source_binding':deepcopy(binding),'controls':deepcopy(controls)}
         return {'job_id':jid,'expected_revision_id':expected.revision_id,'controls':controls}
-    def status(self,job_id):
-        snapshot=self.scheduler.snapshot(job_id);response=asdict(snapshot)
-        if snapshot.state!='completed':return response
+    def _job_meta(self,job_id):
         with self._lock:
             meta=self._jobs.get(job_id)
             if meta is None:raise JobError('unknown inspector job')
-            current_revision=self.source_identity.revision_id;current_binding=deepcopy(self._source_binding)
-            if current_revision!=meta['expected_revision_id'] or current_binding!=meta['expected_source_binding']:
-                return {**response,'published':False,'stale':True,'expected_revision_id':meta['expected_revision_id'],'current_revision_id':current_revision,
+            return deepcopy(meta)
+    def cancel(self,job_id):
+        self._job_meta(job_id)
+        return self.scheduler.cancel(job_id)
+    def status(self,job_id):
+        meta=self._job_meta(job_id);snapshot=self.scheduler.snapshot(job_id);response=asdict(snapshot)
+        if snapshot.state!='completed':return response
+        with self._lock:
+            current_revision=self.source_identity.revision_id;current_binding=deepcopy(self._source_binding);authority=self._authoritative_revision()
+            authority_stale=self._current_revision_provider is not None and meta['expected_source_binding'].get('kind')=='render-artifact-v1' and authority!=meta['expected_revision_id']
+            if current_revision!=meta['expected_revision_id'] or current_binding!=meta['expected_source_binding'] or authority_stale:
+                return {**response,'published':False,'stale':True,'expected_revision_id':meta['expected_revision_id'],'current_revision_id':current_revision,'authoritative_revision_id':authority,
                         'expected_source_binding':deepcopy(meta['expected_source_binding']),'current_source_binding':current_binding}
             if job_id in self._published:return {**response,'published':True,'stale':False,'state_payload':self.state()}
             result=self.scheduler.result(job_id)
@@ -189,6 +214,7 @@ class InspectorService:
             candidate=self._snapshot if self._snapshot is not None and snapshot_id==self._snapshot.snapshot_id else self._frozen if self._frozen and snapshot_id==self._frozen.snapshot_id else None
             if candidate is None:raise InspectorError('unknown snapshot')
             if candidate.before.revision_id!=self.source_identity.revision_id:raise InspectorError('cannot apply transform to different source revision')
+            if self._current_revision_provider is not None and self._source_binding.get('kind')=='render-artifact-v1' and candidate.before.revision_id!=self._authoritative_revision():raise InspectorError('cannot apply transform to stale authoritative Compose revision')
             self._history.append(self._working);self._working=candidate.after
             return {'working':self._working.to_dict(),'undo_depth':len(self._history),'applied_snapshot_id':candidate.snapshot_id}
     def undo(self):
