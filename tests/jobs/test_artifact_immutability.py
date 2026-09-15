@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import unittest
 
-from zaaggenz_jobs import RenderArtifact
+from zaaggenz_jobs import JobError, RenderArtifact
 
 R='a'*64;Q='b'*64;K='c'*64
 
@@ -57,6 +58,29 @@ class RenderArtifactImmutabilityTests(unittest.TestCase):
         artifact.scopes['waveform'].append(9)
         artifact.metadata()['product']='research'
         self.assertEqual(artifact.cache_bytes,before)
+
+    def test_logically_identical_metadata_order_has_deterministic_equality_and_accounting(self):
+        payload=b'1234';asset=make_asset(payload);scopes={'z':[3,2,1],'a':{'y':2,'x':1}}
+        a=RenderArtifact(R,Q,'preview',K,payload,asset,scopes)
+        b=RenderArtifact(R,Q,'preview',K,payload,dict(reversed(list(asset.items()))),
+                         {'a':{'x':1,'y':2},'z':[3,2,1]})
+        self.assertEqual(a,b)
+        self.assertEqual(a.cache_bytes,b.cache_bytes)
+        self.assertEqual(a.metadata(),b.metadata())
+
+    def test_audio_bytes_are_retained_without_copy_and_metadata_cannot_invalidate_shape_or_hash(self):
+        payload=b'1234';artifact=RenderArtifact(R,Q,'preview',K,payload,make_asset(payload),{})
+        self.assertIs(artifact.audio_bytes,payload)
+        artifact.asset['frame_count']=999
+        artifact.asset['content_sha256']='0'*64
+        self.assertEqual(artifact.asset['frame_count'],1)
+        self.assertEqual(artifact.asset['content_sha256'],hashlib.sha256(payload).hexdigest())
+        self.assertEqual(artifact.audio_bytes,payload)
+
+    def test_scope_json_guards_still_reject_nonfinite_and_oversized_metadata(self):
+        payload=b'1234';asset=make_asset(payload)
+        with self.assertRaises(JobError):RenderArtifact(R,Q,'preview',K,payload,asset,{'x':math.nan})
+        with self.assertRaises(JobError):RenderArtifact(R,Q,'preview',K,payload,asset,{'x':'a'*2_000_001})
 
 
 if __name__=='__main__':unittest.main(verbosity=2)

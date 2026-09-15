@@ -3,7 +3,6 @@ from dataclasses import dataclass,field
 from enum import IntEnum, Enum
 import hashlib,json,math,os,re,tempfile,threading
 from pathlib import Path
-from copy import deepcopy
 from zaaggenz_contracts import validate
 
 HEX64=re.compile(r'^[0-9a-f]{64}$')
@@ -88,9 +87,9 @@ def _sha(value,name):
 
 
 def _json_snapshot(value,name='scopes'):
-    """Return one immutable canonical byte snapshot of bounded JSON metadata."""
+    """Return one deterministic immutable byte snapshot of bounded JSON metadata."""
     try:
-        text=json.dumps(value,ensure_ascii=False,allow_nan=False,separators=(',',':'))
+        text=json.dumps(value,ensure_ascii=False,allow_nan=False,sort_keys=True,separators=(',',':'))
     except (TypeError,ValueError) as exc: raise JobError(f'{name} must be bounded JSON metadata') from exc
     payload=text.encode('utf-8')
     if len(payload)>2_000_000: raise JobError(f'{name} metadata too large')
@@ -118,15 +117,18 @@ class RenderArtifact:
         if product not in PRODUCTS: raise JobError('unknown render product')
         if not isinstance(audio_bytes,bytes): raise JobError('audio payload must be immutable bytes')
         if len(audio_bytes)>512*1024*1024: raise JobError('audio payload exceeds artifact bound')
-        try: validate(asset,'AudioAssetRef')
+        # Snapshot first, then validate exactly the bytes-backed metadata that the
+        # artifact will retain. Caller-owned dictionaries are never authoritative
+        # after this point.
+        asset_json=_json_snapshot(asset,'asset');scopes_json=_json_snapshot(scopes,'scopes')
+        canonical_asset=_json_restore(asset_json)
+        try: validate(canonical_asset,'AudioAssetRef')
         except Exception as exc: raise JobError('invalid audio asset metadata') from exc
-        asset_copy=deepcopy(asset)
-        if asset_copy['identity_domain']=='pcm-f32le-interleaved-v1':
-            expected=asset_copy['frame_count']*asset_copy['channels']*4
+        if canonical_asset['identity_domain']=='pcm-f32le-interleaved-v1':
+            expected=canonical_asset['frame_count']*canonical_asset['channels']*4
             if len(audio_bytes)!=expected: raise JobError('PCM artifact byte length disagrees with frame/channel metadata')
-        if asset_copy['content_sha256']!=hashlib.sha256(audio_bytes).hexdigest():
+        if canonical_asset['content_sha256']!=hashlib.sha256(audio_bytes).hexdigest():
             raise JobError('audio bytes do not match declared content identity')
-        asset_json=_json_snapshot(asset_copy,'asset');scopes_json=_json_snapshot(scopes,'scopes')
         object.__setattr__(self,'revision_id',revision_id);object.__setattr__(self,'recipe_sha256',recipe_sha256)
         object.__setattr__(self,'product',product);object.__setattr__(self,'cache_key',cache_key)
         object.__setattr__(self,'audio_bytes',audio_bytes);object.__setattr__(self,'_asset_json',asset_json)
@@ -139,7 +141,7 @@ class RenderArtifact:
     @property
     def cache_bytes(self):
         # Count actual immutable audio plus serialized public metadata rather than an arbitrary slab estimate.
-        return len(self.audio_bytes)+len(json.dumps(self.metadata(),ensure_ascii=False,allow_nan=False,separators=(',',':')).encode('utf-8'))
+        return len(self.audio_bytes)+len(json.dumps(self.metadata(),ensure_ascii=False,allow_nan=False,sort_keys=True,separators=(',',':')).encode('utf-8'))
     def metadata(self):
         return dict(revision_id=self.revision_id,recipe_sha256=self.recipe_sha256,product=self.product,
                     cache_key=self.cache_key,asset=self.asset,scopes=self.scopes)
