@@ -1,6 +1,6 @@
 # Vocal WAV ingest and canonical PCM identity
 
-ZG-032 treats uploaded WAV bytes as an encoding boundary. The WAV container itself is not the semantic source identity: supported samples are decoded once into canonical float32 PCM, and the existing `pcm-f32le-interleaved-v1` identity is computed from those canonical samples.
+ZG-032 treats uploaded WAV bytes as an encoding boundary. The WAV container itself is not the semantic source identity: supported samples are decoded once into canonical float32 PCM, and the PCM content hash is computed from those canonical samples.
 
 ## Integer and float decoding
 
@@ -20,10 +20,18 @@ The decoder does not normalize loudness, remove DC, clip, resample, or otherwise
 
 8-bit PCM WAV stores zero around code 128. Treating it like a signed integer and dividing `0..255` by a positive full-scale value maps silence to roughly `+0.5`, creating a large synthetic DC component before analysis and hashing. The canonical rule above removes the representation offset only; it does not alter the recorded waveform beyond decoding its declared PCM convention.
 
-## Identity and compatibility
+## Content identity versus authoritative source identity
 
-`SessionAudioStore` and `analyse_vocal()` continue to hash little-endian, C-order, interleaved float32 PCM under `pcm-f32le-interleaved-v1`. Correctly decoded uint8 uploads therefore receive identities derived from `(code - 128) / 128`, exactly like any other source after it has crossed the WAV encoding boundary.
+`pcm-f32le-interleaved-v1` names the canonical PCM **content-hash domain**. `SessionAudioStore` and `analyse_vocal()` compute a full SHA-256 over little-endian, C-order, interleaved float32 bytes after decoding. Correctly decoded uint8 uploads therefore receive the same PCM content hash they would receive if those exact canonical samples arrived through another supported representation.
 
-Raw capture PCM is session-local and is not embedded in the exported Timeline document. Existing ZG-032 analysis/edit documents are immutable evidence for the PCM that was observed when they were created; this repair does **not** rewrite their stored source hashes or reinterpret them in place. If an older analysis was created from an incorrectly decoded uint8 WAV, explicitly re-importing that WAV under the corrected decoder produces a new canonical PCM identity and new analysis evidence. That identity change is intentional and must not be hidden by migration or hash rewriting.
+ZG-032 analysis/edit version `1.1.0` adds a distinct authoritative source identity domain, `zaaggenz-vocal-source-v1`. Its full `capture-v1-<64 hex>` digest binds the PCM content SHA-256 plus sample rate, channel count and frame count. Consequently identical flattened PCM bytes interpreted at a different sample rate or channel layout cannot reuse/rebind the same source identity. Origin remains separately recorded provenance and is covered by the enclosing immutable analysis/edit digest; it is not an interpretation field in the source digest. A session-store attempt to attach a different origin to an already-known semantic source is rejected instead of rewriting provenance.
 
-This correction is the decoding prerequisite for the separate vocal semantic-identity repair in #104. #104 must bind any future persisted source identity to the corrected canonical PCM semantics rather than preserving the historical uint8 decoding error.
+No filesystem path, original filename or private locator participates in either digest.
+
+## Compatibility
+
+Raw capture PCM is session-local and is not embedded in the exported Timeline document. Source provenance embedded in a `1.1.0` VocalAnalysis/VocalEdit survives raw-source discard.
+
+Existing ZG-032 `1.0.0` analysis/edit documents used a truncated `capture-<16 hex>` identifier whose meaning did not bind sample rate or channel interpretation. They are immutable historical evidence and are **not** silently reinterpreted as metadata-complete identities. Loading those documents through the `1.1.0` model fails closed with an explicit instruction to re-import/re-analyse from retained source audio. No guessed migration exists after raw source has been discarded.
+
+The earlier uint8 correction follows the same rule: if an older analysis was created from incorrectly decoded uint8 WAV, explicitly re-importing that WAV under the corrected decoder produces corrected canonical PCM, a new PCM content hash and a new metadata-complete vocal source identity. Neither the old source hash nor old analysis evidence is rewritten in place.
