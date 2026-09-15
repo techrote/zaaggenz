@@ -1,0 +1,131 @@
+name: ZG-000 reverse-dependency CI impact
+
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_*/**'
+      - 'baseline/recovered_source/**'
+      - 'web/**'
+      - 'research/**'
+      - 'requirements-*.txt'
+      - 'programme/dependency_graph.json'
+      - 'programme/ci_reverse_dependencies.json'
+      - 'tools/ci_reverse_dependencies.py'
+      - 'tests/programme/**'
+      - '.github/workflows/zg*.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  impact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.select.outputs.matrix }}
+      has_work: ${{ steps.select.outputs.has_work }}
+      native: ${{ steps.select.outputs.native }}
+      direct: ${{ steps.select.outputs.direct }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Validate workflow ownership and source coverage
+        run: python tools/ci_reverse_dependencies.py --validate
+      - name: Regression-test representative impact selections
+        run: python -m unittest discover -s tests/programme -p 'test_ci_reverse_dependencies.py' -v
+      - name: Emit audit table
+        run: python tools/ci_reverse_dependencies.py --audit > ci-reverse-dependency-audit.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zg000-ci-impact-audit
+          path: ci-reverse-dependency-audit.md
+          retention-days: 7
+      - name: Collect changed paths
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --name-only "${{ github.event.pull_request.base.sha }}" "${{ github.event.pull_request.head.sha }}" > changed-files.txt
+          else
+            : > changed-files.txt
+          fi
+          cat changed-files.txt
+      - name: Select only missing downstream workflow runs
+        id: select
+        run: python tools/ci_reverse_dependencies.py --changed-file-list changed-files.txt --github-output "$GITHUB_OUTPUT"
+
+  dispatch:
+    needs: impact
+    if: >-
+      needs.impact.outputs.has_work == 'true' &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include: ${{ fromJSON(needs.impact.outputs.matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Dispatch and require the existing accepted workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW: ${{ matrix.workflow }}
+          STABLE_ID: ${{ matrix.stable_id }}
+          REF: ${{ github.event.pull_request.head.ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          latest_for_head() {
+            gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow "$WORKFLOW" \
+              --branch "$REF" \
+              --event workflow_dispatch \
+              --limit 30 \
+              --json databaseId,headSha,createdAt \
+            | python -c 'import json, os, sys; rows=[r for r in json.load(sys.stdin) if r.get("headSha") == os.environ["HEAD_SHA"]]; rows.sort(key=lambda r: r.get("createdAt", ""), reverse=True); print(rows[0]["databaseId"] if rows else "")'
+          }
+
+          before_id="$(latest_for_head)"
+          echo "Dispatching $WORKFLOW ($STABLE_ID) at $REF / $HEAD_SHA; previous run: ${before_id:-none}"
+          gh workflow run "$WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$REF"
+
+          run_id=""
+          for _ in $(seq 1 60); do
+            candidate="$(latest_for_head)"
+            if [ -n "$candidate" ] && [ "$candidate" != "$before_id" ]; then
+              run_id="$candidate"
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$run_id" ]; then
+            echo "Timed out locating dispatched run for $WORKFLOW at $HEAD_SHA" >&2
+            exit 1
+          fi
+
+          echo "Waiting for run $run_id"
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
+
+  fork-policy:
+    needs: impact
+    if: >-
+      needs.impact.outputs.has_work == 'true' &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail closed when downstream dispatch capability is unavailable
+        run: |
+          echo "Reverse-dependency workflows are required, but pull-request fork tokens cannot safely dispatch privileged workflow runs." >&2
+          echo "A maintainer must reproduce this head in a trusted branch before merge." >&2
+          exit 1
