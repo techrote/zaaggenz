@@ -66,9 +66,6 @@ class ReverseDependencyCI(unittest.TestCase):
         self.assertIn("zg032-vocal.yml", dispatch)
 
     def test_broad_consumer_filter_does_not_claim_source_ownership(self) -> None:
-        # ZG-024a may run natively on zaaggenz_*/**, but ZG-024 is not a
-        # descendant of ZG-008. The impact selector therefore excludes it while
-        # still proving that melody source ownership remains only ZG-008.
         result = ci.classify_changed_paths(["zaaggenz_melody/render.py"], ROOT)
         self.assertEqual(["ZG-008"], result["direct_stable_ids"])
         self.assertNotIn("zg024a-lab.yml", result["impacted"])
@@ -105,10 +102,22 @@ class ReverseDependencyCI(unittest.TestCase):
         self.assertIn("zg002-contracts.yml", contract["native"])
         self.assertIn("ZG-004", jobs["direct_stable_ids"])
 
-    def test_dispatch_polling_is_bounded_for_installation_rate_limits(self) -> None:
+    def test_dispatch_is_serial_and_watch_is_separate(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "zg000-ci-impact.yml").read_text(encoding="utf-8")
-        self.assertIn("max-parallel: 2", workflow)
-        self.assertIn('--interval 30 --exit-status', workflow)
+        self.assertIn("Dispatch required downstream workflows serially", workflow)
+        self.assertIn("watch_matrix", workflow)
+        self.assertIn("workflow dispatch failed after bounded retries", workflow)
+        self.assertIn("max-parallel: 4", workflow)
+        self.assertIn("--interval 60 --exit-status", workflow)
+        self.assertNotIn("matrix.workflow }}\n          STABLE_ID", workflow.split("  dispatch:", 1)[1].split("  watch:", 1)[0])
+
+    def test_dispatch_failure_is_observable_and_discovery_is_bounded(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "zg000-ci-impact.yml").read_text(encoding="utf-8")
+        self.assertIn("capture_output=True", workflow)
+        self.assertIn("if cp.stderr", workflow)
+        self.assertIn("for attempt, delay in enumerate((0, 30, 90)", workflow)
+        self.assertIn("for delay in (10, 30, 60)", workflow)
+        self.assertNotIn("sleep 2", workflow)
 
 
 if __name__ == "__main__":

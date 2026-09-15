@@ -10,6 +10,14 @@ Every node declares channels, state/reset, phase, latency/lookahead, bounds and 
 
 Node outputs are labelled taps when requested, so transforms can be placed before/after/between explicit nonlinear graph nodes and inspected independently. The authenticated legacy source remains opaque internally: its exposed tap is `legacy-source-post-internal-nonlinear`. ZG-016 does **not** fabricate unsupported pre-waveshaper access inside the old source.
 
+## Final output policy
+
+The graph executes in float64, but the v1 rendered PCM representation is float32. A successful render therefore has a hard **finite-output invariant**: finite graph input and accepted processing may not be published as NaN or ±Inf after master gain or representation conversion.
+
+`unbounded_float` means **unclamped finite float32**, not unlimited numerical magnitude. Values above full scale remain unchanged when they fit the finite float32 range. A finite float64 graph result whose magnitude exceeds `float32.max` is rejected before conversion; it is not limited, normalised or silently saturated. Likewise, numerical overflow caused by the final master multiplication fails before `clip_at_full_scale`, `error`, or `unbounded_float` policy handling can hide an invalid intermediate. Successful diagnostics (`gain_linear`, driven/output peak and clip fraction) are therefore finite.
+
+`clip_at_full_scale` retains its existing semantics for finite driven samples: values outside ±1 are deliberately clipped. `error` still rejects finite over-full-scale output. Neither policy is a recovery mechanism for arithmetic overflow.
+
 ## Legacy graphification
 
 `graphify_legacy_recipe()` proves the recipe is an exact legacy projection, then moves the legacy SCULPT payload into an explicit `legacy.sculpt.v1` graph node. The source renderer is invoked without SCULPT/master, explicit nodes execute in stored DAG order, then the one declared output master policy runs.

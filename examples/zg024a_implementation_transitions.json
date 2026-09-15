@@ -1,0 +1,22 @@
+{
+  "kind": "InverseFoundationImplementationTransitions",
+  "version": "1.0.0",
+  "transitions": [
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "c036445eeb5479e50666d239c5f7535959bc55a083fd87646bc59fe1af976564",
+      "issue": 137,
+      "stable_id": "ZG-016",
+      "changed_paths": ["zaaggenz_dsp/graph.py"],
+      "reason": "Final-bus hardening rejects float64 values that cannot be represented as finite float32 without adding clipping or normalization. ZG-024a CI reproduced all six fixtures on Ubuntu and Windows and found the portable calibration projection unchanged except for the legitimately changed implementation identity. The frozen predecessor calibration remains immutable."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "a2cf798e817ecc0288b3fae2fe2a4c9c3e404994fc6a3afd0b13430a510cda12",
+      "issue": 106,
+      "stable_id": "ZG-005",
+      "changed_paths": ["zaaggenz_dsp/graph.py", "zaaggenz_qc/checks.py"],
+      "reason": "Cumulative accepted implementation after #137 plus #106. QC certifiers now fail closed on NaN/Inf, non-finite controls and undefined required metrics while retaining descriptive diagnostics and the existing degenerate-signal convention. ZG-024a ran on Ubuntu and Windows with all inverse, inherited prerequisite and browser transport suites passing; the frozen portable calibration projection differed only in implementation_sha256."
+    }
+  ]
+}
