@@ -17,6 +17,24 @@ The cache also stores a private `blob_sha256` for local corruption detection. Be
 
 Caches created before this rule was enforced are **not silently migrated**. If an old index contains a valid private blob hash but a conflicting declared `AudioAssetRef.content_sha256`, opening the cache fails closed. The caller must discard/rebuild that local cache from authoritative render inputs; project revisions and render-slot provenance are not rewritten. This policy keeps cache repair separate from recipe/engine/product cache keys and from project identity.
 
+## Artifact-cache transaction and recovery model
+
+All cooperating `ArtifactCache` instances using the same local cache root serialize mutations and LRU reads through a process-local re-entrant lock plus an OS advisory lock held on `.cache.lock`. This supports multiple instances and multiple local processes on Windows and POSIX filesystems with ordinary local advisory-lock semantics. Network/distributed filesystems without equivalent locking are not a supported shared-cache transport.
+
+Each operation reloads the committed `index.json` while holding that root lock; one instance therefore cannot overwrite another instance's more recent index state. A cache key is single-assignment for artifact identity: reinserting the exact same payload and `AudioAssetRef` is an idempotent LRU touch, while attempting to bind the same cache key to different bytes or metadata fails closed.
+
+Publication is ordered so the index is the commit record:
+
+1. validate the complete payload/asset identity before filesystem mutation;
+2. write and fsync a uniquely named blob temporary, then atomically publish the blob for a previously unbound key;
+3. build the new index and LRU eviction set in memory, verifying that every entry to be committed has a corresponding blob;
+4. write/fsync a uniquely named index temporary and atomically replace `index.json`;
+5. only after the index commit, remove blobs evicted by the committed index.
+
+This ordering never deletes a blob still named by the last committed index. A crash before the index commit can leave only an **unindexed orphan blob**; a crash after the index commit but before cleanup can leave only an **unindexed evicted blob**. On open, recognized stale cache temporaries and unindexed SHA-shaped `.bin` blobs are removed under the same root lock. An index that references a missing blob is not silently repaired or rebound: opening fails closed with an explicit corruption error. Reopening under a smaller byte budget first commits deterministic LRU reconciliation, then removes the newly unreferenced blobs.
+
+Temporary filenames are unique rather than a shared `index.tmp`/blob temp name, but startup also recognizes the legacy fixed temporary names so an interrupted pre-repair cache can be cleaned safely. Recovery never changes recipe, engine, product, `AudioAssetRef`, project-revision or render-slot identity, and never reconstructs missing audio from a mutable locator.
+
 `recipe_diff()` reports exact JSON-pointer-like paths rather than guessing whether a difference is musically important. Cache invalidation keys include recipe identity, engine identity and render product; quality/tuning/automation/stage-order changes are already part of recipe identity through ZG-002.
 
 ## File safety and migrations
@@ -25,4 +43,4 @@ Format `zaaggenz-project` / `1.0.0` rejects unknown fields, malformed ancestry, 
 
 ## Validation
 
-CI materializes the authenticated v1.2.1 engine and proves that a LOCKED BLOOM recipe rendered before save and after reload is array-identical in the declared environment. Tests also cover audition isolation, cache identity/corruption/eviction, rejected partial publication, pre-fix cache fail-closed handling, revision tampering, recipe diffs and cache invalidation.
+CI materializes the authenticated v1.2.1 engine and proves that a LOCKED BLOOM recipe rendered before save and after reload is array-identical in the declared environment. Tests also cover audition isolation, cache identity/corruption/eviction, rejected partial publication, pre-fix cache fail-closed handling, revision tampering, recipe diffs and cache invalidation. Cache-specific hostile coverage additionally exercises concurrent same-root instances, cross-process locking, get/put races, same-key conflicts, failures between blob/index publication phases, stale temporaries, orphan recovery, missing indexed blobs and deterministic reopen eviction on both Windows and Ubuntu.
