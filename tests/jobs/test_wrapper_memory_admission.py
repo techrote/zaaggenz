@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import math
+from concurrent.futures import ThreadPoolExecutor
 import unittest
 
 import numpy as np
@@ -136,6 +136,32 @@ class WrapperMemoryAdmissionTests(unittest.TestCase):
             for _ in range(3):
                 with self.assertRaises(JobError):submit_retune_job(scheduler,REVISION,self.small,self.spectral,estimated_memory_bytes=1)
                 with self.assertRaises(JobError):submit_chordness_job(scheduler,REVISION,self.small,self.chordness,estimated_memory_bytes=1)
+            self.assertEqual(scheduler._records,{})
+        finally:scheduler.shutdown(cancel=True)
+
+    def test_concurrent_retune_and_chordness_underdeclarations_never_reach_shared_scheduler(self):
+        retune=estimate_retune_memory_bytes(self.small);chord=estimate_chordness_memory_bytes(self.small)
+        budget=min(retune,chord)-1
+        limits=SchedulerLimits(interactive_workers=1,background_workers=1,max_queued_jobs=16,
+            max_background_queued_jobs=16,max_history_jobs=32,max_memory_bytes=budget,
+            interactive_memory_reserve_bytes=max(1,budget//4),max_job_memory_bytes=budget,
+            max_preview_memory_bytes=max(1,budget//8),preview_cache_bytes=4096,
+            preview_cache_entries=2,numeric_threads=1)
+        scheduler=JobScheduler(limits,apply_numeric_limit=False)
+        def forged(kind):
+            try:
+                if kind=='retune':
+                    submit_retune_job(scheduler,REVISION,self.small,self.spectral,estimated_memory_bytes=1)
+                else:
+                    submit_chordness_job(scheduler,REVISION,self.small,self.chordness,estimated_memory_bytes=1)
+            except JobError:
+                return 'rejected'
+            return 'admitted'
+        try:
+            kinds=('retune','chordness')*8
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                results=list(pool.map(forged,kinds))
+            self.assertEqual(results,['rejected']*len(kinds))
             self.assertEqual(scheduler._records,{})
         finally:scheduler.shutdown(cancel=True)
 
