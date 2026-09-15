@@ -65,41 +65,118 @@ jobs:
       needs.impact.outputs.has_work == 'true' &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository
-    strategy:
-      fail-fast: false
-      # Bound installation-token pressure across repair PRs. The dispatch command
-      # already returns the exact run URL, so no run-list discovery polling is needed.
-      max-parallel: 2
-      matrix:
-        include: ${{ fromJSON(needs.impact.outputs.matrix) }}
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 30
+    outputs:
+      watch_matrix: ${{ steps.dispatch.outputs.watch_matrix }}
+      has_runs: ${{ steps.dispatch.outputs.has_runs }}
     steps:
-      - name: Dispatch and require the existing accepted workflow
+      - name: Dispatch required downstream workflows serially
+        id: dispatch
         env:
           GH_TOKEN: ${{ github.token }}
-          WORKFLOW: ${{ matrix.workflow }}
-          STABLE_ID: ${{ matrix.stable_id }}
+          MATRIX_JSON: ${{ needs.impact.outputs.matrix }}
           REF: ${{ github.event.pull_request.head.ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         shell: bash
         run: |
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          import time
+
+          rows = json.loads(os.environ['MATRIX_JSON'])
+          repo = os.environ['GITHUB_REPOSITORY']
+          ref = os.environ['REF']
+          head_sha = os.environ['HEAD_SHA']
+
+          def run_gh(args):
+              cp = subprocess.run(['gh', *args], text=True, capture_output=True)
+              if cp.stdout:
+                  print(cp.stdout, end='')
+              if cp.stderr:
+                  print(cp.stderr, end='', file=sys.stderr)
+              return cp
+
+          def latest_for_head(workflow):
+              cp = run_gh([
+                  'run', 'list', '--repo', repo, '--workflow', workflow,
+                  '--branch', ref, '--event', 'workflow_dispatch', '--limit', '30',
+                  '--json', 'databaseId,headSha,createdAt',
+              ])
+              if cp.returncode:
+                  return None
+              candidates = [r for r in json.loads(cp.stdout or '[]') if r.get('headSha') == head_sha]
+              candidates.sort(key=lambda r: r.get('createdAt', ''), reverse=True)
+              return candidates[0]['databaseId'] if candidates else None
+
+          watch = []
+          for index, row in enumerate(rows):
+              workflow = row['workflow']
+              stable_id = row['stable_id']
+              before_id = latest_for_head(workflow)
+              print(f'Dispatching {workflow} ({stable_id}) at {ref} / {head_sha}; previous run: {before_id or "none"}')
+
+              dispatched = False
+              for attempt, delay in enumerate((0, 30, 90), start=1):
+                  if delay:
+                      print(f'Retrying dispatch after {delay}s backoff (attempt {attempt}/3)')
+                      time.sleep(delay)
+                  cp = run_gh(['workflow', 'run', workflow, '--repo', repo, '--ref', ref])
+                  if cp.returncode == 0:
+                      dispatched = True
+                      break
+              if not dispatched:
+                  raise SystemExit(f'workflow dispatch failed after bounded retries: {workflow}')
+
+              run_id = None
+              for delay in (10, 30, 60):
+                  time.sleep(delay)
+                  candidate = latest_for_head(workflow)
+                  if candidate is not None and candidate != before_id:
+                      run_id = candidate
+                      break
+              if run_id is None:
+                  raise SystemExit(f'dispatch succeeded but the new run could not be identified: {workflow}')
+
+              print(f'Recorded downstream run {run_id} for {workflow}')
+              watch.append({'workflow': workflow, 'stable_id': stable_id, 'run_id': str(run_id)})
+              if index + 1 < len(rows):
+                  time.sleep(5)
+
+          compact = json.dumps(watch, separators=(',', ':'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
+              out.write(f'watch_matrix={compact}\n')
+              out.write(f'has_runs={"true" if watch else "false"}\n')
+          PY
+
+  watch:
+    needs: [impact, dispatch]
+    if: >-
+      always() &&
+      needs.dispatch.result == 'success' &&
+      needs.dispatch.outputs.has_runs == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include: ${{ fromJSON(needs.dispatch.outputs.watch_matrix) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - name: Require dispatched accepted workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WORKFLOW: ${{ matrix.workflow }}
+          STABLE_ID: ${{ matrix.stable_id }}
+          RUN_ID: ${{ matrix.run_id }}
+        shell: bash
+        run: |
           set -euo pipefail
-
-          echo "Dispatching $WORKFLOW ($STABLE_ID) at $REF / $HEAD_SHA"
-          dispatch_output="$(gh workflow run "$WORKFLOW" --repo "$GITHUB_REPOSITORY" --ref "$REF" 2>&1)"
-          printf '%s\n' "$dispatch_output"
-
-          # Current gh emits the created run URL directly. Consume that authoritative
-          # response instead of hammering the Actions list API to rediscover the run.
-          run_id="$(printf '%s\n' "$dispatch_output" | sed -nE 's#^.*[/]actions[/]runs[/]([0-9]+).*$#\1#p' | tail -n 1)"
-          if ! [[ "$run_id" =~ ^[0-9]+$ ]]; then
-            echo "Dispatch succeeded but no Actions run id was present in gh output for $WORKFLOW" >&2
-            exit 1
-          fi
-
-          echo "Waiting for run $run_id with bounded API polling"
-          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --interval 60 --exit-status
+          echo "Waiting for $WORKFLOW ($STABLE_ID), run $RUN_ID"
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --interval 60 --exit-status
 
   fork-policy:
     needs: impact
