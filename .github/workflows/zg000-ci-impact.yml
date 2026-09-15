@@ -67,7 +67,9 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository
     strategy:
       fail-fast: false
-      max-parallel: 4
+      # Keep dispatch concurrency below the installation API-rate budget. Each
+      # watcher polls Actions state, and several repair PRs can be active at once.
+      max-parallel: 2
       matrix:
         include: ${{ fromJSON(needs.impact.outputs.matrix) }}
     runs-on: ubuntu-latest
@@ -113,8 +115,8 @@ jobs:
             exit 1
           fi
 
-          echo "Waiting for run $run_id"
-          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --exit-status
+          echo "Waiting for run $run_id with bounded API polling"
+          gh run watch "$run_id" --repo "$GITHUB_REPOSITORY" --interval 30 --exit-status
 
   fork-policy:
     needs: impact
