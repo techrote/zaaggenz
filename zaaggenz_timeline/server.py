@@ -42,8 +42,9 @@ class Handler(webapp.Handler):
         path = urlparse(self.path).path
         try:
             if path == '/api/timeline/bootstrap':
-                payload = {'document': self.server.initial_document.to_dict(), 'token': self.server.token}
                 session = getattr(self.server, 'session', None)
+                document = self.server.initial_document if session is None else session.document()
+                payload = {'document': document.to_dict(), 'token': self.server.token}
                 if session is not None:
                     payload['session'] = session.snapshot()
                 return self._json(payload)
