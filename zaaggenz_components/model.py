@@ -1,6 +1,6 @@
 from __future__ import annotations
 from dataclasses import dataclass
-import math
+import hashlib,math
 import numpy as np
 from zaaggenz_contracts import Contract
 
@@ -44,6 +44,29 @@ class ComponentTrackerSpec:
         ambiguity_cents=self.ambiguity_cents,max_gap_frames=self.max_gap_frames,min_track_frames=self.min_track_frames,
         min_support_fraction=self.min_support_fraction,transient_sigma=self.transient_sigma,transient_guard_ms=self.transient_guard_ms)
 
+
+def _audio_shape(array,name):
+    a=np.asarray(array)
+    if a.ndim==1: return a,1
+    if a.ndim==2 and a.shape[1] in (1,2): return a,a.shape[1]
+    raise ComponentError(name+' must be mono/stereo audio')
+
+
+def _pcm_sha(array):
+    return hashlib.sha256(np.asarray(array,dtype='<f4',order='C').tobytes()).hexdigest()
+
+
+def _bind_asset(asset,array,sample_rate_hz,name):
+    a,channels=_audio_shape(array,name)
+    expected_layout='mono' if channels==1 else 'stereo-lr'
+    if asset is None:raise ComponentError(name+' asset required')
+    if asset.get('identity_domain')!='pcm-f32le-interleaved-v1':raise ComponentError(name+' asset must identify canonical PCM')
+    if asset.get('frame_count')!=a.shape[0]:raise ComponentError(name+' frame_count mismatch')
+    if asset.get('channels')!=channels or asset.get('channel_layout')!=expected_layout:raise ComponentError(name+' channel metadata mismatch')
+    if asset.get('sample_rate_hz')!=sample_rate_hz:raise ComponentError(name+' sample_rate_hz mismatch')
+    if asset.get('content_sha256')!=_pcm_sha(a):raise ComponentError(name+' content identity mismatch')
+
+
 @dataclass(frozen=True)
 class ComponentAnalysis:
     bundle:Contract
@@ -53,13 +76,25 @@ class ComponentAnalysis:
     residual:np.ndarray
     transient_mask:np.ndarray
     diagnostics:dict
+    sample_rate_hz:int
     def __post_init__(self):
-        if self.bundle.to_dict()['kind']!='PartialTrackBundle':raise ComponentError('PartialTrackBundle required')
-        shape=np.asarray(self.source).shape
+        if not isinstance(self.bundle,Contract):raise ComponentError('PartialTrackBundle required')
+        d=self.bundle.to_dict()
+        if d.get('kind')!='PartialTrackBundle':raise ComponentError('PartialTrackBundle required')
+        if type(self.sample_rate_hz)is not int or not 8000<=self.sample_rate_hz<=192000:raise ComponentError('analysis sample rate out of range')
+        source,channels=_audio_shape(self.source,'source');shape=source.shape
+        arrays={'source':source}
         for name in ('sinusoidal','transient','residual'):
-            a=np.asarray(getattr(self,name))
-            if a.shape!=shape:raise ComponentError(name+' shape mismatch')
-        if len(self.transient_mask)!=shape[0]:raise ComponentError('transient mask length mismatch')
+            a,c=_audio_shape(getattr(self,name),name)
+            if a.shape!=shape or c!=channels:raise ComponentError(name+' shape mismatch')
+            arrays[name]=a
+        mask=np.asarray(self.transient_mask)
+        if mask.ndim!=1 or len(mask)!=shape[0]:raise ComponentError('transient mask length mismatch')
+        for name,a in (*arrays.items(),('transient_mask',mask)):
+            if not np.issubdtype(a.dtype,np.number) or not np.isfinite(a).all():raise ComponentError(name+' must be finite numeric data')
+        _bind_asset(d['asset'],source,self.sample_rate_hz,'source')
+        _bind_asset(d.get('transient_asset'),arrays['transient'],self.sample_rate_hz,'transient')
+        _bind_asset(d.get('residual_asset'),arrays['residual'],self.sample_rate_hz,'residual')
         for a in (self.source,self.sinusoidal,self.transient,self.residual,self.transient_mask):a.setflags(write=False)
     @property
     def reconstruction(self):
