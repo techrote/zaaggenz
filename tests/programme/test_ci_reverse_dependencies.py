@@ -42,18 +42,18 @@ class ReverseDependencyCI(unittest.TestCase):
         self.assertIn("zg018-chordness.yml", native)
         self.assertIn("zg019-placement.yml", native)
         self.assertIn("zg021-band-selective.yml", native)
+        self.assertIn("zg024a-lab.yml", native)
         self.assertIn("zg023-inspector.yml", dispatch)
-        self.assertIn("zg024a-lab.yml", dispatch)
         self.assertIn("zg024b-strategies.yml", dispatch)
 
     def test_jobs_change_selects_async_consumers(self) -> None:
         dispatch = self.dispatch_names("zaaggenz_jobs/scheduler.py")
         native = self.native_names("zaaggenz_jobs/scheduler.py")
         self.assertIn("zg004-jobs.yml", native)
+        self.assertIn("zg024a-lab.yml", native)
         self.assertIn("zg009-timeline.yml", dispatch)
         self.assertIn("zg015-listening.yml", dispatch)
         self.assertIn("zg023-inspector.yml", dispatch)
-        self.assertIn("zg024a-lab.yml", dispatch)
         self.assertIn("zg024b-strategies.yml", dispatch)
 
     def test_contract_change_reaches_deep_consumers(self) -> None:
@@ -70,6 +70,7 @@ class ReverseDependencyCI(unittest.TestCase):
         # coverage, not ownership of melody implementation.
         result = ci.classify_changed_paths(["zaaggenz_melody/render.py"], ROOT)
         self.assertEqual(["ZG-008"], result["direct_stable_ids"])
+        self.assertIn("zg024a-lab.yml", result["native"])
 
     def test_feature_local_change_still_runs_owner_natively(self) -> None:
         result = ci.classify_changed_paths(["zaaggenz_phrase/model.py"], ROOT)
