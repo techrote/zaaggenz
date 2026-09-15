@@ -7,6 +7,9 @@ ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT/'app'))
 import webapp
 from zaaggenz_contracts.model import loads
 from zaaggenz_jobs import JobError
+from zaaggenz_timeline.model import default_document
+from zaaggenz_timeline.server import Handler as TimelineHandler
+from zaaggenz_timeline.service import TimelineService
 from .model import InspectorError
 from .service import InspectorService
 
@@ -14,7 +17,7 @@ STATIC=ROOT/'web'/'inspector'
 JOB=re.compile(r'/api/inspector/jobs/([0-9a-f]{32})\Z')
 AUDIO=re.compile(r'/api/inspector/audio/([AB])\Z')
 
-class Handler(webapp.Handler):
+class Handler(TimelineHandler):
     def log_message(self,fmt,*args):
         if getattr(self.server,'verbose',False):super().log_message(fmt,*args)
     def _origin_ok(self):
@@ -42,7 +45,7 @@ class Handler(webapp.Handler):
                 return self._binary((STATIC/filename).read_bytes(),mime,extra_headers={'X-Content-Type-Options':'nosniff','Cache-Control':'no-store, max-age=0',
                     'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"})
             if path in ('/','/index.html'):
-                page=(webapp.STATIC_ROOT/'index.html').read_text(encoding='utf-8');page=page.replace('<body>','<body><nav><a href="/inspector">Open Research harmonic-comb inspector</a></nav>',1)
+                page=(webapp.STATIC_ROOT/'index.html').read_text(encoding='utf-8');page=page.replace('<body>','<body><nav><a href="/timeline">Open note / clip timeline</a> · <a href="/inspector">Open Research harmonic-comb inspector</a></nav>',1)
                 return self._binary(page.encode(),'text/html; charset=utf-8')
             if path.startswith('/api/inspector/') or path.startswith('/inspector/'):return self._error('unknown inspector route',404)
             return super().do_GET()
@@ -55,6 +58,11 @@ class Handler(webapp.Handler):
         try:
             if self.headers.get('Content-Type','').split(';')[0]!='application/json':raise ValueError('application/json required')
             data=loads(self._read_body(limit=200_000))
+            if path=='/api/inspector/bind':
+                if type(data)is not dict or set(data)!={'job_id'} or type(data['job_id'])is not str or not re.fullmatch('[0-9a-f]{32}',data['job_id']):raise ValueError('bind request requires a valid timeline job_id only')
+                artifact=self.server.timeline.scheduler.result(data['job_id'])
+                state=self.server.inspector.bind_artifact(artifact)
+                return self._json({'bound':True,'source_binding':state['source_binding'],'state':state})
             if path=='/api/inspector/analyse':
                 if type(data)is not dict or set(data)!={'controls'}:raise ValueError('analyse request requires controls only')
                 return self._json(self.server.inspector.submit_analysis(data['controls']),202)
@@ -75,8 +83,11 @@ class Handler(webapp.Handler):
 
 class InspectorServer(ThreadingHTTPServer):
     daemon_threads=True
-    def __init__(self,port=8766,sample_rate=12000,verbose=False):
-        super().__init__(('127.0.0.1',port),Handler);self.token=secrets.token_urlsafe(32);self.verbose=verbose;self.inspector=InspectorService(sample_rate)
+    def __init__(self,port=8766,sample_rate=12000,verbose=False,*,timeline=None,demo_fixture=False):
+        super().__init__(('127.0.0.1',port),Handler);self.token=secrets.token_urlsafe(32);self.verbose=verbose
+        self.initial_document=default_document(sample_rate);self._owns_timeline=timeline is None;self.timeline=TimelineService() if timeline is None else timeline
+        self.inspector=InspectorService(sample_rate,demo_fixture=demo_fixture)
     def server_close(self):
         if hasattr(self,'inspector'):self.inspector.close()
+        if getattr(self,'_owns_timeline',False) and hasattr(self,'timeline'):self.timeline.close()
         super().server_close()

@@ -3,8 +3,10 @@ on:
   pull_request:
     paths:
       - 'zaaggenz_inspector/**'
+      - 'zaaggenz_timeline/**'
       - 'web/inspector/**'
       - 'tests/inspector/**'
+      - 'tests/timeline/**'
       - 'tools/inspector_fixture_report.py'
       - 'docs/analysis/ZG023_INSPECTOR.md'
       - '.github/workflows/zg023-inspector.yml'
@@ -22,7 +24,7 @@ jobs:
           - os: windows-latest
             pythonpath: 'app;.'
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 35
     env:
       PYTHONUTF8: '1'
       OPENBLAS_NUM_THREADS: '1'
@@ -53,17 +55,17 @@ jobs:
       - name: Install Chromium on Windows
         if: runner.os == 'Windows'
         run: python -m playwright install chromium
-      - name: Inspector model, service, HTTP and stale-result tests
+      - name: Inspector model, immutable render binding, HTTP and stale-result tests
         run: python -m unittest discover -s tests/inspector -p 'test_*.py' -v
       - name: Accepted spectral and tuning regressions
         run: |
           python -m unittest discover -s tests/spectral -v
           python -m unittest discover -s tests/tuning -v
-      - name: Timeline model regression
+      - name: Timeline renderer and model regression
         run: python -m unittest discover -s tests/timeline -p 'test_*.py' -v
-      - name: Real Chromium A/B, zoom, mask, freeze/apply/undo and stale gate
+      - name: Real Chromium Compose render binding, A/B workflow and stale gate
         run: python tests/inspector/browser.py --out inspector-browser --sample-rate 12000
-      - name: Reduced-rate fixture evidence
+      - name: Explicit reduced-rate synthetic fixture evidence
         run: python tools/inspector_fixture_report.py --sample-rate 12000 --out inspector-evidence-12k.json
       - uses: actions/upload-artifact@v4
         if: always()
@@ -84,7 +86,7 @@ jobs:
         with: {python-version: '3.13'}
       - run: python baseline/recovered_source/materialize_v2.py --out .
       - run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
-      - name: Full-rate snapshot and state-policy evidence
+      - name: Full-rate explicit synthetic fixture and state-policy evidence
         run: python tools/inspector_fixture_report.py --sample-rate 48000 --out inspector-evidence-48k.json
       - uses: actions/upload-artifact@v4
         if: always()
