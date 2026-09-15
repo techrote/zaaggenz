@@ -5,6 +5,7 @@ import io
 from pathlib import Path
 import sys
 import unittest
+import wave
 
 import numpy as np
 from scipy.io import wavfile
@@ -26,6 +27,17 @@ SR = 12_000
 def wav_bytes(samples, sample_rate=SR):
     out = io.BytesIO()
     wavfile.write(out, sample_rate, np.asarray(samples))
+    return out.getvalue()
+
+
+def wav_pcm24(samples, sample_rate=SR):
+    values = [int(v) for v in samples]
+    out = io.BytesIO()
+    with wave.open(out, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(3)
+        wav.setframerate(sample_rate)
+        wav.writeframes(b"".join(v.to_bytes(3, "little", signed=True) for v in values))
     return out.getvalue()
 
 
@@ -66,6 +78,12 @@ class WavDecodeTests(unittest.TestCase):
         np.testing.assert_array_equal(got16, int16.astype(np.float32) / np.float32(32768.0))
         np.testing.assert_array_equal(got32, int32.astype(np.float32) / np.float32(2147483648.0))
         np.testing.assert_array_equal(got_float, floating)
+
+    def test_24_bit_pcm_left_justified_container_keeps_full_scale_semantics(self):
+        pcm24 = np.array([-(2**23), -(2**22), 0, 2**22, 2**23 - 1], dtype=np.int64)
+        _, decoded = decode_wav_bytes(wav_pcm24(pcm24))
+        expected = pcm24.astype(np.float32) / np.float32(2**23)
+        np.testing.assert_array_equal(decoded, expected)
 
     def test_non_finite_float_wav_remains_rejected(self):
         for bad in (np.nan, np.inf, -np.inf):
