@@ -66,11 +66,12 @@ class ReverseDependencyCI(unittest.TestCase):
         self.assertIn("zg032-vocal.yml", dispatch)
 
     def test_broad_consumer_filter_does_not_claim_source_ownership(self) -> None:
-        # ZG-024a natively triggers on zaaggenz_*/**, but that is compatibility
-        # coverage, not ownership of melody implementation.
+        # ZG-024a may run natively on zaaggenz_*/**, but ZG-024 is not a
+        # descendant of ZG-008. The impact selector therefore excludes it while
+        # still proving that melody source ownership remains only ZG-008.
         result = ci.classify_changed_paths(["zaaggenz_melody/render.py"], ROOT)
         self.assertEqual(["ZG-008"], result["direct_stable_ids"])
-        self.assertIn("zg024a-lab.yml", result["native"])
+        self.assertNotIn("zg024a-lab.yml", result["impacted"])
 
     def test_feature_local_change_still_runs_owner_natively(self) -> None:
         result = ci.classify_changed_paths(["zaaggenz_phrase/model.py"], ROOT)
