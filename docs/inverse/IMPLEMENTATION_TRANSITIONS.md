@@ -34,6 +34,20 @@ Before registering the transition, ZG-024a was run on both Ubuntu and Windows. A
 
 The registry therefore preserves both facts: provenance changed because relevant source changed, and the accepted portable foundation calibration otherwise reproduced unchanged.
 
+## Second accepted transition candidate — issue #106
+
+ZG-005 issue #106 hardens every public QC certifier so non-finite input, non-finite controls and non-finite/undefined required metrics fail closed before tolerance comparison. `diagnose()` remains descriptive and does not silently turn NaN/Inf into a passing value. Existing valid zero/constant-source sentinel semantics and finite master-gain behaviour remain explicit.
+
+Because the implementation identity is always measured relative to the immutable frozen calibration, the reviewed #106 candidate is cumulative with the already accepted #137 final-bus change:
+
+- frozen predecessor: `ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4`
+- cumulative #106 candidate: `a2cf798e817ecc0288b3fae2fe2a4c9c3e404994fc6a3afd0b13430a510cda12`
+- implementation paths changed relative to frozen evidence: `zaaggenz_dsp/graph.py`, `zaaggenz_qc/checks.py`
+
+Before registration, the PR merge ref was executed through the full ZG-024a workflow on both Ubuntu and Windows. On both platforms all 81 inverse tests, all inherited project/jobs/QC/analysis/components/descriptors/DSP/spectral/tuning suites, and browser transport checks passed. The frozen calibration comparison reported exactly one difference: `/implementation_sha256`, with the identical candidate hash above on both platforms. No fixture, candidate state, objective, eligibility, ranking, holdout or other portable numeric/discrete field changed.
+
+The registry therefore accepts only that exact frozen-to-cumulative identity pair; it does not create a wildcard exemption or rewrite the frozen calibration.
+
 ## Authoring / verification
 
 Normal CI uses:
