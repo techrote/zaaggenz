@@ -7,7 +7,9 @@ transitively affected by changed implementation paths but whose existing
 ``pull_request.paths`` filters would not start them natively.
 
 No third-party YAML parser is required; we only read the small, deliberately
-regular ``on.pull_request.paths`` list used by this repository.
+regular ``on.pull_request.paths`` lists used by path-filtered workflows. A
+workflow with ``pull_request:`` and no ``paths`` is explicitly treated as
+always-native for pull requests.
 """
 from __future__ import annotations
 
@@ -22,10 +24,6 @@ from pathlib import Path
 from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW_DIR = ROOT / ".github" / "workflows"
-CONFIG_PATH = ROOT / "programme" / "ci_reverse_dependencies.json"
-GRAPH_PATH = ROOT / "programme" / "dependency_graph.json"
-WORKFLOW_RE = re.compile(r"^zg(?P<num>\d{3})[a-z0-9-]*\.yml$")
 MAPPED_WORKFLOW_RE = re.compile(r"^zg(?P<num>\d{3})")
 
 EXCLUDED_SOURCE_PREFIXES = (
@@ -58,6 +56,10 @@ class WorkflowAudit:
     pull_request_paths: tuple[str, ...]
     source_paths: tuple[str, ...]
 
+    @property
+    def always_native(self) -> bool:
+        return not self.pull_request_paths
+
 
 def _load_json(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
@@ -73,7 +75,7 @@ def _unquote_list_value(text: str) -> str:
 
 
 def pull_request_paths(path: Path) -> tuple[str, ...]:
-    """Extract the literal on.pull_request.paths list from one workflow."""
+    """Return literal pull-request paths, or empty for an unfiltered PR trigger."""
     lines = path.read_text(encoding="utf-8").splitlines()
     in_pull_request = False
     pull_indent = -1
@@ -106,8 +108,8 @@ def pull_request_paths(path: Path) -> tuple[str, ...]:
             paths_indent = indent
             collecting = True
 
-    if not out:
-        raise AuditError(f"{path.name}: missing literal pull_request.paths list")
+    if not in_pull_request:
+        raise AuditError(f"{path.name}: missing pull_request trigger")
     return tuple(out)
 
 
@@ -118,8 +120,7 @@ def _is_implementation_pattern(pattern: str) -> bool:
 
 
 def _matches(path: str, pattern: str) -> bool:
-    # GitHub path filters and fnmatch are not byte-for-byte identical, but all
-    # repository patterns admitted here are simple literals/prefix globs.
+    # All admitted patterns are deliberately simple literals/prefix globs.
     return fnmatch.fnmatchcase(path.replace("\\", "/"), pattern)
 
 
@@ -128,6 +129,7 @@ def build_audit(root: Path = ROOT) -> tuple[dict, dict, dict[str, WorkflowAudit]
     graph = _load_json(root / "programme" / "dependency_graph.json")
     owners: dict[str, str] = config["workflow_owners"]
     parents: dict[str, list[str]] = graph["parents"]
+    special: dict[str, list[str]] = config.get("special_path_owners", {})
 
     errors: list[str] = []
     current = {
@@ -165,23 +167,35 @@ def build_audit(root: Path = ROOT) -> tuple[dict, dict, dict[str, WorkflowAudit]
             errors.append(str(exc))
             continue
         source_paths = tuple(p for p in pr_paths if _is_implementation_pattern(p))
-        if not source_paths:
-            errors.append(f"{filename}: no implementation source path can be inferred")
         audits[filename] = WorkflowAudit(filename, stable_id, pr_paths, source_paths)
 
-    for pattern, stable_ids in config.get("special_path_owners", {}).items():
+    for pattern, stable_ids in special.items():
         if not pattern or not isinstance(stable_ids, list) or not stable_ids:
             errors.append(f"invalid special_path_owners entry: {pattern!r}")
         for stable_id in stable_ids:
             if stable_id not in parents:
                 errors.append(f"special path {pattern}: unknown stable id {stable_id}")
 
+    # A path-filtered workflow must expose at least one implementation path.
+    # An always-native workflow may omit paths, but its implementation owner
+    # must be represented explicitly in special_path_owners so changes can
+    # still propagate to downstream consumers.
+    specially_owned_ids = {stable_id for ids in special.values() for stable_id in ids}
+    for audit in audits.values():
+        if not audit.always_native and not audit.source_paths:
+            errors.append(f"{audit.filename}: no implementation source path can be inferred")
+        if audit.always_native and audit.stable_id not in specially_owned_ids:
+            errors.append(
+                f"{audit.filename}: unfiltered workflow {audit.stable_id} needs explicit source ownership"
+            )
+
     # Every checked-in zaaggenz_* implementation package must be represented by
-    # at least one workflow source path, otherwise the classifier could miss it.
-    inferred_patterns = [p for audit in audits.values() for p in audit.source_paths]
+    # either an inferred workflow source path or an explicit special owner.
+    source_patterns = [p for audit in audits.values() for p in audit.source_paths]
+    source_patterns.extend(special)
     for package in sorted(p for p in root.glob("zaaggenz_*") if p.is_dir()):
         probe = package.name + "/__impact_probe__.py"
-        if not any(_matches(probe, pattern) for pattern in inferred_patterns):
+        if not any(_matches(probe, pattern) for pattern in source_patterns):
             errors.append(f"implementation package has no workflow owner: {package.name}")
 
     if errors:
@@ -214,9 +228,9 @@ def classify_changed_paths(
         for pattern, owners in config.get("special_path_owners", {}).items():
             if _matches(path, pattern):
                 direct.update(owners)
-        workflow_name = path.removeprefix(".github/workflows/")
-        if path.startswith(".github/workflows/") and workflow_name in audits:
-            direct.add(audits[workflow_name].stable_id)
+        # Workflow-definition edits are validated by the ZG-000 impact workflow
+        # itself. They are not product-source changes and must not fan out through
+        # the programme DAG merely because a feature workflow was edited.
         for audit in audits.values():
             if any(_matches(path, pattern) for pattern in audit.source_paths):
                 direct.add(audit.stable_id)
@@ -229,7 +243,7 @@ def classify_changed_paths(
         if not (direct & closure):
             continue
         impacted.append(audit)
-        if any(
+        if audit.always_native or any(
             _matches(path, pattern)
             for path in changed
             for pattern in audit.pull_request_paths
@@ -250,17 +264,21 @@ def classify_changed_paths(
 
 
 def audit_markdown(root: Path = ROOT) -> str:
-    _, graph, audits = build_audit(root)
+    config, graph, audits = build_audit(root)
     parents: dict[str, list[str]] = graph["parents"]
+    special: dict[str, list[str]] = config.get("special_path_owners", {})
     rows = [
-        "| Workflow | Stable ID | Direct implementation trigger paths | Hard parents |",
-        "| --- | --- | --- | --- |",
+        "| Workflow | Stable ID | PR trigger | Implementation ownership | Hard parents |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for audit in sorted(audits.values(), key=lambda a: a.filename):
-        source = "<br>".join(f"`{p}`" for p in audit.source_paths)
+        trigger = "all pull requests" if audit.always_native else "path-filtered"
+        owned = list(audit.source_paths)
+        owned.extend(pattern for pattern, ids in special.items() if audit.stable_id in ids)
+        source = "<br>".join(f"`{p}`" for p in dict.fromkeys(owned)) or "—"
         hard_parents = ", ".join(parents[audit.stable_id]) or "—"
         rows.append(
-            f"| `{audit.filename}` | {audit.stable_id} | {source} | {hard_parents} |"
+            f"| `{audit.filename}` | {audit.stable_id} | {trigger} | {source} | {hard_parents} |"
         )
     return "\n".join(rows) + "\n"
 
