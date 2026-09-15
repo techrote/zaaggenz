@@ -48,6 +48,20 @@ Before registration, the PR merge ref was executed through the full ZG-024a work
 
 The registry therefore accepts only that exact frozen-to-cumulative identity pair; it does not create a wildcard exemption or rewrite the frozen calibration.
 
+## Third accepted transition candidate — issue #113
+
+ZG-004 issue #113 removes post-validation metadata aliasing from `RenderArtifact`. Bounded asset/scope JSON is now snapshotted deterministically before validation; asset contract, PCM shape and content identity checks are performed against the exact retained snapshot; public `.asset`, `.scopes` and `.metadata()` calls return fresh ordinary JSON containers. The immutable audio bytes object is retained directly, so this hardening neither transforms nor copies rendered audio.
+
+This candidate is cumulative with the accepted #137 final-bus and #106 QC repairs because the implementation identity is measured against the immutable frozen calibration:
+
+- frozen predecessor: `ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4`
+- cumulative #113 candidate: `ea2392f7987d27d2d6fa692a5191368cd611efe8464309a193edae7b50c6ad4c`
+- implementation paths changed relative to frozen evidence: `zaaggenz_dsp/graph.py`, `zaaggenz_jobs/model.py`, `zaaggenz_qc/checks.py`
+
+An unregistered merge-head run before the final deterministic-snapshot refinement exercised the full ZG-024a workflow on both Ubuntu and Windows: inverse, inherited prerequisite and browser transport suites passed, and both platforms failed the frozen comparison only at `/implementation_sha256` with the same then-current candidate identity. The registry entry above is deliberately exact and fail-closed for the final refined implementation; the repair may merge only after a full registered Ubuntu and Windows run reproduces the frozen portable calibration with no difference other than this declared implementation identity.
+
+As with the earlier transitions, this record neither rewrites the frozen evidence nor grants a wildcard compatibility exemption. Any source change that produces a different implementation digest, or any drift in fixture/state/objective/eligibility/ranking/holdout/numerical evidence, still fails CI.
+
 ## Authoring / verification
 
 Normal CI uses:

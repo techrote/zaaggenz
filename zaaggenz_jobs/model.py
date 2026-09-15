@@ -1,9 +1,8 @@
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass,field
 from enum import IntEnum, Enum
 import hashlib,json,math,os,re,tempfile,threading
 from pathlib import Path
-from copy import deepcopy
 from zaaggenz_contracts import validate
 
 HEX64=re.compile(r'^[0-9a-f]{64}$')
@@ -87,42 +86,65 @@ def _sha(value,name):
     if type(value)is not str or not HEX64.fullmatch(value): raise JobError(f'{name} must be a lowercase SHA-256')
 
 
-def _json_safe(value):
+def _json_snapshot(value,name='scopes'):
+    """Return one deterministic immutable byte snapshot of bounded JSON metadata."""
     try:
-        text=json.dumps(value,ensure_ascii=False,allow_nan=False,separators=(',',':'))
-    except (TypeError,ValueError) as exc: raise JobError('scopes must be bounded JSON metadata') from exc
-    if len(text.encode('utf-8'))>2_000_000: raise JobError('scopes metadata too large')
-    return deepcopy(value)
+        text=json.dumps(value,ensure_ascii=False,allow_nan=False,sort_keys=True,separators=(',',':'))
+    except (TypeError,ValueError) as exc: raise JobError(f'{name} must be bounded JSON metadata') from exc
+    payload=text.encode('utf-8')
+    if len(payload)>2_000_000: raise JobError(f'{name} metadata too large')
+    return payload
 
-@dataclass(frozen=True)
+
+def _json_restore(payload):
+    # json.loads always creates fresh mutable containers, so callers cannot obtain
+    # a reference to the validated canonical snapshot held by RenderArtifact.
+    return json.loads(payload.decode('utf-8'))
+
+
+@dataclass(frozen=True,init=False)
 class RenderArtifact:
     revision_id:str
     recipe_sha256:str
     product:str
     cache_key:str
     audio_bytes:bytes
-    asset:dict
-    scopes:dict
-    def __post_init__(self):
-        for value,name in ((self.revision_id,'revision_id'),(self.recipe_sha256,'recipe_sha256'),(self.cache_key,'cache_key')):_sha(value,name)
-        if self.product not in PRODUCTS: raise JobError('unknown render product')
-        if not isinstance(self.audio_bytes,bytes): raise JobError('audio payload must be immutable bytes')
-        if len(self.audio_bytes)>512*1024*1024: raise JobError('audio payload exceeds artifact bound')
-        try: validate(self.asset,'AudioAssetRef')
+    _asset_json:bytes=field(repr=False)
+    _scopes_json:bytes=field(repr=False)
+
+    def __init__(self,revision_id,recipe_sha256,product,cache_key,audio_bytes,asset,scopes):
+        for value,name in ((revision_id,'revision_id'),(recipe_sha256,'recipe_sha256'),(cache_key,'cache_key')):_sha(value,name)
+        if product not in PRODUCTS: raise JobError('unknown render product')
+        if not isinstance(audio_bytes,bytes): raise JobError('audio payload must be immutable bytes')
+        if len(audio_bytes)>512*1024*1024: raise JobError('audio payload exceeds artifact bound')
+        # Snapshot first, then validate exactly the bytes-backed metadata that the
+        # artifact will retain. Caller-owned dictionaries are never authoritative
+        # after this point.
+        asset_json=_json_snapshot(asset,'asset');scopes_json=_json_snapshot(scopes,'scopes')
+        canonical_asset=_json_restore(asset_json)
+        try: validate(canonical_asset,'AudioAssetRef')
         except Exception as exc: raise JobError('invalid audio asset metadata') from exc
-        if self.asset['identity_domain']=='pcm-f32le-interleaved-v1':
-            expected=self.asset['frame_count']*self.asset['channels']*4
-            if len(self.audio_bytes)!=expected: raise JobError('PCM artifact byte length disagrees with frame/channel metadata')
-        if self.asset['content_sha256']!=hashlib.sha256(self.audio_bytes).hexdigest():
+        if canonical_asset['identity_domain']=='pcm-f32le-interleaved-v1':
+            expected=canonical_asset['frame_count']*canonical_asset['channels']*4
+            if len(audio_bytes)!=expected: raise JobError('PCM artifact byte length disagrees with frame/channel metadata')
+        if canonical_asset['content_sha256']!=hashlib.sha256(audio_bytes).hexdigest():
             raise JobError('audio bytes do not match declared content identity')
-        object.__setattr__(self,'asset',deepcopy(self.asset));object.__setattr__(self,'scopes',_json_safe(self.scopes))
+        object.__setattr__(self,'revision_id',revision_id);object.__setattr__(self,'recipe_sha256',recipe_sha256)
+        object.__setattr__(self,'product',product);object.__setattr__(self,'cache_key',cache_key)
+        object.__setattr__(self,'audio_bytes',audio_bytes);object.__setattr__(self,'_asset_json',asset_json)
+        object.__setattr__(self,'_scopes_json',scopes_json)
+
+    @property
+    def asset(self): return _json_restore(self._asset_json)
+    @property
+    def scopes(self): return _json_restore(self._scopes_json)
     @property
     def cache_bytes(self):
-        # Count actual immutable audio plus serialized metadata rather than an arbitrary slab estimate.
-        return len(self.audio_bytes)+len(json.dumps(self.metadata(),ensure_ascii=False,allow_nan=False,separators=(',',':')).encode('utf-8'))
+        # Count actual immutable audio plus serialized public metadata rather than an arbitrary slab estimate.
+        return len(self.audio_bytes)+len(json.dumps(self.metadata(),ensure_ascii=False,allow_nan=False,sort_keys=True,separators=(',',':')).encode('utf-8'))
     def metadata(self):
         return dict(revision_id=self.revision_id,recipe_sha256=self.recipe_sha256,product=self.product,
-                    cache_key=self.cache_key,asset=deepcopy(self.asset),scopes=deepcopy(self.scopes))
+                    cache_key=self.cache_key,asset=self.asset,scopes=self.scopes)
 
 
 def atomic_publish_bytes(path,payload,token=None):
