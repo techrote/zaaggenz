@@ -10,6 +10,29 @@ INDEX_VERSION='1.0.0'
 def _hex_sha(value):
     return isinstance(value,str) and len(value)==64 and all(c in '0123456789abcdef' for c in value)
 
+def _pcm_expected_bytes(asset):
+    if asset['identity_domain']!='pcm-f32le-interleaved-v1': return None
+    return asset['frame_count']*asset['channels']*4
+
+def _validate_asset_payload(asset,payload,blob_sha256=None):
+    validate(asset,'AudioAssetRef')
+    if not isinstance(payload,(bytes,bytearray)): raise ProjectError('artifact payload must be bytes')
+    payload=bytes(payload)
+    blob=hashlib.sha256(payload).hexdigest() if blob_sha256 is None else blob_sha256
+    domain=asset['identity_domain']
+    if domain=='pcm-f32le-interleaved-v1':
+        expected=_pcm_expected_bytes(asset)
+        if len(payload)!=expected:
+            raise ProjectError('PCM artifact byte length does not match AudioAssetRef')
+        if asset['content_sha256']!=blob:
+            raise ProjectError('PCM artifact bytes do not match AudioAssetRef')
+    elif domain=='encoded-file-bytes-v1':
+        if asset['content_sha256']!=blob:
+            raise ProjectError('artifact bytes do not match AudioAssetRef')
+    else:  # shared contract validation should make this unreachable
+        raise ProjectError('unsupported AudioAssetRef identity domain')
+    return payload,blob
+
 def cache_key(recipe_sha256,engine_sha256,product):
     if product not in ('synth','arrange','arrange_bass','bass'): raise ProjectError('invalid product')
     for x in (recipe_sha256,engine_sha256):
@@ -36,6 +59,9 @@ class ArtifactCache:
                 raise ProjectError('invalid cache entry metadata')
             try: validate(e['asset'],'AudioAssetRef')
             except Exception as exc: raise ProjectError('invalid cached AudioAssetRef') from exc
+            expected=_pcm_expected_bytes(e['asset'])
+            if expected is not None and e['bytes']!=expected:
+                raise ProjectError('cached PCM byte length does not match AudioAssetRef')
         self.index=d
     def _save(self):
         tmp=self.index_path.with_suffix('.tmp');tmp.write_text(json.dumps(self.index,sort_keys=True,separators=(',',':'))+'\n',encoding='utf-8');os.replace(tmp,self.index_path)
@@ -43,11 +69,8 @@ class ArtifactCache:
         if not _hex_sha(key): raise ProjectError('invalid cache key')
         return self.root/(key+'.bin')
     def put(self,key,payload,asset):
-        self._path(key);validate(asset,'AudioAssetRef')
-        if not isinstance(payload,(bytes,bytearray)): raise ProjectError('artifact payload must be bytes')
-        payload=bytes(payload);blob=hashlib.sha256(payload).hexdigest()
-        if asset['identity_domain']=='encoded-file-bytes-v1' and asset['content_sha256']!=blob:
-            raise ProjectError('artifact bytes do not match AudioAssetRef')
+        self._path(key)
+        payload,blob=_validate_asset_payload(asset,payload)
         path=self._path(key);tmp=path.with_suffix('.tmp');tmp.write_bytes(payload);os.replace(tmp,path)
         self.index['clock']+=1;self.index['entries'][key]={'bytes':len(payload),'blob_sha256':blob,'access':self.index['clock'],'asset':deepcopy(asset)}
         self._evict();self._save();return key
@@ -57,9 +80,10 @@ class ArtifactCache:
         if entry is None:return None
         path=self._path(key)
         if not path.is_file(): raise ProjectError('cache index points to missing artifact')
-        payload=path.read_bytes()
-        if len(payload)!=entry['bytes'] or hashlib.sha256(payload).hexdigest()!=entry['blob_sha256']:
+        payload=path.read_bytes();blob=hashlib.sha256(payload).hexdigest()
+        if len(payload)!=entry['bytes'] or blob!=entry['blob_sha256']:
             raise ProjectError('cached artifact integrity failure')
+        _validate_asset_payload(entry['asset'],payload,blob)
         self.index['clock']+=1;entry['access']=self.index['clock'];self._save();return payload
     def _evict(self):
         total=sum(e['bytes'] for e in self.index['entries'].values())
