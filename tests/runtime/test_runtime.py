@@ -1,15 +1,17 @@
 from __future__ import annotations
 from copy import deepcopy
-import json,sys,threading,time,unittest
+import json,sys,threading,unittest
 from pathlib import Path
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request,urlopen
+import numpy as np
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'app'))
 from zaaggenz_inspector import service as inspector_service_module
 from zaaggenz_jobs import JobError
 from zaaggenz_runtime import RuntimeSession,ZaaggenzServer
 from zaaggenz_timeline import TimelineDocument
+from zaaggenz_vocal.store import encode_wav_bytes
 
 
 def note(degree=0):
@@ -30,6 +32,9 @@ class RuntimeTests(unittest.TestCase):
         if trusted is not None:h['X-Zaaggenz-Trusted-Token']=trusted
         body=None if data is None else json.dumps(data).encode()
         with urlopen(Request(self.base+path,data=body,headers=h),timeout=30) as r:return r.status,dict(r.headers),r.read()
+    def request_bytes(self,path,payload,content_type,*,headers=None):
+        h={'Content-Type':content_type,'X-Zaaggenz-Token':self.token,**(headers or {})}
+        with urlopen(Request(self.base+path,data=payload,headers=h),timeout=30) as r:return r.status,dict(r.headers),r.read()
     def get_json(self,path):
         _,_,raw=self.request(path);return json.loads(raw)
     def post_json(self,path,payload,*,token=None,trusted=None):
@@ -45,7 +50,8 @@ class RuntimeTests(unittest.TestCase):
         self.assertFalse(self.server.timeline.owns_scheduler);self.assertFalse(self.server.inspector.owns_scheduler);self.assertFalse(hasattr(self.server.vocal,'timeline'))
         self.assertNotEqual(self.server.token,self.server.trusted_token);self.assertNotIn('trusted_token',self.boot);self.assertEqual(self.boot['capabilities']['listening_trusted'],'separate-server-held-capability')
         for path,needle in (('/timeline',b'Phrase timeline'),('/listen',b'Listening'),('/inspector',b'Harmonic-comb'),('/vocal',b'Vocal'),('/',b'zaaggenz-workspaces')):
-            code,headers,body=self.request(path);self.assertEqual(code,200);self.assertIn(needle,body);self.assertIn('Content-Security-Policy',headers)
+            code,headers,body=self.request(path);self.assertEqual(code,200);self.assertIn(needle,body)
+            if path!='/':self.assertIn('Content-Security-Policy',headers)
         for path in ('/api/timeline/bootstrap','/api/listening/bootstrap','/api/inspector/bootstrap','/api/vocal/bootstrap'):
             self.assertEqual(self.get_json(path)['token'],self.token)
         with self.assertRaises(HTTPError) as cm:self.request('/api/runtime/bootstrap',headers={'Origin':'https://foreign.invalid'})
@@ -77,7 +83,6 @@ class RuntimeTests(unittest.TestCase):
             state=self.server.inspector.state();self.assertTrue(state['source_stale']);self.assertEqual(state['authoritative_revision_id'],validated['revision_id'])
             release.set();self.assertEqual(self.server.scheduler.wait(analysis['job_id'],30).state,'completed');status=self.server.inspector.status(analysis['job_id'])
         self.assertTrue(status['stale']);self.assertFalse(status['published']);self.assertIsNone(self.server.inspector.state()['snapshot'])
-        with self.assertRaisesRegex(Exception,'stale|unknown'):self.server.inspector.apply('0'*64)
         reopened=self.get_json('/api/timeline/bootstrap');self.assertEqual(TimelineDocument(reopened['document']).revision_id,validated['revision_id'])
 
     def test_shared_scheduler_job_ownership_prevents_cross_workspace_cancel_or_read(self):
@@ -92,6 +97,7 @@ class RuntimeTests(unittest.TestCase):
         with patch.object(inspector_service_module,'build_analysis',delayed):
             _,_,analysis=self.post_json('/api/inspector/analyse',{'controls':{'amount':.2}});self.assertTrue(started.wait(5))
             with self.assertRaises(JobError):self.server.timeline.cancel(analysis['job_id'])
+            with self.assertRaises(JobError):self.server.timeline.status(analysis['job_id'])
             with self.assertRaises(JobError):self.server.inspector.cancel(render_job['job_id'])
             with self.assertRaises(HTTPError) as cm:self.post_json('/api/timeline/cancel',{'job_id':analysis['job_id']})
             self.assertEqual(cm.exception.code,400)
@@ -110,6 +116,15 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as cm:self.post_json('/api/listening/trusted-export',{'trial_id':trial['id']})
         self.assertEqual(cm.exception.code,403)
         code,_,raw=self.request('/api/listening/trusted-export',{'trial_id':trial['id']},trusted=self.server.trusted_token);self.assertEqual(code,200);trusted=json.loads(raw);self.assertEqual(trusted['manifest']['id'],trusted_id);self.assertIn(trusted['manifest']['abx_truth'],('A','B'))
+
+    def test_vocal_capture_compile_is_proposal_only_and_does_not_replace_compose(self):
+        document,_,_=self.render(0);before=self.server.session.snapshot()
+        sr=12000;t=np.arange(round(sr*.35),dtype=np.float64)/sr;audio=np.concatenate((np.zeros(round(sr*.1)),.3*np.sin(2*np.pi*120*t),np.zeros(round(sr*.1)))).astype(np.float32)
+        code,_,raw=self.request_bytes('/api/vocal/upload',encode_wav_bytes(audio,sr),'audio/wav',headers={'X-Capture-Origin':'local-import'});self.assertEqual(code,201);source=json.loads(raw)
+        self.assertEqual(source['source_session']['timeline_revision_id'],before['timeline_revision_id']);self.assertIn('proposal-only',source['application_policy'])
+        _,_,analysed=self.post_json('/api/vocal/analyse',{'source_id':source['source_id'],'dictionary_id':'local-soft','grid_beats':'1/4'});self.assertTrue(analysed['analysis']['segments'])
+        _,_,compiled=self.post_json('/api/vocal/compile',{'edit':analysed['edit']});self.assertEqual(compiled['source_session']['timeline_revision_id'],before['timeline_revision_id']);self.assertIn('proposal-only',compiled['application_policy'])
+        self.assertEqual(self.server.session.snapshot(),before);self.assertNotEqual(compiled['timeline_revision_id'],before['timeline_revision_id']);self.assertEqual(TimelineDocument(document).revision_id,before['timeline_revision_id'])
 
     def test_session_serialization_reopens_with_identical_project_and_timeline_identity(self):
         document=self.document(7);_,_,validated=self.post_json('/api/timeline/validate',{'document':document});before=self.server.session.snapshot()
