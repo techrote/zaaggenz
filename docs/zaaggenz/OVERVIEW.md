@@ -1,7 +1,7 @@
 # zaaggenz — master programme overview and task atlas
 
 **Repository:** `techrote/zaaggenz` · **Deployment:** ZG-000 plus ZG-001…ZG-045 published as GitHub issues.  
-**Live implementation/readiness status:** [`programme/task_state.json`](../../programme/task_state.json). Narrative status reconciliation is tracked separately in #88.
+**Live implementation/readiness status:** [`programme/task_state.json`](../../programme/task_state.json). Narrative reconciliation/audit history is recorded in [`PROGRAMME_STATUS_RECONCILIATION.md`](PROGRAMME_STATUS_RECONCILIATION.md).
 
 ## Mission
 
@@ -130,7 +130,7 @@ These levels ignore write conflicts. `render-integration`, `frontend-integration
 
 ## Important blockers and non-blockers
 
-**Historical bootstrap gate:** ZG-001 originally gated all production-path assumptions on recovery/provenance of the v1.2.1 source. That evidence is now accepted; live blockers and gates are represented in `programme/task_state.json`. The separate #88 reconciliation pass will remove remaining stale bootstrap-era prose throughout the programme documentation.
+**Historical bootstrap gate:** ZG-001 originally gated all production-path assumptions on recovery/provenance of the v1.2.1 source. That evidence is now accepted; live blockers and gates are represented in `programme/task_state.json`. The dated reconciliation record explains the transition without erasing the planning history.
 
 **Spectral bottleneck:** trusted component/remainder reconstruction precedes retuning; calibrated descriptors precede Chordness; validated graph insertion precedes band-local hybrid presets.
 
@@ -143,6 +143,7 @@ These levels ignore write conflicts. `render-integration`, `frontend-integration
 ## Shared research/RAG support
 
 - [`CONTEXT_AND_DECISIONS.md`](CONTEXT_AND_DECISIONS.md) — artistic target, authority and protected behaviours.
+- [`PROGRAMME_STATUS_RECONCILIATION.md`](PROGRAMME_STATUS_RECONCILIATION.md) — dated audit explaining planning-history versus current state.
 - [`briefs/AGENT_OPERATING_RULES.md`](briefs/AGENT_OPERATING_RULES.md) — universal implementation contract.
 - [`briefs/SPECTRAL_HARMONY.md`](briefs/SPECTRAL_HARMONY.md) — partial-domain harmony and tuning.
 - [`briefs/RHYTHM_EXPECTATION.md`](briefs/RHYTHM_EXPECTATION.md) — phrase roles, metre, linked returns and gesture direction.
