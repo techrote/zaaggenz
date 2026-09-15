@@ -11,7 +11,7 @@ from zaaggenz_timeline.server import Handler as TimelineHandler
 from .model import VocalCaptureError,exact
 from .service import VocalService
 
-ROOT=Path(__file__).resolve().parents[1];STATIC=ROOT/'web'/'vocal';SOURCE=re.compile(r'/api/vocal/source/(capture-[0-9a-f]{16})/audio\Z')
+ROOT=Path(__file__).resolve().parents[1];STATIC=ROOT/'web'/'vocal';SOURCE=re.compile(r'/api/vocal/source/(capture-v1-[0-9a-f]{64})/audio\Z')
 
 class Handler(TimelineHandler):
     def _with_source_session(self,payload):
