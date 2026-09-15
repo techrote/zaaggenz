@@ -109,7 +109,7 @@ class RuntimeTests(unittest.TestCase):
         _,_,safe=self.post_json('/api/listening/export',{'trial_id':trial['id']});self.assertIsNone(safe['trial']['abx_truth']);self.assertNotIn('seed',safe['trial']);self.assertNotIn(trusted_id,json.dumps(safe,sort_keys=True))
         with self.assertRaises(HTTPError) as cm:self.post_json('/api/listening/trusted-export',{'trial_id':trial['id']})
         self.assertEqual(cm.exception.code,403)
-        _,_,trusted=self.post_json('/api/listening/trusted-export',{'trial_id':trial['id']},token=False,trusted=self.server.trusted_token);self.assertEqual(trusted['manifest']['id'],trusted_id);self.assertIn(trusted['manifest']['abx_truth'],('A','B'))
+        code,_,raw=self.request('/api/listening/trusted-export',{'trial_id':trial['id']},trusted=self.server.trusted_token);self.assertEqual(code,200);trusted=json.loads(raw);self.assertEqual(trusted['manifest']['id'],trusted_id);self.assertIn(trusted['manifest']['abx_truth'],('A','B'))
 
     def test_session_serialization_reopens_with_identical_project_and_timeline_identity(self):
         document=self.document(7);_,_,validated=self.post_json('/api/timeline/validate',{'document':document});before=self.server.session.snapshot()
