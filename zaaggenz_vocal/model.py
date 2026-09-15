@@ -1,14 +1,18 @@
 """Versioned local-vocal analysis and correction state; raw capture audio is never embedded."""
 from __future__ import annotations
 from dataclasses import dataclass
-import json, math, re
+import hashlib, json, math, re
 from zaaggenz_contracts import digest, validate
 from zaaggenz_contracts.model import check_json, fraction, loads
 from zaaggenz_contracts.music import beat_to_sample
 
-VERSION='1.0.0'
+VERSION='1.1.0'
+LEGACY_VERSION='1.0.0'
+SOURCE_IDENTITY_DOMAIN='zaaggenz-vocal-source-v1'
+PCM_IDENTITY_DOMAIN='pcm-f32le-interleaved-v1'
 _SHA=re.compile(r'[0-9a-f]{64}\Z')
 _ID=re.compile(r'[a-z][a-z0-9_.-]{0,63}\Z')
+_SOURCE_ID=re.compile(r'capture-v1-[0-9a-f]{64}\Z')
 
 class VocalCaptureError(ValueError): pass
 
@@ -24,13 +28,38 @@ def ident(v,name):
     if type(v)is not str or not _ID.fullmatch(v):raise VocalCaptureError(f'{name}: lowercase identifier required')
     return v
 
+def source_identity_digest(content_sha256,sample_rate_hz,channels,frame_count):
+    """Hash the complete interpretation metadata for canonical vocal PCM.
+
+    Origin is deliberately excluded: local-import/local-recording/generated-fixture
+    describes provenance, not how the PCM is interpreted.  The containing
+    VocalAnalysis/VocalEdit digest still covers origin exactly.
+    """
+    if type(content_sha256)is not str or not _SHA.fullmatch(content_sha256):raise VocalCaptureError('source content hash required')
+    integer(sample_rate_hz,8000,192000,'source.sample_rate_hz')
+    integer(channels,1,2,'source.channels')
+    integer(frame_count,1,192000*30,'source.frame_count')
+    payload={'identity_domain':SOURCE_IDENTITY_DOMAIN,'pcm_domain':PCM_IDENTITY_DOMAIN,'content_sha256':content_sha256,
+             'sample_rate_hz':sample_rate_hz,'channels':channels,'frame_count':frame_count}
+    raw=json.dumps(payload,sort_keys=True,separators=(',',':'),allow_nan=False).encode('utf-8')
+    return hashlib.sha256(raw).hexdigest()
+
+def make_source_identity(content_sha256,sample_rate_hz,channels,frame_count,origin):
+    if origin not in ('local-recording','local-import','generated-fixture'):raise VocalCaptureError('unknown local source origin')
+    sha=source_identity_digest(content_sha256,sample_rate_hz,channels,frame_count)
+    return {'id':'capture-v1-'+sha,'content_sha256':content_sha256,'identity_domain':SOURCE_IDENTITY_DOMAIN,'pcm_domain':PCM_IDENTITY_DOMAIN,
+            'sample_rate_hz':sample_rate_hz,'channels':channels,'frame_count':frame_count,'origin':origin}
+
 def _source(v):
-    exact(v,{'id','content_sha256','identity_domain','sample_rate_hz','channels','frame_count','origin'},'source')
-    ident(v['id'],'source.id')
+    exact(v,{'id','content_sha256','identity_domain','pcm_domain','sample_rate_hz','channels','frame_count','origin'},'source')
+    if type(v['id'])is not str or not _SOURCE_ID.fullmatch(v['id']):raise VocalCaptureError('source.id must be a full capture-v1 SHA-256 identity')
+    if v['identity_domain']!=SOURCE_IDENTITY_DOMAIN:raise VocalCaptureError('unsupported vocal source identity domain')
+    if v['pcm_domain']!=PCM_IDENTITY_DOMAIN:raise VocalCaptureError('unsupported canonical PCM identity domain')
     if type(v['content_sha256'])is not str or not _SHA.fullmatch(v['content_sha256']):raise VocalCaptureError('source content hash required')
-    if v['identity_domain']!='pcm-f32le-interleaved-v1':raise VocalCaptureError('unsupported source identity domain')
     integer(v['sample_rate_hz'],8000,192000,'source.sample_rate_hz');integer(v['channels'],1,2,'source.channels');integer(v['frame_count'],1,192000*30,'source.frame_count')
     if v['origin'] not in ('local-recording','local-import','generated-fixture'):raise VocalCaptureError('unknown local source origin')
+    expected='capture-v1-'+source_identity_digest(v['content_sha256'],v['sample_rate_hz'],v['channels'],v['frame_count'])
+    if v['id']!=expected:raise VocalCaptureError('source.id does not match canonical content/timing/channel identity')
 
 def _segment(v,sr,frames,index):
     exact(v,{'id','start_sample','end_sample','onset_confidence','accent_db','rms_dbfs','voicing','pitch_hz','pitch_confidence','brightness_hz','brightness_confidence','spectral_flatness'},f'segment[{index}]')
@@ -50,7 +79,9 @@ class VocalAnalysis:
         try:check_json(data)
         except (ValueError,TypeError) as exc:raise VocalCaptureError(str(exc)) from exc
         exact(data,{'format','version','source','method','segments','diagnostics'},'analysis')
-        if data['format']!='zaaggenz-vocal-analysis' or data['version']!=VERSION:raise VocalCaptureError('unsupported vocal-analysis format/version')
+        if data['format']!='zaaggenz-vocal-analysis':raise VocalCaptureError('unsupported vocal-analysis format')
+        if data['version']==LEGACY_VERSION:raise VocalCaptureError('legacy vocal-analysis 1.0.0 uses truncated capture identity; reanalyse from retained source audio instead of reinterpreting it')
+        if data['version']!=VERSION:raise VocalCaptureError('unsupported vocal-analysis format/version')
         _source(data['source']);method=data['method'];exact(method,{'id','version','frame_ms','hop_ms','pitch_min_hz','pitch_max_hz','voicing_threshold'},'method')
         if method['id']!='zg-vocal-contour-v1' or method['version']!='1.0.0':raise VocalCaptureError('unsupported vocal analysis method')
         finite(method['frame_ms'],10,100,'frame_ms');finite(method['hop_ms'],2,50,'hop_ms');finite(method['pitch_min_hz'],30,500,'pitch_min_hz');finite(method['pitch_max_hz'],80,1200,'pitch_max_hz');finite(method['voicing_threshold'],0,1,'voicing_threshold')
@@ -95,7 +126,9 @@ class VocalEdit:
         try:check_json(data)
         except (ValueError,TypeError) as exc:raise VocalCaptureError(str(exc)) from exc
         exact(data,{'format','version','analysis','dictionary_registry_sha256','dictionary_id','grid_beats','time_map','segments','source_disposition'},'edit')
-        if data['format']!='zaaggenz-vocal-edit' or data['version']!=VERSION:raise VocalCaptureError('unsupported vocal-edit format/version')
+        if data['format']!='zaaggenz-vocal-edit':raise VocalCaptureError('unsupported vocal-edit format')
+        if data['version']==LEGACY_VERSION:raise VocalCaptureError('legacy vocal-edit 1.0.0 embeds truncated capture identity; reanalyse/recreate the edit from retained source audio')
+        if data['version']!=VERSION:raise VocalCaptureError('unsupported vocal-edit format/version')
         analysis=VocalAnalysis(data['analysis']);sha=data['dictionary_registry_sha256']
         if type(sha)is not str or not _SHA.fullmatch(sha):raise VocalCaptureError('dictionary registry hash required')
         ident(data['dictionary_id'],'dictionary_id')
