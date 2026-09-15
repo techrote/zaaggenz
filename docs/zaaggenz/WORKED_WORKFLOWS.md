@@ -1,6 +1,6 @@
 # Worked creative and research workflows
 
-These are target end-to-end workflows used to keep individual issues integrated. Exact UI labels may evolve; the state ownership and evidence requirements should not.
+These are **target end-to-end workflows** used to keep individual issues integrated. They do not assert that every named capability is currently complete or production-ready. Exact UI labels may evolve; the state ownership and evidence requirements should not. Consult [`programme/task_state.json`](../../programme/task_state.json) before treating a step as dependency-satisfying or available without an experimental/owner gate.
 
 ## 1. From protected source to melodic zaag phrase
 
