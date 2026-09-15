@@ -12,12 +12,12 @@ class VocalService:
         if not isinstance(self.registry,DictionaryRegistry):raise VocalCaptureError('DictionaryRegistry required')
         self.store=SessionAudioStore()
     def ingest_wav(self,payload,origin='local-import'):
-        sr,x=decode_wav_bytes(payload);identifier=self.store.put(x,sr,origin)
-        audio,_,_=self.store.get(identifier)
-        return {'source_id':identifier,'sample_rate_hz':sr,'channels':audio.shape[1],'frame_count':len(audio),'origin':origin,'duration_seconds':len(audio)/sr}
+        sr,x=decode_wav_bytes(payload);identifier=self.store.put(x,sr,origin);source=self.store.describe(identifier)
+        return {'source_id':identifier,'content_sha256':source['content_sha256'],'identity_domain':source['identity_domain'],'pcm_domain':source['pcm_domain'],
+                'sample_rate_hz':sr,'channels':source['channels'],'frame_count':source['frame_count'],'origin':origin,'duration_seconds':source['frame_count']/sr}
     def analyse(self,source_id,dictionary_id='local-soft',grid_beats='1/4'):
-        x,sr,origin=self.store.get(source_id);analysis=analyse_vocal(x,sr,origin=origin)
-        if analysis.to_dict()['source']['id']!=source_id:raise AssertionError('session-store content identity changed during analysis')
+        source=self.store.describe(source_id);x,sr,origin=self.store.get(source_id);analysis=analyse_vocal(x,sr,origin=origin)
+        if analysis.to_dict()['source']!=source:raise AssertionError('session-store source identity/provenance changed during analysis')
         edit=make_edit(analysis,self.registry,dictionary_id,grid_beats=grid_beats)
         compilation=compile_edit(edit,self.registry)
         return {'analysis':analysis.to_dict(),'analysis_sha256':analysis.sha256,'edit':edit.to_dict(),'edit_sha256':edit.sha256,
