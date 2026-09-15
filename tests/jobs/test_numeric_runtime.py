@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import sys
 import threading
 import unittest
 from unittest import mock
@@ -139,6 +140,7 @@ class NumericRuntimeTests(unittest.TestCase):
         s=self.scheduler(1);during=observed()
         self.assertTrue(during);self.assertTrue(all(value==1 for value in during.values()),during)
         s.shutdown();self.schedulers.remove(s);after=observed()
+        print('NUMERIC_RUNTIME_NATIVE',{'platform':sys.platform,'before':before,'during':during,'after':after},flush=True)
         self.assertEqual(after,before)
 
 
