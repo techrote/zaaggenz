@@ -8,7 +8,7 @@ import numpy as np
 ROOT=Path(__file__).resolve().parents[2]
 sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'app'))
 
-from zaaggenz_contracts import Contract
+from zaaggenz_contracts import Contract,ContractError
 from zaaggenz_contracts.legacy import envelope
 from zaaggenz_gesture import rise_turn_return,compile_gesture_recipe
 from zaaggenz_linked import linked_fakeout_return,compile_linked_recipe
@@ -106,8 +106,8 @@ class BaseRecipeTransformTests(unittest.TestCase):
             transform_melodic_recipe(Contract(graph),_phrase(graph))
 
         bad=_synth_recipe().to_dict();bad['nodes'].append(_node('orphan','core.identity.v1',bad['source']['id'],{}))
-        with self.assertRaisesRegex(MelodyError,'disconnected'):
-            transform_melodic_recipe(Contract(bad),_phrase(bad))
+        with self.assertRaisesRegex(ContractError,'disconnected'):
+            Contract(bad)
 
     def test_zero_one_and_maximum_graph_depth_boundaries(self):
         zero=_synth_recipe(with_graph=False);z=transform_melodic_recipe(zero,_phrase(zero.to_dict()))
