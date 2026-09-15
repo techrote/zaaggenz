@@ -198,11 +198,14 @@ def main():
     if args.full_out: write_json(args.full_out, full, compact=True)
     if args.telemetry_out: write_json(args.telemetry_out, telemetry)
     reference = calibration_reference(report)
-    if args.reference_out: write_json(args.reference_out, reference, compact=True)
-    failures = compare_reports(reference, read_json(args.check)) if args.check else []
+    expected = read_json(args.check) if args.check else None
+    failures = compare_reports(reference, expected) if expected is not None else []
     print(json.dumps({'evidence_sha256': report['evidence_sha256'], 'fixtures': len(report['fixtures']),
         'candidates': sum(len(f['candidates']) for f in report['fixtures']),
-        'seconds': telemetry['total_seconds'], 'comparison_failures': failures}, indent=2))
+        'seconds': telemetry['total_seconds'],
+        'implementation_sha256': reference['implementation_sha256'],
+        'expected_implementation_sha256': None if expected is None else expected.get('implementation_sha256'),
+        'comparison_failures': failures}, indent=2))
     if failures: raise SystemExit('ZG-024a evidence comparison failed')
 
 
