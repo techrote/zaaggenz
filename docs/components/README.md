@@ -12,6 +12,12 @@ Frame confidence combines peak-to-floor evidence, spectral flatness and fit cond
 
 Each exported phase is the cosine phase at the frame's declared anchor sample. Supports are half-open sample intervals with explicit zero padding. `continuous`, `reanchored` and `unknown` are distinct. Later transformation code must respect each frame's `action` and may not infer permission from reconstruction quality alone.
 
+## Concrete-analysis identity binding
+
+A `PartialTrackBundle` is portable metadata, while `ComponentAnalysis` is the in-memory aggregate that couples that metadata to concrete PCM arrays. Construction therefore binds the two rather than trusting shape alone. The aggregate carries the analysis sample rate independently and verifies that the bundle's source asset has the same frame count, channel count/layout, sample rate and canonical `pcm-f32le-interleaved-v1` SHA-256 as the supplied source array. The transient and residual asset identities are likewise verified against their actual arrays and the same sample rate. All concrete arrays, including the transient mask, must be finite before the aggregate is accepted.
+
+This prevents a valid-looking bundle from rebinding component phase/timing to different PCM, sample-rate semantics or a metadata-directed extent. A huge forged `frame_count` is rejected against the concrete source length before later reconstruction can allocate from it. There is no implicit resampling, truncation, padding, hash repair or channel coercion.
+
 ## Transient and remainder ownership
 
 A conservative transient mask is derived from short-resolution spectral flux plus a robust sample-derivative sentinel. Sinusoidal reconstruction is removed inside the protected transient region. The transient asset owns the original audio under that mask; the residual is defined as source minus protected sinusoidal and transient ownership. Their float32 PCM identities are embedded in the bundle.
@@ -35,4 +41,4 @@ python -m unittest discover -s tests/components -v
 python tools/component_fixture_report.py --out component-fixtures.json
 ```
 
-Fixtures cover stable tones, chirps, amplitude modulation, crossings, white noise, impulses, empty/short signals and stereo antiphase. The report is deterministic synthetic evidence, not a listening result.
+Fixtures cover stable tones, chirps, amplitude modulation, crossings, white noise, impulses, empty/short signals, stereo antiphase, forged source/remainder identities, sample-rate mismatch, channel mismatch and hostile declared extents. The report is deterministic synthetic evidence, not a listening result.
