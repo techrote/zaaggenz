@@ -16,7 +16,7 @@ def prepare_bound_render(server,base):
     with urllib.request.urlopen(base+'/api/timeline/bootstrap',timeout=10) as r:boot=json.loads(r.read())
     document=boot['document'];document['notes']=[{'id':'browser-source','beat':'0/1','duration_beats':'1/2','degree':0,'detune_cents':0.,'gain_db':0.,'muted':False,'roll_density':0}];document['next_id']=1
     render=post_json(base,'/api/timeline/render',{'document':document,'region':{'start_beat':'0/1','end_beat':'1/1'},'name':'Inspector browser source'},boot['token'])
-    server.timeline.scheduler.wait(render['job_id'],30);artifact=server.timeline.scheduler.result(render['job_id'])
+    server.timeline.scheduler.wait(render['job_id'],30);artifact=server.timeline.artifact(render['job_id'])
     bound=post_json(base,'/api/inspector/bind',{'job_id':render['job_id']},boot['token']);assert bound['source_binding']['content_sha256']==artifact.asset['content_sha256']
     return boot['token'],artifact
 
@@ -55,7 +55,7 @@ def main():
                 return original(*params,**kwargs)
             with patch.object(service_module,'build_analysis',delayed):
                 with page.expect_response('**/api/inspector/analyse') as response:page.locator('#analyse').click()
-                job=response.value.json()['job_id'];time.sleep(.05);new_artifact=replacement_artifact(artifact);replacement_job=server.timeline.scheduler.submit(JobClass.RENDER,new_artifact.revision_id,lambda ctx:new_artifact,estimated_memory_bytes=8*1024*1024);server.timeline.scheduler.wait(replacement_job,10);post_json(base,'/api/inspector/bind',{'job_id':replacement_job},token);release.set();server.inspector.scheduler.wait(job,30)
+                job=response.value.json()['job_id'];time.sleep(.05);new_artifact=replacement_artifact(artifact);replacement_job=server.timeline.scheduler.submit(JobClass.RENDER,new_artifact.revision_id,lambda ctx:new_artifact,estimated_memory_bytes=8*1024*1024);server.timeline.scheduler.wait(replacement_job,10);server.timeline._remember_job(replacement_job);post_json(base,'/api/inspector/bind',{'job_id':replacement_job},token);release.set();server.inspector.scheduler.wait(job,30)
                 expect(page.locator('#status')).to_contain_text('Stale analysis rejected',timeout=30000);expect(page.locator('#apply')).to_be_disabled();expect(page.locator('#snapshot-id')).to_have_text('—');expect(page.locator('#source-revision')).to_have_text(new_artifact.revision_id[:12]);expect(page.locator('#source-content')).to_have_text(new_artifact.asset['content_sha256'][:12])
             page.screenshot(path=args.out/'inspector.png',full_page=True)
             page.goto(base+'/');expect(page.locator('body')).to_be_visible();assert page.locator('a[href="/inspector"]').count()==1;assert page.locator('a[href="/timeline"]').count()==1
