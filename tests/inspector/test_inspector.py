@@ -15,7 +15,7 @@ def make_artifact(audio,*,sample_rate=12000,channels=1,seed='0'):
     values=np.asarray(audio,dtype='<f4').reshape(-1);payload=values.tobytes();frames=len(values)//channels
     revision=hashlib.sha256(('revision-'+seed).encode()).hexdigest();recipe=hashlib.sha256(('recipe-'+seed).encode()).hexdigest();cache=hashlib.sha256(('cache-'+seed).encode()).hexdigest()
     asset=dict(kind='AudioAssetRef',version='1.0.0',content_sha256=hashlib.sha256(payload).hexdigest(),identity_domain='pcm-f32le-interleaved-v1',sample_rate_hz=sample_rate,channels=channels,
-               channel_layout='mono' if channels==1 else 'stereo',frame_count=frames,level_domain='source',sample_policy='unclamped_float')
+               channel_layout='mono' if channels==1 else 'stereo-lr',frame_count=frames,level_domain='source',sample_policy='unclamped_float')
     return RenderArtifact(revision,recipe,'synth',cache,payload,asset,{'test_seed':seed})
 
 
