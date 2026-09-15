@@ -7,6 +7,11 @@ from zaaggenz_contracts import digest, validate
 from .project import ProjectError
 
 INDEX_VERSION='1.0.0'
+DEFAULT_MAX_ENTRIES=8192
+DEFAULT_MAX_INDEX_BYTES=8*1024*1024
+HARD_MAX_ENTRIES=65536
+HARD_MAX_INDEX_BYTES=64*1024*1024
+_MIN_INDEX_BYTES=len((json.dumps({'version':INDEX_VERSION,'clock':0,'entries':{}},sort_keys=True,separators=(',',':'))+'\n').encode('utf-8'))
 _ROOT_LOCKS={}
 _ROOT_LOCKS_GUARD=threading.Lock()
 
@@ -84,11 +89,15 @@ def cache_key(recipe_sha256,engine_sha256,product):
                    'engine_sha256':engine_sha256,'product':product})
 
 class ArtifactCache:
-    """Transactional local bounded byte cache. Locators never enter project/audio identity."""
-    def __init__(self,root,max_bytes=512*1024*1024):
+    """Transactional local cache bounded by payload bytes, entry count and index metadata bytes."""
+    def __init__(self,root,max_bytes=512*1024*1024,*,max_entries=DEFAULT_MAX_ENTRIES,max_index_bytes=DEFAULT_MAX_INDEX_BYTES):
         self.root=Path(root);self.root.mkdir(parents=True,exist_ok=True)
         if type(max_bytes)is not int or not 0<=max_bytes<=64*1024**3: raise ProjectError('invalid cache bound')
-        self.max_bytes=max_bytes;self.index_path=self.root/'index.json';self.lock_path=self.root/'.cache.lock'
+        if type(max_entries)is not int or not 1<=max_entries<=HARD_MAX_ENTRIES: raise ProjectError('invalid cache entry bound')
+        if type(max_index_bytes)is not int or not _MIN_INDEX_BYTES<=max_index_bytes<=HARD_MAX_INDEX_BYTES:
+            raise ProjectError('invalid cache metadata bound')
+        self.max_bytes=max_bytes;self.max_entries=max_entries;self.max_index_bytes=max_index_bytes
+        self.index_path=self.root/'index.json';self.lock_path=self.root/'.cache.lock'
         self._thread_lock=_thread_lock(self.root);self.index=self._empty_index();self._load()
     @contextmanager
     def _locked(self):
@@ -98,12 +107,32 @@ class ArtifactCache:
     def _path(self,key):
         if not _hex_sha(key): raise ProjectError('invalid cache key')
         return self.root/(key+'.bin')
+    def _index_payload(self,index):
+        return (json.dumps(index,sort_keys=True,separators=(',',':'))+'\n').encode('utf-8')
+    def _entry_metadata_bytes(self,key,entry):
+        key_bytes=json.dumps(key,separators=(',',':')).encode('utf-8')
+        entry_bytes=json.dumps(entry,sort_keys=True,separators=(',',':')).encode('utf-8')
+        return len(key_bytes)+1+len(entry_bytes)
+    def _index_size(self,index):
+        empty={'version':index['version'],'clock':index['clock'],'entries':{}}
+        size=len(self._index_payload(empty));entries=index['entries']
+        if entries:
+            size+=sum(self._entry_metadata_bytes(key,entry) for key,entry in entries.items())+len(entries)-1
+        return size
     def _read_index(self):
         if not self.index_path.exists(): return self._empty_index()
-        try: d=json.loads(self.index_path.read_text(encoding='utf-8'))
-        except (OSError,json.JSONDecodeError,UnicodeError) as e: raise ProjectError('invalid cache index') from e
+        try:
+            with self.index_path.open('rb') as f:
+                raw=f.read(HARD_MAX_INDEX_BYTES+1)
+        except OSError as e:
+            raise ProjectError('cannot read cache index') from e
+        if len(raw)>HARD_MAX_INDEX_BYTES:
+            raise ProjectError('cache index exceeds hard metadata safety bound')
+        try:d=json.loads(raw.decode('utf-8'))
+        except (json.JSONDecodeError,UnicodeError,ValueError) as e: raise ProjectError('invalid cache index') from e
         if type(d) is not dict or set(d)!={'version','clock','entries'} or d['version']!=INDEX_VERSION or type(d['clock'])is not int or d['clock']<0 or type(d['entries']) is not dict:
             raise ProjectError('unsupported cache index')
+        if len(d['entries'])>HARD_MAX_ENTRIES: raise ProjectError('cache index exceeds hard entry safety bound')
         for key,e in d['entries'].items():
             if not _hex_sha(key) or type(e)is not dict or set(e)!={'bytes','blob_sha256','access','asset'}:
                 raise ProjectError('invalid cache entry')
@@ -159,7 +188,9 @@ class ArtifactCache:
             except FileNotFoundError:pass
             raise
     def _publish_index(self,index):
-        payload=(json.dumps(index,sort_keys=True,separators=(',',':'))+'\n').encode('utf-8')
+        payload=self._index_payload(index)
+        if len(payload)>self.max_index_bytes: raise ProjectError('cache index exceeds configured metadata bound')
+        if len(payload)>HARD_MAX_INDEX_BYTES: raise ProjectError('cache index exceeds hard metadata safety bound')
         tmp=self._write_temp('index.json.',payload)
         try:os.replace(tmp,self.index_path);self._fsync_root()
         finally:
@@ -172,21 +203,34 @@ class ArtifactCache:
             try:tmp.unlink()
             except FileNotFoundError:pass
     def _evicted(self,index):
-        evicted=[];total=sum(e['bytes'] for e in index['entries'].values())
-        while total>self.max_bytes and index['entries']:
-            key=min(index['entries'],key=lambda k:(index['entries'][k]['access'],k))
-            e=index['entries'].pop(key);total-=e['bytes'];evicted.append(key)
+        evicted=[];entries=index['entries'];total=sum(e['bytes'] for e in entries.values())
+        metadata_size=self._index_size(index)
+        ordered=sorted(entries,key=lambda k:(entries[k]['access'],k));pos=0
+        while (total>self.max_bytes or len(entries)>self.max_entries or metadata_size>self.max_index_bytes) and entries:
+            key=ordered[pos];pos+=1;e=entries.pop(key);total-=e['bytes'];evicted.append(key)
+            metadata_size-=self._entry_metadata_bytes(key,e)
+            if entries: metadata_size-=1
+        if metadata_size>self.max_index_bytes:
+            raise ProjectError('configured cache metadata bound cannot represent the cache index')
         return evicted
     def _cleanup_evicted(self,keys):
         for key in keys:
             try:self._path(key).unlink()
             except FileNotFoundError:pass
             except OSError:pass
+    def _index_file_exceeds_configured_bound(self):
+        if not self.index_path.exists(): return False
+        try:return self.index_path.stat().st_size>self.max_index_bytes
+        except OSError as exc: raise ProjectError('cannot stat cache index') from exc
+    def _reconcile_index(self,index):
+        candidate=deepcopy(index);evicted=self._evicted(candidate)
+        republish=bool(evicted) or self._index_file_exceeds_configured_bound()
+        if republish:
+            self._publish_index(candidate);self._cleanup_evicted(evicted);return candidate
+        return index
     def _load(self):
         with self._locked():
-            self._cleanup_stale_temps();d=self._read_index();candidate=deepcopy(d);evicted=self._evicted(candidate)
-            if evicted:
-                self._publish_index(candidate);d=candidate;self._cleanup_evicted(evicted)
+            self._cleanup_stale_temps();d=self._reconcile_index(self._read_index())
             self._cleanup_orphans(d);self.index=d
     def _verified_entry_payload(self,key,entry):
         path=self._path(key)
@@ -197,13 +241,13 @@ class ArtifactCache:
     def put(self,key,payload,asset):
         self._path(key);payload,blob=_validate_asset_payload(asset,payload)
         with self._locked():
-            current=self._read_index();existing=current['entries'].get(key)
+            current=self._reconcile_index(self._read_index());existing=current['entries'].get(key)
             if existing is not None:
                 old_payload=self._verified_entry_payload(key,existing)
                 if old_payload!=payload or existing['asset']!=asset:
                     self.index=current;raise ProjectError('cache key already bound to a different artifact')
                 candidate=deepcopy(current);candidate['clock']+=1;candidate['entries'][key]['access']=candidate['clock']
-                self._publish_index(candidate);self.index=candidate;return key
+                evicted=self._evicted(candidate);self._publish_index(candidate);self.index=candidate;self._cleanup_evicted(evicted);return key
             try:self._path(key).unlink()
             except FileNotFoundError:pass
             self._publish_blob(key,payload)
@@ -216,12 +260,20 @@ class ArtifactCache:
     def get(self,key):
         self._path(key)
         with self._locked():
-            current=self._read_index();entry=current['entries'].get(key)
+            current=self._reconcile_index(self._read_index());entry=current['entries'].get(key)
             if entry is None:self.index=current;return None
             payload=self._verified_entry_payload(key,entry)
             candidate=deepcopy(current);candidate['clock']+=1;candidate['entries'][key]['access']=candidate['clock']
-            self._publish_index(candidate);self.index=candidate;return payload
+            evicted=self._evicted(candidate);self._publish_index(candidate);self.index=candidate;self._cleanup_evicted(evicted);return payload
     @property
     def bytes_used(self):
         with self._locked():
-            self.index=self._read_index();return sum(e['bytes'] for e in self.index['entries'].values())
+            self.index=self._reconcile_index(self._read_index());return sum(e['bytes'] for e in self.index['entries'].values())
+    @property
+    def entries_used(self):
+        with self._locked():
+            self.index=self._reconcile_index(self._read_index());return len(self.index['entries'])
+    @property
+    def index_bytes_used(self):
+        with self._locked():
+            self.index=self._reconcile_index(self._read_index());return self._index_size(self.index)
