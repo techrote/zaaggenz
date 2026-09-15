@@ -49,6 +49,14 @@
       "stable_id": "ZG-003",
       "changed_paths": ["zaaggenz_dsp/graph.py", "zaaggenz_jobs/api.py", "zaaggenz_jobs/model.py", "zaaggenz_project/cache.py", "zaaggenz_qc/checks.py"],
       "reason": "Cumulative accepted implementation candidate after #137, #106, #113, #99 and #101 plus #109. ArtifactCache publication is serialized per local cache root across cooperating threads/processes, reloads the committed index under lock, uses unique fsynced temporaries, commits index references only after blob publication, deletes eviction victims only after index commit, and reconciles stale temporaries/unindexed orphan blobs while failing closed on missing indexed data. The first #109 CI reproduction passed inverse contracts, inherited prerequisite suites and browser transport on both platforms and stopped only at the intentionally fail-closed unreviewed implementation-identity gate. This exact transition permits only implementation_sha256 to differ; the rerun must still reproduce the frozen portable calibration on Ubuntu and Windows before merge."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "664ab5094e69363f87eabf1ae7a9f532e3646cd6cc7d90783355553f70a692fa",
+      "issue": 100,
+      "stable_id": "ZG-004",
+      "changed_paths": ["zaaggenz_dsp/graph.py", "zaaggenz_jobs/api.py", "zaaggenz_jobs/model.py", "zaaggenz_jobs/scheduler.py", "zaaggenz_project/cache.py", "zaaggenz_qc/checks.py"],
+      "reason": "Cumulative accepted implementation candidate after #137, #106, #113, #99, #101 and #109 plus #100. Scheduler admission now rejects declared-memory requests that can never fit the immutable capacity of their assigned lane before queue mutation, while feasible temporary contention, interactive reserve policy, cancellation and all audio/DSP semantics remain unchanged. The first #100 CI reproduction passed ZG-004 on Ubuntu and Windows plus inverse contracts, inherited prerequisite suites and browser transport on both platforms, and the frozen-calibration step stopped only at the intentionally fail-closed unreviewed implementation-identity gate. This exact transition permits only implementation_sha256 to differ; the rerun must still reproduce the frozen portable calibration on Ubuntu and Windows before merge."
     }
   ]
 }
