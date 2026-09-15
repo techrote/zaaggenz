@@ -22,7 +22,7 @@ Jobs expose queued, running, cancel-requested, cancelled, completed and failed s
 
 ## Artifact and atomic-output integrity
 
-`RenderArtifact` validates content SHA-256 and, for `pcm-f32le-interleaved-v1`, requires the payload byte length to equal `frame_count × channels × 4`. Preview cache accounting uses the actual immutable audio plus serialized artifact metadata; it does not rely on a fixed guessed overhead.
+`RenderArtifact` validates content SHA-256 and, for `pcm-f32le-interleaved-v1`, requires the payload byte length to equal `frame_count × channels × 4`. The validated asset and scope metadata are stored internally as immutable JSON byte snapshots. Public `.asset`, `.scopes`, and `.metadata()` access returns fresh ordinary JSON-compatible containers, so callers can inspect or manipulate their local copy without mutating the completed artifact's accepted provenance. Preview cache accounting uses the actual immutable audio plus serialized artifact metadata; it does not rely on a fixed guessed overhead.
 
 `atomic_publish_bytes()` fsyncs a temporary sibling and uses `os.replace` only after the cancellation check. A cancelled publication cannot partially overwrite an existing artifact. Project render slots should be bound only after artifact validation/publication succeeds.
 
