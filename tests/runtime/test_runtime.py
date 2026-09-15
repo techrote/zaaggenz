@@ -49,7 +49,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertIs(self.server.timeline.scheduler,self.server.scheduler);self.assertIs(self.server.inspector.scheduler,self.server.scheduler);self.assertIs(self.server.listening.timeline,self.server.timeline)
         self.assertFalse(self.server.timeline.owns_scheduler);self.assertFalse(self.server.inspector.owns_scheduler);self.assertFalse(hasattr(self.server.vocal,'timeline'))
         self.assertNotEqual(self.server.token,self.server.trusted_token);self.assertNotIn('trusted_token',self.boot);self.assertEqual(self.boot['capabilities']['listening_trusted'],'separate-server-held-capability')
-        for path,needle in (('/timeline',b'Phrase timeline'),('/listen',b'Listening'),('/inspector',b'Harmonic-comb'),('/vocal',b'Vocal'),('/',b'zaaggenz-workspaces')):
+        for path,needle in (('/timeline',b'Phrase timeline'),('/listen',b'Listening'),('/inspector',b'Harmonic-comb'),('/vocal',b'Local vocal gesture'),('/',b'zaaggenz-workspaces')):
             code,headers,body=self.request(path);self.assertEqual(code,200);self.assertIn(needle,body)
             if path!='/':self.assertIn('Content-Security-Policy',headers)
         for path in ('/api/timeline/bootstrap','/api/listening/bootstrap','/api/inspector/bootstrap','/api/vocal/bootstrap'):
