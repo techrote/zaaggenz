@@ -1,6 +1,6 @@
 # Requirements-to-work traceability
 
-This document explains **why** each major programme thread exists. The issue bodies contain implementation details; `programme/tasks.json` contains the machine-readable dependency/lock graph.
+This document explains **why** each major programme thread exists. It is a requirements map, not a live implementation-status report. Current accepted implementation/evidence, research state, owner gates and dependency readiness are recorded in [`programme/task_state.json`](../../programme/task_state.json); issue bodies contain work-specific details and `programme/tasks.json` contains the planned machine-readable dependency/lock graph.
 
 | Requirement / recovered intent | Primary tasks | Validation / evidence |
 |---|---|---|
@@ -27,4 +27,4 @@ This document explains **why** each major programme thread exists. The issue bod
 
 ## Programme-wide acceptance rule
 
-A numerical proxy cannot satisfy an artistic requirement by itself. A listening preference cannot validate a scientific claim by itself. Each issue should point to the evidence type appropriate to its requirement and keep these gates distinct.
+A numerical proxy cannot satisfy an artistic requirement by itself. A listening preference cannot validate a scientific claim by itself. Each issue should point to the evidence type appropriate to its requirement and keep these gates distinct. Whether that evidence currently satisfies programme dependencies is read from `programme/task_state.json`, never inferred from GitHub issue closure or from this traceability table.

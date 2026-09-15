@@ -17,7 +17,8 @@ User intent controls the artistic target. Literature constrains factual/scientif
 | Document | Retrieve for |
 |---|---|
 | `OVERVIEW.md` | task/dependency/concurrency questions; milestone and evidence-gate context |
-| `CONTEXT_AND_DECISIONS.md` | protected behaviours, artistic target, authority and source-access limits |
+| `CONTEXT_AND_DECISIONS.md` | protected behaviours, artistic target, authority and historical/current source-access distinction |
+| `PROGRAMME_STATUS_RECONCILIATION.md` | dated status/document reconciliation audit and current-state transition record |
 | `briefs/AGENT_OPERATING_RULES.md` | every implementation/research task |
 | `briefs/VALIDATION_GATES.md` | acceptance evidence, tests, release readiness |
 | `briefs/SPECTRAL_HARMONY.md` | ZG-013/014/017–024, 029–030, 033–034 |
@@ -27,7 +28,7 @@ User intent controls the artistic target. Literature constrains factual/scientif
 | `briefs/RISKS_AND_AUDIT.md` | default changes, overclaim risk, reference-pair limitations |
 | `references/SOURCES.md` | literature/provenance claims and source-specific limitations |
 | `REQUIREMENTS_TRACEABILITY.md` | why a task exists and which user requirement it addresses |
-| `WORKED_WORKFLOWS.md` | end-to-end creative/research workflow expectations |
+| `WORKED_WORKFLOWS.md` | target end-to-end creative/research workflow expectations |
 
 ## Suggested read sets
 
@@ -56,7 +57,7 @@ Add `RHYTHM_EXPECTATION` for directional/modal/phrase semantics and `SPECTRAL_HA
 - `programme/issue_map.json` — deployed stable ID → GitHub issue number mapping.
 - `programme/task_state.json` — current evidence-aware implementation/research/owner-gate/blocker state and the explicit `dependency_satisfied` decision for each stable task.
 
-Stable IDs are the join key across documentation, commits, tests and issues. `programme/task_state.json` is the readiness authority layered over the planned DAG: GitHub issue open/closed is retained there only as an informational mirror. Validate it with `python tools/validate_programme_state.py --validate`; `--report` derives prerequisite readiness without consulting issue state.
+Stable IDs are the join key across documentation, commits, tests and issues. `programme/task_state.json` is the readiness authority layered over the planned DAG: GitHub issue open/closed is retained there only as an informational mirror. Validate it with `python tools/validate_programme_state.py --validate`; `--report` derives prerequisite readiness without consulting issue state. Validate the surrounding core prose with `python tools/check_programme_docs.py --check`.
 
 ## Retrieval discipline
 

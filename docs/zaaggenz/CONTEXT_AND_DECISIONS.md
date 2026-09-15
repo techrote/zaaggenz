@@ -4,22 +4,38 @@
 
 **zaaggenz** is to remain an offline / asynchronously rendered synthesiser and musical construction instrument while gaining reproducible investigation tools. Its artistic centre is **bouncy, melodic zaag-oriented uptempo**. Piep, clean tones, noisy textures and deliberately excessive edits are useful contrasts, not substitutes for that target. A successful release must let the owner make music without running a study, learning an analysis model or provisioning a GPU.
 
-This programme contains a proposed implementation workflow, not a claim that the features already exist. `ZG-001` must establish the actual code baseline before implementation.
+This document began as a planning/audit record before the production baseline was recovered. It therefore retains historical planning context, but it is **not a live implementation-status ledger**. Current task/evidence/gate state is authoritative in [`programme/task_state.json`](../../programme/task_state.json), validated against the stable-ID DAG. Accepted code/tests/evidence outrank the historical availability statements below where they disagree.
 
-## Evidence and access status
+## Current evidence and access status — 2026-09-15
 
-| Input | What was actually available | Authority / limitation |
+The ZG-001 baseline gate is resolved. The owner-supplied `zaaggenz-v1.2.1.zip` was recovered and authenticated; the compact checked-in recovery payload records:
+
+- original ZIP SHA-256 `90be319a4660a637077df935a8ebcbd1bb4c3a629e28e2f6d4bfe62d88dfe8a8`;
+- original ZIP size 9,498,941 bytes;
+- original top directory `uptempo-harmonic-noise-tools-v1.2.1-earth-ui-cachefix/`;
+- recovered runtime payload SHA-256 `eaf5d3ab822dfa121cd3b795d62619af9e62c041fb02de19f8dbeafb0014c919`;
+- 34 recovered runtime files under archive prefix `app/`, including all 13 recovered smoke tests.
+
+`baseline/recovered_source/README.md` is the source-provenance authority for that payload. Downstream work uses the authenticated materialised `app/...` paths; it must not reconstruct production source from screenshots or historical snippets. `locked_bloom`, source-preserving ARRANGE, complete SYNTHLINE in combined renders, transparent SCULPT, MASTER semantics and the recovered Earth/UI behaviour remain protected compatibility anchors.
+
+The current programme is no longer merely proposed: substantial implementation/evidence through the accepted ZG-001…032 surface exists. That does **not** make every parent task complete. In particular, `programme/task_state.json` currently represents ZG-022 as implementation/evidence accepted but owner-gated, ZG-024 as research-active with accepted partial passes, and later integration/research work according to its actual accepted evidence. GitHub issue open/closed state is informational only.
+
+## Historical planning-time access snapshot
+
+The table below records what was available during the original planning audit. It is retained for provenance and must not be read as current repository status.
+
+| Input | What was available during the planning audit | Authority / limitation |
 |---|---|---|
-| This conversation from the v1.2.1 delivery onward | Visible messages, including the user's corrections, two research discussions and the current request | Authoritative for intent and reasoning trajectory; historical claims of validation are not fresh test results |
-| Earlier implementation history | Visible code excerpts and release descriptions | Useful navigation clues, not proof of current files or behaviour |
+| This conversation from the v1.2.1 delivery onward | Visible messages, including the user's corrections, two research discussions and the planning request | Authoritative for intent and reasoning trajectory; historical claims of validation were not fresh test results |
+| Earlier implementation history | Visible code excerpts and release descriptions | Useful navigation clues, not proof of then-current files or behaviour |
 | “Compare Zaag and Piep” | User-supplied quotations and partial named-chat retrieval | The full transcript was not recovered; do not label this bundle a complete rereading of it |
 | Prior scientific research | Primary papers, author/institutional records and official specifications in [references/SOURCES.md](references/SOURCES.md) | Source-specific access depth and claim boundaries are recorded |
 | Two uploaded MP3s | Both actual files, decoded and measured locally | Numerical reference audit completed; no claimed listening session, production-chain reconstruction, verified chord transcription or beat alignment |
 | Originally named GitHub destination `techrote/zaaggenzrepo` | Repository lookup returned 404 | Superseded by explicit owner confirmation of `techrote/zaaggenz` |
-| Confirmed `techrote/zaaggenz` | Owner explicitly confirmed this private repository as the intended destination | Authorised destination for programme docs/issues; empty state is not evidence that source recovery is complete |
-| v1.2.1 source archive | Not present in this run's filesystem | Recovery/import is a hard baseline gate; do not reconstruct production source from snippets |
+| Confirmed `techrote/zaaggenz` | Owner explicitly confirmed this private repository as the intended destination | This planning snapshot predated later accepted implementation work |
+| v1.2.1 source archive | Not present in the planning run's filesystem | **Historical only:** subsequently recovered/authenticated under ZG-001; see current status above |
 
-The old release message reports archive SHA-256 `90be319a4660a637077df935a8ebcbd1bb4c3a629e28e2f6d4bfe62d88dfe8a8`. Treat that as a candidate provenance check when recovering the archive, not as a newly verified checksum. The available `locked_bloom` screenshots and descriptions contain differing envelope values across iterations. Freeze the actual recovered preset; do not silently rebuild it from selected remembered numbers.
+The old release message's archive SHA-256 was originally only a candidate provenance check. ZG-001 later verified that exact archive identity, so it is now accepted baseline evidence rather than an unverified recollection. The available `locked_bloom` screenshots/descriptions contained differing envelope values across iterations; the recovered preset, not selected remembered numbers, remains authoritative.
 
 ## Intent recovered from the discussion
 
@@ -60,4 +76,4 @@ Sethares' 1993 local-consonance work [S01], adaptive tuning [S02] and 1998 spect
 - Introduce immutable contracts before parallel implementation, with narrow adapters rather than a speculative whole-application rewrite.
 - Treat source-preserving notes and phrases as an early usable milestone, not a reward after all research completes.
 - Do not let the paired reference become a two-file supervised genre dataset. It is a contrast/probe set that needs aligned segments and later out-of-family validation.
-- Repository destination is resolved as `techrote/zaaggenz`. Programme publication there is authorised; production-source import still requires provenance/recovery under ZG-001 and unrelated branch contents must remain protected.
+- Repository destination is resolved as `techrote/zaaggenz`. The recovered production baseline is authenticated under ZG-001; ongoing readiness and unresolved owner/research/corrective gates are represented in `programme/task_state.json` rather than inferred from this historical planning record.
