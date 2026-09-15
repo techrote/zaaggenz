@@ -12,7 +12,6 @@ import webapp
 from zaaggenz_jobs import JobScheduler
 from zaaggenz_timeline.model import default_document
 from zaaggenz_timeline.service import TimelineService,scheduler_limits
-from zaaggenz_timeline.server import Handler as TimelineHandler
 from zaaggenz_listening.service import ListeningService
 from zaaggenz_listening.server import Handler as ListeningHandler
 from zaaggenz_inspector.service import InspectorService
@@ -26,8 +25,8 @@ class Handler(ListeningHandler,InspectorHandler,VocalHandler):
     """Compose all accepted route modules on one origin.
 
     Unknown routes deliberately flow through the cooperative Handler MRO and
-    finish in TimelineHandler/webapp.  Each existing module therefore retains
-    its Host/Origin, request-bound and CSP behaviour.
+    finish in the Timeline/webapp handler. Each existing module therefore
+    retains its Host/Origin, request-bound and CSP behaviour.
     """
     def do_GET(self):
         if not self._origin_ok():return
@@ -42,8 +41,10 @@ class Handler(ListeningHandler,InspectorHandler,VocalHandler):
             page=(webapp.STATIC_ROOT/'index.html').read_text(encoding='utf-8')
             nav='<nav id="zaaggenz-workspaces"><a href="/timeline">Compose timeline</a> · <a href="/listen">Listening</a> · <a href="/inspector">Inspector</a> · <a href="/vocal">Vocal gestures</a></nav>'
             page=page.replace('<body>','<body>'+nav,1)
-            return self._binary(page.encode(),'text/html; charset=utf-8',extra_headers={'X-Content-Type-Options':'nosniff',
-                'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"})
+            # Preserve the recovered application's response policy here: adding
+            # a stricter CSP to this legacy page could disable its inline UI.
+            # Each accepted sidecar keeps its existing restrictive CSP.
+            return self._binary(page.encode(),'text/html; charset=utf-8')
         return super().do_GET()
 
 
