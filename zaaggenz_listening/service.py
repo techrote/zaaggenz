@@ -2,6 +2,7 @@
 from __future__ import annotations
 from copy import deepcopy
 import secrets
+from zaaggenz_contracts import digest
 from zaaggenz_jobs import RenderArtifact,JobError
 from .model import TrialManifest,TrialResult,Stimulus,ListeningError
 from .stimulus import ListeningAudioStore
@@ -49,8 +50,8 @@ class ListeningService:
         """One terminal participant response per public trial; retakes require a new trial."""
         tid=self._trusted_id(participant_id,participant_only=True);trial=self.trials[tid]
         if self.results.get(tid):raise ListeningError('participant trial already has a terminal result; create a new trial for a retake')
-        result=make_result(trial,**payload);self.results.setdefault(tid,[]).append(result)
-        return {'result':public_result(result,participant_id),'result_sha256':result.sha256}
+        result=make_result(trial,**payload);self.results.setdefault(tid,[]).append(result);view=public_result(result,participant_id)
+        return {'result':view,'result_sha256':digest({'domain':'zaaggenz.listening-participant-result-v1','result':view})}
     def export_bundle(self,trial_id):
         """Trusted archival export. Never expose this through participant capability."""
         tid=self._trusted_id(trial_id);trial=self.trials[tid];td=trial.to_dict();stimuli=[self.audio.stimulus(row['stimulus_id']).to_dict() for row in td['matched_stimuli']]
