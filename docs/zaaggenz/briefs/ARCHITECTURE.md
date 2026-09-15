@@ -61,6 +61,14 @@ Requested target, estimated source and realised output are separate quantities t
 
 Preview/render/analysis/search use bounded jobs with revision IDs, progress, cancellation and atomic result publication. A result computed from an old project revision cannot replace a newer transport/scopes silently. Cache entries are keyed by sonic/content/method identity rather than display labels.
 
+## Unified local runtime and ownership
+
+The normal user-facing application is one loopback process/origin. `RuntimeSession` is the sole owner of the current immutable Compose timeline/project identity; Timeline, Listening, Inspector and Vocal routes are composable modules on that host rather than independent sidecar applications with unrelated sessions.
+
+One bounded `JobScheduler` is owned and shut down by the runtime. Timeline and Inspector receive that scheduler by injection but retain service-local job ownership: a shared queue does not confer cross-workspace status/result/cancel authority. Listening consumes completed Timeline-owned `RenderArtifact` objects. Inspector binds the same immutable artifact and compares both its complete source binding and the current authoritative Compose revision before publication/freeze/apply. Vocal capture/analysis remains session-local and any compiled timeline is proposal-only until an explicit Compose import/apply operation exists.
+
+The ordinary session capability may be shared by local Compose and non-trusted Research actions, but Listening participant authority and trusted archival/ABX authority remain separate. The trusted capability is server-held and is never returned by ordinary runtime/bootstrap surfaces. Existing loopback Host/Origin checks, CSP and request bounds remain in force on the composed host. See `docs/runtime/README.md` for the concrete ownership and verification contract.
+
 ## Extension policy
 
 Prefer small registries with explicit schemas over inheritance-heavy frameworks. New tuning systems, phrase grammars, source families, feature methods and DSP nodes declare version, provenance/licence, bounds, compatibility and tests. Existing modules are wrapped through adapters before broad rewrites.

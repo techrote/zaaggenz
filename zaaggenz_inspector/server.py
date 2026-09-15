@@ -60,7 +60,7 @@ class Handler(TimelineHandler):
             data=loads(self._read_body(limit=200_000))
             if path=='/api/inspector/bind':
                 if type(data)is not dict or set(data)!={'job_id'} or type(data['job_id'])is not str or not re.fullmatch('[0-9a-f]{32}',data['job_id']):raise ValueError('bind request requires a valid timeline job_id only')
-                artifact=self.server.timeline.scheduler.result(data['job_id'])
+                artifact=self.server.timeline.artifact(data['job_id'])
                 state=self.server.inspector.bind_artifact(artifact)
                 return self._json({'bound':True,'source_binding':state['source_binding'],'state':state})
             if path=='/api/inspector/analyse':
@@ -77,7 +77,7 @@ class Handler(TimelineHandler):
                 return self._json(self.server.inspector.undo())
             if path=='/api/inspector/cancel':
                 if type(data)is not dict or set(data)!={'job_id'} or type(data['job_id'])is not str or not re.fullmatch('[0-9a-f]{32}',data['job_id']):raise ValueError('invalid cancellation request')
-                return self._json({'cancelled':self.server.inspector.scheduler.cancel(data['job_id'])})
+                return self._json({'cancelled':self.server.inspector.cancel(data['job_id'])})
             return self._error('unknown inspector route',404)
         except (ValueError,KeyError,TypeError,InspectorError,JobError) as exc:return self._error(str(exc),400)
 
@@ -86,7 +86,7 @@ class InspectorServer(ThreadingHTTPServer):
     def __init__(self,port=8766,sample_rate=12000,verbose=False,*,timeline=None,demo_fixture=False):
         super().__init__(('127.0.0.1',port),Handler);self.token=secrets.token_urlsafe(32);self.verbose=verbose
         self.initial_document=default_document(sample_rate);self._owns_timeline=timeline is None;self.timeline=TimelineService() if timeline is None else timeline
-        self.inspector=InspectorService(sample_rate,demo_fixture=demo_fixture)
+        self.inspector=InspectorService(sample_rate,demo_fixture=demo_fixture,scheduler=self.timeline.scheduler)
     def server_close(self):
         if hasattr(self,'inspector'):self.inspector.close()
         if getattr(self,'_owns_timeline',False) and hasattr(self,'timeline'):self.timeline.close()

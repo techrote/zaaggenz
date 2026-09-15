@@ -73,7 +73,7 @@ class InspectorServiceTests(unittest.TestCase):
         timeline=TimelineService();service=InspectorService(12000)
         try:
             document=default_document(12000).to_dict();document['notes']=[{'id':'inspect-me','beat':'0/1','duration_beats':'1/2','degree':0,'detune_cents':0.,'gain_db':0.,'muted':False,'roll_density':0}];document['next_id']=1
-            job=timeline.submit(document,{'start_beat':'0/1','end_beat':'1/1'},'Inspector source')['job_id'];timeline.scheduler.wait(job,30);artifact=timeline.scheduler.result(job)
+            job=timeline.submit(document,{'start_beat':'0/1','end_beat':'1/1'},'Inspector source')['job_id'];timeline.scheduler.wait(job,30);artifact=timeline.artifact(job)
             bound=service.bind_artifact(artifact);self.assertEqual(bound['slots']['A']['audio_sha256'],artifact.asset['content_sha256']);self.assertEqual(bound['slots']['A']['revision_id'],artifact.revision_id)
             wave,_=service.audio('A');_,audio=wavfile.read(io.BytesIO(wave));self.assertEqual(hashlib.sha256(np.asarray(audio,dtype='<f4').tobytes()).hexdigest(),artifact.asset['content_sha256'])
             analysis=service.submit_analysis({'amount':.2})['job_id'];service.scheduler.wait(analysis,30);published=service.status(analysis);self.assertTrue(published['published']);self.assertFalse(published['stale'])
@@ -131,7 +131,7 @@ class InspectorHTTPTests(unittest.TestCase):
         req=urllib.request.Request(self.base+path,data=json.dumps(payload).encode(),method='POST',headers={'Content-Type':'application/json',**({'X-Zaaggenz-Token':token} if token else {})})
         with urllib.request.urlopen(req,timeout=10) as r:return r.status,json.loads(r.read())
     def publish_artifact(self,artifact):
-        jid=self.server.timeline.scheduler.submit(JobClass.RENDER,artifact.revision_id,lambda ctx:artifact,estimated_memory_bytes=8*1024*1024);self.server.timeline.scheduler.wait(jid,10);return jid
+        jid=self.server.timeline.scheduler.submit(JobClass.RENDER,artifact.revision_id,lambda ctx:artifact,estimated_memory_bytes=8*1024*1024);self.server.timeline.scheduler.wait(jid,10);self.server.timeline._remember_job(jid);return jid
     def test_bootstrap_bind_static_audio_and_csrf_gate(self):
         code,raw,_=self.get('/api/inspector/bootstrap');self.assertEqual(code,200);boot=json.loads(raw);self.assertFalse(boot['state']['bound'])
         artifact=make_artifact(fixture_source(12000,variant=4),seed='http');jid=self.publish_artifact(artifact)
@@ -141,11 +141,14 @@ class InspectorHTTPTests(unittest.TestCase):
         code,page,headers=self.get('/inspector');self.assertEqual(code,200);self.assertIn(b'Harmonic-comb',page);self.assertIn('nosniff',headers['X-Content-Type-Options'])
         code,wave,headers=self.get('/api/inspector/audio/A');self.assertEqual(code,200);self.assertGreater(len(wave),44);self.assertEqual(headers['X-Inspector-Revision'],artifact.revision_id)
         code,result=self.post('/api/inspector/analyse',{'controls':{'amount':.5}},boot['token']);self.assertEqual(code,202);self.assertRegex(result['job_id'],r'^[0-9a-f]{32}$')
-    def test_bind_fails_closed_for_unknown_or_nonartifact_job(self):
+    def test_bind_fails_closed_for_unknown_nonartifact_and_foreign_shared_job(self):
         _,raw,_=self.get('/api/inspector/bootstrap');token=json.loads(raw)['token']
         with self.assertRaises(urllib.error.HTTPError) as cm:self.post('/api/inspector/bind',{'job_id':'0'*32},token)
         self.assertEqual(cm.exception.code,400)
-        revision='a'*64;jid=self.server.timeline.scheduler.submit(JobClass.RENDER,revision,lambda ctx:{'not':'artifact'},estimated_memory_bytes=8*1024*1024);self.server.timeline.scheduler.wait(jid,10)
+        revision='a'*64;jid=self.server.timeline.scheduler.submit(JobClass.RENDER,revision,lambda ctx:{'not':'artifact'},estimated_memory_bytes=8*1024*1024);self.server.timeline.scheduler.wait(jid,10);self.server.timeline._remember_job(jid)
+        with self.assertRaises(urllib.error.HTTPError) as cm:self.post('/api/inspector/bind',{'job_id':jid},token)
+        self.assertEqual(cm.exception.code,400)
+        foreign=make_artifact(fixture_source(12000,variant=5),seed='foreign');jid=self.server.timeline.scheduler.submit(JobClass.RENDER,foreign.revision_id,lambda ctx:foreign,estimated_memory_bytes=8*1024*1024);self.server.timeline.scheduler.wait(jid,10)
         with self.assertRaises(urllib.error.HTTPError) as cm:self.post('/api/inspector/bind',{'job_id':jid},token)
         self.assertEqual(cm.exception.code,400)
 

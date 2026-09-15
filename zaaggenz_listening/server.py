@@ -73,8 +73,9 @@ class Handler(TimelineHandler):
 
 class ListeningServer(ThreadingHTTPServer):
     daemon_threads=True
-    def __init__(self,port=8765,sample_rate=48000,verbose=False):
-        super().__init__(('127.0.0.1',port),Handler);self.token=secrets.token_urlsafe(32);self.trusted_token=secrets.token_urlsafe(32);self.verbose=verbose;self.initial_document=default_document(sample_rate);self.timeline=TimelineService();self.listening=ListeningService(self.timeline)
+    def __init__(self,port=8765,sample_rate=48000,verbose=False,*,timeline=None):
+        super().__init__(('127.0.0.1',port),Handler);self.token=secrets.token_urlsafe(32);self.trusted_token=secrets.token_urlsafe(32);self.verbose=verbose;self.initial_document=default_document(sample_rate)
+        self._owns_timeline=timeline is None;self.timeline=TimelineService() if timeline is None else timeline;self.listening=ListeningService(self.timeline)
     def server_close(self):
-        if hasattr(self,'timeline'):self.timeline.close()
+        if getattr(self,'_owns_timeline',False) and hasattr(self,'timeline'):self.timeline.close()
         super().server_close()
