@@ -20,6 +20,11 @@ from zaaggenz_vocal import (  # noqa: E402
     analyse_vocal,
     decode_wav_bytes,
 )
+from zaaggenz_vocal.model import (  # noqa: E402
+    PCM_IDENTITY_DOMAIN,
+    SOURCE_IDENTITY_DOMAIN,
+    source_identity_digest,
+)
 
 SR = 12_000
 
@@ -100,12 +105,20 @@ class WavDecodeTests(unittest.TestCase):
 
         canonical = np.asarray(decoded[:, None], dtype="<f4", order="C").tobytes(order="C")
         sha = hashlib.sha256(canonical).hexdigest()
+        expected_id = "capture-v1-" + source_identity_digest(sha, sr, 1, len(decoded))
 
         store = SessionAudioStore()
-        self.assertEqual(store.put(decoded, sr), "capture-" + sha[:16])
+        self.assertEqual(store.put(decoded, sr), expected_id)
+        stored = store.describe(expected_id)
+        self.assertEqual(stored["content_sha256"], sha)
+        self.assertEqual(stored["identity_domain"], SOURCE_IDENTITY_DOMAIN)
+        self.assertEqual(stored["pcm_domain"], PCM_IDENTITY_DOMAIN)
+
         analysis = analyse_vocal(decoded, sr, origin="local-import").to_dict()
+        self.assertEqual(analysis["source"], stored)
         self.assertEqual(analysis["source"]["content_sha256"], sha)
-        self.assertEqual(analysis["source"]["identity_domain"], "pcm-f32le-interleaved-v1")
+        self.assertEqual(analysis["source"]["identity_domain"], SOURCE_IDENTITY_DOMAIN)
+        self.assertEqual(analysis["source"]["pcm_domain"], PCM_IDENTITY_DOMAIN)
 
 
 if __name__ == "__main__":
