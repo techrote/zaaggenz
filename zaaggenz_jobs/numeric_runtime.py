@@ -1,7 +1,6 @@
 from __future__ import annotations
 import os
 import threading
-import time
 from .model import JobError
 
 _ENV_NAMES=('OMP_NUM_THREADS','OPENBLAS_NUM_THREADS','MKL_NUM_THREADS','NUMEXPR_NUM_THREADS','VECLIB_MAXIMUM_THREADS')
@@ -76,34 +75,6 @@ def numeric_thread_limit(limit=1):
             raise JobError('failed to acquire native numerical thread limit') from exc
         _LIMIT=limit;_OWNERS=1;_ORIGINAL_ENV=original;_NATIVE_GUARD=guard;_DEGRADED=factory is None
         return NumericRuntimeLease(limit,_DEGRADED)
-
-
-def install_scheduler_construction_guard(cls):
-    """Make partial JobScheduler construction release its process runtime lease.
-
-    The legacy constructor acquires the numeric guard before starting workers. If a
-    thread start raises after another worker has started, the wrapper marks the
-    partial scheduler shut down, gives already-started idle workers a bounded chance
-    to exit, then releases the lease. Class identity is preserved for existing
-    imports and isinstance checks.
-    """
-    if getattr(cls,'_process_runtime_construction_guarded',False):return cls
-    original=cls.__init__
-    def guarded(self,*args,**kwargs):
-        try:return original(self,*args,**kwargs)
-        except BaseException:
-            cv=getattr(self,'_cv',None)
-            if cv is not None:
-                with cv:
-                    self._shutdown=True;cv.notify_all()
-            deadline=time.monotonic()+1.0
-            for worker in getattr(self,'_threads',()):
-                if worker.is_alive():worker.join(max(0.0,deadline-time.monotonic()))
-            guard=getattr(self,'_numeric_guard',None)
-            if guard is not None:guard.restore_original_limits()
-            raise
-    cls.__init__=guarded;cls._process_runtime_construction_guarded=True
-    return cls
 
 
 def runtime_state():
