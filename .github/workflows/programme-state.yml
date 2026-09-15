@@ -8,9 +8,15 @@ on:
       - 'programme/dependency_graph.json'
       - 'programme/issue_map.json'
       - 'tools/validate_programme_state.py'
+      - 'tools/check_programme_docs.py'
       - 'tests/programme/test_programme_state.py'
+      - 'tests/programme/test_programme_docs.py'
       - 'docs/zaaggenz/OVERVIEW.md'
+      - 'docs/zaaggenz/CONTEXT_AND_DECISIONS.md'
       - 'docs/zaaggenz/RAG_INDEX.md'
+      - 'docs/zaaggenz/REQUIREMENTS_TRACEABILITY.md'
+      - 'docs/zaaggenz/WORKED_WORKFLOWS.md'
+      - 'docs/zaaggenz/PROGRAMME_STATUS_RECONCILIATION.md'
       - 'docs/zaaggenz/briefs/AGENT_OPERATING_RULES.md'
       - '.github/workflows/programme-state.yml'
   workflow_dispatch:
@@ -34,7 +40,9 @@ jobs:
         with: {python-version: '3.13'}
       - name: Validate evidence-aware task state
         run: python tools/validate_programme_state.py --validate
-      - name: Programme-state regression tests
-        run: python -m unittest discover -s tests/programme -p 'test_programme_state.py' -v
+      - name: Check programme documentation reconciliation
+        run: python tools/check_programme_docs.py --check
+      - name: Programme-state/document regression tests
+        run: python -m unittest discover -s tests/programme -p 'test_programme_*.py' -v
       - name: Emit readiness report
         run: python tools/validate_programme_state.py --report
