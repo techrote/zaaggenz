@@ -4,7 +4,7 @@ import hashlib, math
 import numpy as np
 from scipy import signal
 from zaaggenz_analysis import analyse_multiresolution, select_interval
-from .model import VocalAnalysis,VocalCaptureError,VERSION
+from .model import VocalAnalysis,VocalCaptureError,VERSION,make_source_identity
 
 METHOD={'id':'zg-vocal-contour-v1','version':'1.0.0','frame_ms':40.0,'hop_ms':10.0,'pitch_min_hz':65.0,'pitch_max_hz':500.0,'voicing_threshold':0.58}
 
@@ -17,7 +17,7 @@ def _audio(x):
 def _db(x):return 20*math.log10(max(float(x),1e-9))
 def _identity(a,sr,origin):
     pcm=np.asarray(a,dtype='<f4',order='C');raw=pcm.tobytes(order='C');sha=hashlib.sha256(raw).hexdigest()
-    return {'id':'capture-'+sha[:16],'content_sha256':sha,'identity_domain':'pcm-f32le-interleaved-v1','sample_rate_hz':sr,'channels':a.shape[1],'frame_count':len(a),'origin':origin}
+    return make_source_identity(sha,sr,a.shape[1],len(a),origin)
 
 def _frame_pitch(frame,sr):
     x=np.asarray(frame,dtype=np.float64);x=x-np.mean(x)
