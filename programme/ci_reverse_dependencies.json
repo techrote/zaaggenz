@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "description": "Audit/dispatch ownership for dependency-aware GitHub Actions. Stable ZG IDs remain authoritative; this file maps accepted workflow files to those IDs and records cross-cutting or otherwise non-inferable implementation source owners.",
+  "description": "Dependency-aware CI map. workflow_owners identifies accepted workflow/stable-ID ownership; source_path_owners separately identifies implementation ownership. Native pull-request trigger paths are read from each workflow and are deliberately not treated as source ownership.",
   "workflow_owners": {
     "zg001-recovery.yml": "ZG-001",
     "zg002-contracts.yml": "ZG-002",
@@ -34,12 +34,42 @@
     "zg031-textgesture.yml": "ZG-031",
     "zg032-vocal.yml": "ZG-032"
   },
-  "special_path_owners": {
+  "source_path_owners": {
     "baseline/recovered_source/**": ["ZG-001"],
     "zaaggenz_contracts/**": ["ZG-002"],
     "requirements-contracts.txt": ["ZG-002"],
+    "zaaggenz_project/**": ["ZG-003"],
+    "zaaggenz_jobs/**": ["ZG-004"],
     "requirements-jobs.txt": ["ZG-004"],
-    "web/jobs_transport.mjs": ["ZG-004"]
+    "web/jobs_transport.mjs": ["ZG-004"],
+    "zaaggenz_qc/**": ["ZG-005"],
+    "zaaggenz_reference/**": ["ZG-006"],
+    "references/**": ["ZG-006"],
+    "zaaggenz_tuning/**": ["ZG-007", "ZG-020"],
+    "zaaggenz_melody/**": ["ZG-008"],
+    "zaaggenz_timeline/**": ["ZG-009"],
+    "web/timeline/**": ["ZG-009"],
+    "zaaggenz_harmony/**": ["ZG-010"],
+    "zaaggenz_grammar/**": ["ZG-011"],
+    "zaaggenz_analysis/**": ["ZG-012"],
+    "zaaggenz_components/**": ["ZG-013"],
+    "zaaggenz_descriptors/**": ["ZG-014"],
+    "zaaggenz_listening/**": ["ZG-015"],
+    "web/listening/**": ["ZG-015"],
+    "zaaggenz_dsp/**": ["ZG-016", "ZG-019", "ZG-021"],
+    "zaaggenz_spectral/**": ["ZG-017", "ZG-018", "ZG-019", "ZG-021"],
+    "zaaggenz_zaag/**": ["ZG-022"],
+    "zaaggenz_inspector/**": ["ZG-023"],
+    "web/inspector/**": ["ZG-023"],
+    "zaaggenz_inverse/**": ["ZG-024"],
+    "research/zg024b/**": ["ZG-024"],
+    "zaaggenz_phrase/**": ["ZG-025"],
+    "zaaggenz_meter/**": ["ZG-026"],
+    "zaaggenz_gesture/**": ["ZG-027"],
+    "zaaggenz_linked/**": ["ZG-028"],
+    "zaaggenz_textgesture/**": ["ZG-031"],
+    "zaaggenz_vocal/**": ["ZG-032"],
+    "web/vocal/**": ["ZG-032"]
   },
   "validation_only_paths": [
     "programme/dependency_graph.json",
