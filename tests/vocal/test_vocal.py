@@ -13,6 +13,8 @@ from zaaggenz_project import Project
 from zaaggenz_textgesture import starter_registry
 from zaaggenz_contracts.music import beat_to_sample
 from zaaggenz_vocal import *
+from zaaggenz_vocal.model import PCM_IDENTITY_DOMAIN,SOURCE_IDENTITY_DOMAIN,VERSION,source_identity_digest
+from zaaggenz_vocal.service import VocalService
 from zaaggenz_vocal.server import VocalServer
 
 SR=12000
@@ -36,10 +38,23 @@ class AnalysisTests(unittest.TestCase):
         a=analyse_vocal(np.zeros(SR//2,np.float32),SR,origin='generated-fixture');self.assertEqual(a.to_dict()['segments'],[])
         b=analyse_vocal(np.r_[silence(.1),noise(.4,.25,9),silence(.1)],SR,origin='generated-fixture')
         self.assertTrue(all(s['pitch_hz'] is None and s['voicing']!='voiced' for s in b.to_dict()['segments']))
-    def test_identity_is_float_pcm_content_addressed_and_stereo_supported(self):
-        x=fixture();a=analyse_vocal(x,SR,origin='generated-fixture').to_dict();raw=np.asarray(x[:,None],dtype='<f4').tobytes()
-        self.assertEqual(a['source']['content_sha256'],hashlib.sha256(raw).hexdigest())
-        stereo=np.column_stack((x,x*.5));b=analyse_vocal(stereo,SR,origin='generated-fixture').to_dict();self.assertEqual(b['source']['channels'],2)
+    def test_identity_binds_full_pcm_hash_timing_and_channel_interpretation(self):
+        x=fixture();a=analyse_vocal(x,SR,origin='generated-fixture').to_dict();raw=np.asarray(x[:,None],dtype='<f4').tobytes();content=hashlib.sha256(raw).hexdigest();source=a['source']
+        self.assertEqual(source['content_sha256'],content);self.assertEqual(source['identity_domain'],SOURCE_IDENTITY_DOMAIN);self.assertEqual(source['pcm_domain'],PCM_IDENTITY_DOMAIN)
+        self.assertEqual(source['id'],'capture-v1-'+source_identity_digest(content,SR,1,len(x)))
+        stereo=np.column_stack((x,x*.5));b=analyse_vocal(stereo,SR,origin='generated-fixture').to_dict();self.assertEqual(b['source']['channels'],2);self.assertNotEqual(source['id'],b['source']['id'])
+    def test_source_identity_tampering_and_legacy_truncated_documents_fail_closed(self):
+        analysis=analyse_vocal(fixture(),SR,origin='generated-fixture');data=analysis.to_dict()
+        bad=deepcopy(data);bad['source']['id']='capture-v1-'+'0'*64
+        with self.assertRaisesRegex(VocalCaptureError,'does not match'):VocalAnalysis(bad)
+        bad=deepcopy(data);bad['source']['content_sha256']='0'*64
+        with self.assertRaisesRegex(VocalCaptureError,'does not match'):VocalAnalysis(bad)
+        bad=deepcopy(data);bad['source']['sample_rate_hz']=SR+1
+        with self.assertRaisesRegex(VocalCaptureError,'does not match'):VocalAnalysis(bad)
+        legacy=deepcopy(data);legacy['version']='1.0.0';legacy['source'].pop('pcm_domain');legacy['source']['identity_domain']='pcm-f32le-interleaved-v1';legacy['source']['id']='capture-'+legacy['source']['content_sha256'][:16]
+        with self.assertRaisesRegex(VocalCaptureError,'legacy vocal-analysis 1.0.0'):VocalAnalysis(legacy)
+        edit=make_edit(analysis).to_dict();edit['version']='1.0.0'
+        with self.assertRaisesRegex(VocalCaptureError,'legacy vocal-edit 1.0.0'):VocalEdit(edit)
 
 class EditCompileTests(unittest.TestCase):
     def setUp(self):self.analysis=analyse_vocal(fixture(),SR,origin='generated-fixture');self.registry=starter_registry();self.edit=make_edit(self.analysis,self.registry)
@@ -80,10 +95,33 @@ class StoreTests(unittest.TestCase):
     def test_wav_roundtrip_import_and_discard_are_session_local(self):
         raw=encode_wav_bytes(fixture(),SR);sr,x=decode_wav_bytes(raw);self.assertEqual(sr,SR);self.assertEqual(len(x),len(fixture()))
         store=SessionAudioStore();identifier=store.put(x,sr);self.assertTrue(store.has(identifier));got,gsr,_=store.get(identifier);self.assertEqual(gsr,SR);np.testing.assert_allclose(got[:,0],fixture(),atol=1e-7)
+        source=store.describe(identifier);self.assertEqual(source['id'],identifier);self.assertEqual(source['sample_rate_hz'],SR);self.assertEqual(source['frame_count'],len(x))
         self.assertTrue(store.discard(identifier));self.assertFalse(store.has(identifier));
         with self.assertRaises(VocalCaptureError):store.get(identifier)
     def test_pcm16_recording_style_wav_is_decoded_safely(self):
         b=io.BytesIO();wavfile.write(b,SR,np.asarray(fixture()*32767,dtype=np.int16));sr,x=decode_wav_bytes(b.getvalue());self.assertEqual(sr,SR);self.assertTrue(np.isfinite(x).all());self.assertLessEqual(np.max(np.abs(x)),1)
+    def test_same_pcm_different_sample_rate_cannot_rebind_existing_source(self):
+        store=SessionAudioStore();x=np.array([-.25,0,.25,.5],np.float32)
+        first=store.put(x,12000,'local-import');second=store.put(x,16000,'local-import');self.assertNotEqual(first,second)
+        _,sr1,origin1=store.get(first);_,sr2,origin2=store.get(second);self.assertEqual((sr1,origin1),(12000,'local-import'));self.assertEqual((sr2,origin2),(16000,'local-import'))
+        self.assertNotEqual(store.describe(first)['id'],store.describe(second)['id'])
+    def test_same_flattened_bytes_different_channel_interpretation_have_distinct_identity(self):
+        store=SessionAudioStore();raw=np.array([.1,.2,.3,.4],np.float32);mono=raw.reshape(4,1);stereo=raw.reshape(2,2)
+        one=store.put(mono,SR,'local-import');two=store.put(stereo,SR,'local-import');self.assertNotEqual(one,two)
+        got1,_,_=store.get(one);got2,_,_=store.get(two);self.assertEqual(got1.shape,(4,1));self.assertEqual(got2.shape,(2,2))
+        self.assertEqual(store.describe(one)['content_sha256'],store.describe(two)['content_sha256'])
+    def test_identical_source_deduplicates_but_origin_conflict_never_overwrites_provenance(self):
+        store=SessionAudioStore();x=np.array([.1,.2,.3],np.float32);one=store.put(x,SR,'local-import');two=store.put(x.copy(),SR,'local-import');self.assertEqual(one,two)
+        with self.assertRaisesRegex(VocalCaptureError,'different provenance origin'):store.put(x,SR,'local-recording')
+        self.assertEqual(store.describe(one)['origin'],'local-import')
+    def test_dedup_touch_preserves_deterministic_lru(self):
+        store=SessionAudioStore(max_items=2);a=np.array([.1,.2],np.float32);b=np.array([.2,.3],np.float32);c=np.array([.3,.4],np.float32)
+        aid=store.put(a,SR);bid=store.put(b,SR);self.assertEqual(store.put(a,SR),aid);cid=store.put(c,SR)
+        self.assertTrue(store.has(aid));self.assertTrue(store.has(cid));self.assertFalse(store.has(bid))
+    def test_store_analysis_edit_identity_agree_end_to_end(self):
+        service=VocalService();uploaded=service.ingest_wav(encode_wav_bytes(fixture(),SR),'local-import');result=service.analyse(uploaded['source_id'])
+        source=result['analysis']['source'];self.assertEqual(source['id'],uploaded['source_id']);self.assertEqual(source['content_sha256'],uploaded['content_sha256']);self.assertEqual(source['identity_domain'],uploaded['identity_domain'])
+        self.assertEqual(result['edit']['analysis']['source'],source);self.assertEqual(result['preview']['source'],source)
 
 class HTTPTests(unittest.TestCase):
     @classmethod
@@ -103,14 +141,16 @@ class HTTPTests(unittest.TestCase):
         for path,needle in [('/vocal',b'Local vocal gesture'),('/vocal/app.mjs',b'getUserMedia'),('/timeline',b'Phrase timeline')]:
             _,_,body=self.request(path);self.assertIn(needle,body)
     def test_upload_analyse_compile_discard_then_compile_again(self):
-        source=self.upload();_,_,raw=self.request('/api/vocal/analyse',{'source_id':source['source_id'],'dictionary_id':'local-soft','grid_beats':'1/4'});analysed=json.loads(raw);self.assertEqual(len(analysed['analysis']['segments']),3)
+        source=self.upload();self.assertRegex(source['source_id'],r'^capture-v1-[0-9a-f]{64}$');self.assertEqual(source['identity_domain'],SOURCE_IDENTITY_DOMAIN)
+        _,_,audio=self.request(f"/api/vocal/source/{source['source_id']}/audio");self.assertGreater(len(audio),44)
+        _,_,raw=self.request('/api/vocal/analyse',{'source_id':source['source_id'],'dictionary_id':'local-soft','grid_beats':'1/4'});analysed=json.loads(raw);self.assertEqual(len(analysed['analysis']['segments']),3);self.assertEqual(analysed['analysis']['version'],VERSION)
         _,_,raw=self.request('/api/vocal/compile',{'edit':analysed['edit']});first=json.loads(raw)
         _,_,raw=self.request('/api/vocal/discard',{'source_id':source['source_id'],'edit':analysed['edit']});discard=json.loads(raw);self.assertTrue(discard['discarded'])
         _,_,raw=self.request('/api/vocal/compile',{'edit':discard['edit']});second=json.loads(raw);self.assertEqual(first['timeline'],second['timeline'])
         with self.assertRaises(HTTPError):self.request(f"/api/vocal/source/{source['source_id']}/audio")
     def test_foreign_origin_bad_token_and_non_wav_are_rejected(self):
         with self.assertRaises(HTTPError) as cm:self.request('/api/vocal/bootstrap',headers={'Origin':'https://foreign.invalid'});self.assertEqual(cm.exception.code,403)
-        with self.assertRaises(HTTPError) as cm:self.request('/api/vocal/analyse',{'source_id':'capture-'+'0'*16,'dictionary_id':'local-soft','grid_beats':'1/4'},token=False);self.assertEqual(cm.exception.code,403)
+        with self.assertRaises(HTTPError) as cm:self.request('/api/vocal/analyse',{'source_id':'capture-v1-'+'0'*64,'dictionary_id':'local-soft','grid_beats':'1/4'},token=False);self.assertEqual(cm.exception.code,403)
         with self.assertRaises(HTTPError):self.request('/api/vocal/upload',b'not a wav','audio/wav')
 
 if __name__=='__main__':unittest.main(verbosity=2)
