@@ -1,6 +1,7 @@
 from __future__ import annotations
 import numpy as np
 from zaaggenz_jobs import JobClass,JobError
+from zaaggenz_jobs.memory import authoritative_memory_reservation
 from .model import SpectralRetuneRequest
 from .placement import NonlinearStageSpec,PlacementRequest,run_family,run_placement
 
@@ -9,6 +10,9 @@ def estimate_placement_memory_bytes(source,variants=1):
     a=np.asarray(source)
     if a.ndim not in (1,2) or not np.issubdtype(a.dtype,np.number):raise JobError('numeric mono/stereo source required')
     if type(variants)is not int or not 1<=variants<=3:raise JobError('variants must be 1..3')
+    # Source-proportional allowance covers float64 stage copies, component
+    # analysis/reconstruction and captured taps.  Family jobs retain three
+    # result variants, so their authoritative floor scales with variants.
     return max(1,int(a.nbytes*(12+8*variants)+4*1024*1024))
 
 
@@ -21,7 +25,8 @@ def make_placement_executor(source,sample_rate_hz,request):
 
 
 def submit_placement_job(scheduler,revision_id,source,sample_rate_hz,request,*,estimated_memory_bytes=None):
-    estimate=estimate_placement_memory_bytes(source,1) if estimated_memory_bytes is None else estimated_memory_bytes
+    minimum=estimate_placement_memory_bytes(source,1)
+    estimate=authoritative_memory_reservation(minimum,estimated_memory_bytes)
     return scheduler.submit(JobClass.RENDER,revision_id,make_placement_executor(source,sample_rate_hz,request),estimated_memory_bytes=estimate)
 
 
@@ -38,5 +43,6 @@ def make_family_executor(source,sample_rate_hz,spectral,stage_a,stage_b):
 
 
 def submit_placement_family_job(scheduler,revision_id,source,sample_rate_hz,spectral,stage_a,stage_b,*,estimated_memory_bytes=None):
-    estimate=estimate_placement_memory_bytes(source,3) if estimated_memory_bytes is None else estimated_memory_bytes
+    minimum=estimate_placement_memory_bytes(source,3)
+    estimate=authoritative_memory_reservation(minimum,estimated_memory_bytes)
     return scheduler.submit(JobClass.RENDER,revision_id,make_family_executor(source,sample_rate_hz,spectral,stage_a,stage_b),estimated_memory_bytes=estimate)

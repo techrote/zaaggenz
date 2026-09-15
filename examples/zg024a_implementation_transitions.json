@@ -57,6 +57,14 @@
       "stable_id": "ZG-004",
       "changed_paths": ["zaaggenz_dsp/graph.py", "zaaggenz_jobs/api.py", "zaaggenz_jobs/model.py", "zaaggenz_jobs/scheduler.py", "zaaggenz_project/cache.py", "zaaggenz_qc/checks.py"],
       "reason": "Cumulative accepted implementation candidate after #137, #106, #113, #99, #101 and #109 plus #100. Scheduler admission now rejects declared-memory requests that can never fit the immutable capacity of their assigned lane before queue mutation, while feasible temporary contention, interactive reserve policy, cancellation and all audio/DSP semantics remain unchanged. The first #100 CI reproduction passed ZG-004 on Ubuntu and Windows plus inverse contracts, inherited prerequisite suites and browser transport on both platforms, and the frozen-calibration step stopped only at the intentionally fail-closed unreviewed implementation-identity gate. This exact transition permits only implementation_sha256 to differ; the rerun must still reproduce the frozen portable calibration on Ubuntu and Windows before merge."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "a98278ee6717ecf42d092179c4a7302340ec58db7657c9cc29be39d91e84c889",
+      "issue": 136,
+      "stable_id": "ZG-004",
+      "changed_paths": ["zaaggenz_dsp/graph.py", "zaaggenz_jobs/api.py", "zaaggenz_jobs/memory.py", "zaaggenz_jobs/model.py", "zaaggenz_jobs/scheduler.py", "zaaggenz_project/cache.py", "zaaggenz_qc/checks.py", "zaaggenz_spectral/jobs.py", "zaaggenz_spectral/chordness_jobs.py", "zaaggenz_spectral/placement_jobs.py", "zaaggenz_tuning/adaptive_jobs.py"],
+      "reason": "Cumulative accepted implementation candidate after #137, #106, #113, #99, #101, #109 and #100 plus #136. Accepted job wrappers now retain a trusted workload-derived or fixed memory floor and reject caller under-declaration before scheduler mutation while preserving exact existing estimator values, allowing conservative higher reservations, and leaving scheduler maxima and lane admission authoritative. The first #136 CI reproduction passed ZG-004 on Ubuntu and Windows, all inverse contracts, inherited prerequisite suites and browser transport on both platforms, and the frozen-calibration step stopped only at the intentionally fail-closed unreviewed implementation-identity gate. Both platforms computed the same implementation identity and reported no comparison failure other than implementation_sha256. This exact transition permits only implementation_sha256 to differ; the rerun must still reproduce the frozen portable calibration on Ubuntu and Windows before merge."
     }
   ]
 }
