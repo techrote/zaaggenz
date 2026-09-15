@@ -14,12 +14,17 @@ from .service import VocalService
 ROOT=Path(__file__).resolve().parents[1];STATIC=ROOT/'web'/'vocal';SOURCE=re.compile(r'/api/vocal/source/(capture-[0-9a-f]{16})/audio\Z')
 
 class Handler(TimelineHandler):
+    def _with_source_session(self,payload):
+        session=getattr(self.server,'session',None)
+        if session is None:return payload
+        return {**payload,'source_session':session.snapshot(),'application_policy':'proposal-only; explicit Compose import/apply required'}
     def do_GET(self):
         if not self._origin_ok():return
         path=urlparse(self.path).path
         try:
             if path=='/api/vocal/bootstrap':
-                return self._json({'token':self.server.token,'registry':self.server.vocal.registry.to_dict(),'capture_state':'idle; microphone permission has not been requested','microphone_optional':True})
+                payload={'token':self.server.token,'registry':self.server.vocal.registry.to_dict(),'capture_state':'idle; microphone permission has not been requested','microphone_optional':True}
+                return self._json(self._with_source_session(payload))
             match=SOURCE.fullmatch(path)
             if match:
                 wave,sr=self.server.vocal.wave(match[1]);return self._binary(wave,'audio/wav',extra_headers={'X-Capture-Sample-Rate':sr})
@@ -40,23 +45,24 @@ class Handler(TimelineHandler):
                 if self.headers.get('Content-Type','').split(';')[0] not in ('audio/wav','audio/wave','audio/x-wav'):raise VocalCaptureError('WAV content type required')
                 origin=self.headers.get('X-Capture-Origin','local-import')
                 if origin not in ('local-import','local-recording'):raise VocalCaptureError('capture origin must be local-import or local-recording')
-                return self._json(self.server.vocal.ingest_wav(self._read_body(limit=20_000_000),origin),201)
+                return self._json(self._with_source_session(self.server.vocal.ingest_wav(self._read_body(limit=20_000_000),origin)),201)
             if self.headers.get('Content-Type','').split(';')[0]!='application/json':raise VocalCaptureError('application/json required')
             data=loads(self._read_body(limit=2_000_000))
             if path=='/api/vocal/analyse':
                 exact(data,{'source_id','dictionary_id','grid_beats'},'analyse request')
-                return self._json(self.server.vocal.analyse(data['source_id'],data['dictionary_id'],data['grid_beats']))
+                return self._json(self._with_source_session(self.server.vocal.analyse(data['source_id'],data['dictionary_id'],data['grid_beats'])))
             if path=='/api/vocal/compile':
-                exact(data,{'edit'},'compile request');return self._json(self.server.vocal.compile(data['edit']))
+                exact(data,{'edit'},'compile request');return self._json(self._with_source_session(self.server.vocal.compile(data['edit'])))
             if path=='/api/vocal/discard':
-                exact(data,{'source_id','edit'},'discard request');return self._json(self.server.vocal.discard(data['source_id'],data['edit']))
+                exact(data,{'source_id','edit'},'discard request');return self._json(self._with_source_session(self.server.vocal.discard(data['source_id'],data['edit'])))
             return self._error('unknown vocal route',404)
         except (VocalCaptureError,ValueError,KeyError,TypeError) as exc:return self._error(str(exc),400)
 
 class VocalServer(ThreadingHTTPServer):
     daemon_threads=True
-    def __init__(self,port=8765,sample_rate=48000,verbose=False):
-        super().__init__(('127.0.0.1',port),Handler);self.token=secrets.token_urlsafe(32);self.verbose=verbose;self.initial_document=default_document(sample_rate);self.timeline=TimelineService();self.vocal=VocalService()
+    def __init__(self,port=8765,sample_rate=48000,verbose=False,*,timeline=None):
+        super().__init__(('127.0.0.1',port),Handler);self.token=secrets.token_urlsafe(32);self.verbose=verbose;self.initial_document=default_document(sample_rate)
+        self._owns_timeline=timeline is None;self.timeline=TimelineService() if timeline is None else timeline;self.vocal=VocalService()
     def server_close(self):
-        if hasattr(self,'timeline'):self.timeline.close()
+        if getattr(self,'_owns_timeline',False) and hasattr(self,'timeline'):self.timeline.close()
         super().server_close()
