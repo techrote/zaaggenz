@@ -12,7 +12,7 @@ import threading
 import numpy as np
 from scipy.io import wavfile
 
-from .model import VocalCaptureError
+from .model import VocalCaptureError, make_source_identity
 
 
 class SessionAudioStore:
@@ -30,12 +30,24 @@ class SessionAudioStore:
             raise VocalCaptureError("finite mono/stereo PCM required")
         if type(sr) is not int or not 8000 <= sr <= 192000 or not 0 < len(a) <= sr * self.max_seconds:
             raise VocalCaptureError("capture sample rate/duration outside local limits")
-        x = np.asarray(a, dtype=np.float32)
+        if origin not in ("local-recording", "local-import", "generated-fixture"):
+            raise VocalCaptureError("invalid local source origin")
+        x = np.asarray(a, dtype=np.float32, order="C")
         raw = np.asarray(x, dtype="<f4", order="C").tobytes(order="C")
-        sha = hashlib.sha256(raw).hexdigest()
-        identifier = "capture-" + sha[:16]
+        content_sha = hashlib.sha256(raw).hexdigest()
+        source = make_source_identity(content_sha, sr, x.shape[1], len(x), origin)
+        identifier = source["id"]
         with self._lock:
-            self._items[identifier] = (x, sr, origin)
+            existing = self._items.get(identifier)
+            if existing is not None:
+                old_x, old_sr, old_origin, old_source = existing
+                if old_sr != sr or old_source["content_sha256"] != content_sha or old_x.shape != x.shape or old_x.tobytes(order="C") != x.tobytes(order="C"):
+                    raise VocalCaptureError("authoritative capture identity collision/conflict")
+                if old_origin != origin:
+                    raise VocalCaptureError("identical source was already captured with different provenance origin")
+                self._items.move_to_end(identifier)
+                return identifier
+            self._items[identifier] = (x.copy(), sr, origin, source)
             self._items.move_to_end(identifier)
             while len(self._items) > self.max_items:
                 self._items.popitem(last=False)
@@ -45,9 +57,17 @@ class SessionAudioStore:
         with self._lock:
             if identifier not in self._items:
                 raise VocalCaptureError("capture audio is no longer available in this local session")
-            x, sr, origin = self._items[identifier]
+            x, sr, origin, _ = self._items[identifier]
             self._items.move_to_end(identifier)
             return x.copy(), sr, origin
+
+    def describe(self, identifier):
+        with self._lock:
+            if identifier not in self._items:
+                raise VocalCaptureError("capture audio is no longer available in this local session")
+            _, _, _, source = self._items[identifier]
+            self._items.move_to_end(identifier)
+            return dict(source)
 
     def discard(self, identifier):
         with self._lock:
