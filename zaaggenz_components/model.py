@@ -1,10 +1,60 @@
 from __future__ import annotations
 from dataclasses import dataclass
-import math
+import hashlib,math
 import numpy as np
-from zaaggenz_contracts import Contract
+from zaaggenz_contracts import Contract,validate
 
 class ComponentError(ValueError):pass
+
+PCM_IDENTITY_DOMAIN='pcm-f32le-interleaved-v1'
+
+def _finite_audio_array(value,name):
+    a=np.asarray(value)
+    if a.ndim not in (1,2) or (a.ndim==2 and a.shape[1] not in (1,2)):
+        raise ComponentError(name+' must be mono/stereo audio')
+    if not np.issubdtype(a.dtype,np.number) or not np.isfinite(a).all():
+        raise ComponentError(name+' must be finite numeric audio')
+    f32=np.asarray(a,dtype=np.float32)
+    if not np.isfinite(f32).all():
+        raise ComponentError(name+' must be finite float32 audio')
+    return a
+
+def pcm_f32le_bytes(value):
+    a=_finite_audio_array(value,'audio')
+    return np.asarray(a,dtype='<f4',order='C').tobytes()
+
+def pcm_asset_ref(value,sample_rate_hz,level='source'):
+    if type(sample_rate_hz)is not int or not 8000<=sample_rate_hz<=192000:
+        raise ComponentError('sample rate out of range')
+    a=_finite_audio_array(value,'audio')
+    channels=1 if a.ndim==1 else a.shape[1]
+    payload=np.asarray(a,dtype='<f4',order='C').tobytes()
+    return dict(kind='AudioAssetRef',version='1.0.0',
+                content_sha256=hashlib.sha256(payload).hexdigest(),
+                identity_domain=PCM_IDENTITY_DOMAIN,
+                sample_rate_hz=sample_rate_hz,channels=channels,
+                channel_layout='mono' if channels==1 else 'stereo-lr',
+                frame_count=a.shape[0],level_domain=level,
+                sample_policy='unclamped_float')
+
+def bind_pcm_asset(asset,value,sample_rate_hz,name='asset'):
+    if not isinstance(asset,dict):
+        raise ComponentError(name+' AudioAssetRef required')
+    a=_finite_audio_array(value,name)
+    channels=1 if a.ndim==1 else a.shape[1]
+    expected_layout='mono' if channels==1 else 'stereo-lr'
+    expected=(('identity_domain',PCM_IDENTITY_DOMAIN),
+              ('sample_rate_hz',sample_rate_hz),
+              ('channels',channels),
+              ('channel_layout',expected_layout),
+              ('frame_count',a.shape[0]))
+    for field,value_expected in expected:
+        if asset.get(field)!=value_expected:
+            raise ComponentError(f'{name} {field} mismatch')
+    payload=np.asarray(a,dtype='<f4',order='C').tobytes()
+    if asset.get('content_sha256')!=hashlib.sha256(payload).hexdigest():
+        raise ComponentError(name+' content_sha256 mismatch')
+    return a
 
 @dataclass(frozen=True)
 class ComponentTrackerSpec:
@@ -53,13 +103,30 @@ class ComponentAnalysis:
     residual:np.ndarray
     transient_mask:np.ndarray
     diagnostics:dict
+    sample_rate_hz:int|None=None
     def __post_init__(self):
-        if self.bundle.to_dict()['kind']!='PartialTrackBundle':raise ComponentError('PartialTrackBundle required')
-        shape=np.asarray(self.source).shape
+        if not isinstance(self.bundle,Contract):raise ComponentError('PartialTrackBundle required')
+        try:
+            data=self.bundle.to_dict()
+            validate(data,'PartialTrackBundle')
+        except Exception as exc:
+            raise ComponentError('valid PartialTrackBundle required') from exc
+        if data.get('kind')!='PartialTrackBundle':raise ComponentError('PartialTrackBundle required')
+        if type(self.sample_rate_hz)is not int or not 8000<=self.sample_rate_hz<=192000:
+            raise ComponentError('trusted sample_rate_hz required')
+        source=_finite_audio_array(self.source,'source')
+        shape=source.shape
         for name in ('sinusoidal','transient','residual'):
-            a=np.asarray(getattr(self,name))
+            a=_finite_audio_array(getattr(self,name),name)
             if a.shape!=shape:raise ComponentError(name+' shape mismatch')
-        if len(self.transient_mask)!=shape[0]:raise ComponentError('transient mask length mismatch')
+        mask=np.asarray(self.transient_mask)
+        if mask.ndim!=1 or mask.shape!=(shape[0],):
+            raise ComponentError('transient mask shape mismatch')
+        if not np.issubdtype(mask.dtype,np.number) or not np.isfinite(mask).all():
+            raise ComponentError('transient mask must be finite numeric')
+        bind_pcm_asset(data.get('asset'),source,self.sample_rate_hz,'source asset')
+        bind_pcm_asset(data.get('transient_asset'),self.transient,self.sample_rate_hz,'transient asset')
+        bind_pcm_asset(data.get('residual_asset'),self.residual,self.sample_rate_hz,'residual asset')
         for a in (self.source,self.sinusoidal,self.transient,self.residual,self.transient_mask):a.setflags(write=False)
     @property
     def reconstruction(self):

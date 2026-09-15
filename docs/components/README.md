@@ -23,6 +23,14 @@ This gives two deliberately separate checks:
 
 The separation directly addresses the preflight counterexample where an algebraically perfect residual reconstruction could still produce severe ghost energy after retuning a slightly wrong component.
 
+## Aggregate identity boundary
+
+A `ComponentAnalysis` is accepted only when its contract and concrete arrays describe the same source observation. The caller supplies the trusted sample rate separately from the bundle. The bundle's `asset`, `transient_asset`, and `residual_asset` must all use `pcm-f32le-interleaved-v1`; each is checked against the corresponding finite array for exact frame count, channel count, mono/stereo layout, sample rate, and SHA-256 of canonical C-order little-endian float32 PCM bytes. This is the same PCM content-identity rule used by the artifact cache; component analysis does not introduce a second audio-identity interpretation.
+
+Source, sinusoidal, transient, and residual arrays must have exactly the same shape and contain only finite numeric values. The transient mask is one-dimensional, finite, and exactly source-length. No aggregate constructor path truncates, pads, reshapes, or silently repairs mismatches. One-dimensional mono and `N×1` mono intentionally have the same canonical PCM content identity (`channels=1`, `channel_layout=mono`), but an already-formed aggregate does not coerce between those shapes.
+
+`reconstruct_components()` retains portable bundle-only reconstruction for a validated `PartialTrackBundle`. When a concrete source is available, callers pass it together with its trusted sample rate; the source asset is then bound before any output allocation and the allocation extent comes from the concrete source, not untrusted bundle metadata. Tracker and spectral-retune paths use this bound form.
+
 ## Known limits
 
 This v1 tracker is aimed at resolved or moderately overlapping sinusoidal structure. It does not claim robust decomposition of a fully mastered zaag wall, arbitrary polyphonic mixtures, or perceptually correct identity through all crossings. Dense/noisy frames are allowed to abstain. Later ZG-017 must test transformed ghost energy, not merely bypass reconstruction.
@@ -35,4 +43,4 @@ python -m unittest discover -s tests/components -v
 python tools/component_fixture_report.py --out component-fixtures.json
 ```
 
-Fixtures cover stable tones, chirps, amplitude modulation, crossings, white noise, impulses, empty/short signals and stereo antiphase. The report is deterministic synthetic evidence, not a listening result.
+Fixtures cover stable tones, chirps, amplitude modulation, crossings, white noise, impulses, empty/short signals and stereo antiphase. Aggregate identity regressions additionally cover forged frame/channel/sample-rate/content identity, transient/residual provenance, non-finite arrays, concrete-source allocation bounds, mono canonicalization, zero-track inputs, and large legitimate zero-track inputs. The report is deterministic synthetic evidence, not a listening result.

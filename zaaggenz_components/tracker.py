@@ -1,12 +1,12 @@
 from __future__ import annotations
-import hashlib,math
+import math
 from copy import deepcopy
 import numpy as np
 from scipy import signal,optimize
 from zaaggenz_contracts import Contract
 from zaaggenz_analysis.stft import STFTSpec,stft
 from zaaggenz_analysis.features import analyse_multiresolution
-from .model import ComponentTrackerSpec,ComponentAnalysis,ComponentError,exact_bypass
+from .model import ComponentTrackerSpec,ComponentAnalysis,ComponentError,exact_bypass,pcm_asset_ref
 from .reconstruct import reconstruct_components
 
 METHOD='zg-component-tracker-v1'
@@ -17,13 +17,11 @@ def _audio(x):
     if mono:a=a[:,None]
     if a.ndim!=2 or a.shape[1] not in (1,2):raise ComponentError('mono/stereo audio required')
     if not np.issubdtype(a.dtype,np.number) or not np.isfinite(a).all():raise ComponentError('finite numeric audio required')
+    f32=np.asarray(a,dtype=np.float32)
+    if not np.isfinite(f32).all():raise ComponentError('finite float32 audio required')
     return np.asarray(a,dtype=np.float64),mono
 
 def _pow2(value):return int(2**round(math.log2(max(32,value))))
-def _pcm(a):return np.asarray(a,dtype='<f4',order='C').tobytes()
-def _asset(a,sr,level='source'):
-    x=np.asarray(a);ch=1 if x.ndim==1 else x.shape[1];frames=x.shape[0];payload=_pcm(x)
-    return dict(kind='AudioAssetRef',version='1.0.0',content_sha256=hashlib.sha256(payload).hexdigest(),identity_domain='pcm-f32le-interleaved-v1',sample_rate_hz=sr,channels=ch,channel_layout='mono' if ch==1 else 'stereo-lr',frame_count=frames,level_domain=level,sample_policy='unclamped_float')
 
 def _parabolic_frequency(mag,k,sr,nfft):
     if k<=0 or k>=len(mag)-1:return k*sr/nfft
@@ -137,7 +135,7 @@ def _transient_mask(a,sr,spec):
 
 def _track_bundle(source,sr,tracks,spec,r,transient_mask,residual,transient):
     source1=source[:,0] if source.shape[1]==1 else source;residual1=residual[:,0] if residual.shape[1]==1 else residual;transient1=transient[:,0] if transient.shape[1]==1 else transient
-    asset=_asset(source1,sr);resasset=_asset(residual1,sr);transasset=_asset(transient1,sr);exported=[];transform_frames=0;ambiguous_tracks=0
+    asset=pcm_asset_ref(source1,sr);resasset=pcm_asset_ref(residual1,sr);transasset=pcm_asset_ref(transient1,sr);exported=[];transform_frames=0;ambiguous_tracks=0
     for idx,t in enumerate(tracks,1):
         continuity='unknown' if t['ambiguous'] else ('reanchored' if t['had_gap'] else 'continuous')
         if continuity=='unknown':ambiguous_tracks+=1
@@ -156,10 +154,10 @@ def analyse_components(x,sample_rate_hz,spec=ComponentTrackerSpec()):
     a,mono=_audio(x);source32=np.asarray(a,dtype=np.float32);n=len(a)
     if n==0:
         dummy=type('R',(),{'spec':type('S',(),{'window_samples':_pow2(sample_rate_hz*spec.window_seconds),'hop_samples':1,'fft_samples':_pow2(sample_rate_hz*spec.window_seconds)*spec.fft_factor})()})();z=np.zeros_like(source32);mask=np.zeros(0,dtype=np.float32);bundle,_,_=_track_bundle(source32,sample_rate_hz,[],spec,dummy,mask,z,z);src=source32[:,0] if mono else source32
-        return ComponentAnalysis(bundle,src,src.copy(),src.copy(),src.copy(),mask,dict(method=METHOD,tracks=0,tracked_frames=0,transform_frames=0,abstained_frames=0,ambiguous_tracks=0,transient_fraction=0.,reconstruction_rms_error=0.))
+        return ComponentAnalysis(bundle,src,src.copy(),src.copy(),src.copy(),mask,dict(method=METHOD,tracks=0,tracked_frames=0,transform_frames=0,abstained_frames=0,ambiguous_tracks=0,transient_fraction=0.,reconstruction_rms_error=0.),sample_rate_hz)
     r,frames,abstained=_candidate_frames(a,sample_rate_hz,spec);tracks=_track(frames,spec);mask,onsets=_transient_mask(a,sample_rate_hz,spec);zero=np.zeros_like(source32);temp,_,_=_track_bundle(source32,sample_rate_hz,tracks,spec,r,mask,zero,zero)
-    raw=reconstruct_components(temp);raw2=raw[:,None] if raw.ndim==1 else raw;sinusoidal=np.asarray(raw2*(1-mask[:,None]),dtype=np.float32);transient=np.asarray(source32*mask[:,None],dtype=np.float32);residual=np.asarray(source32-sinusoidal-transient,dtype=np.float32);bundle,transform_frames,ambiguous_tracks=_track_bundle(source32,sample_rate_hz,tracks,spec,r,mask,residual,transient)
+    source_view=source32[:,0] if mono else source32;raw=reconstruct_components(temp,source=source_view,sample_rate_hz=sample_rate_hz);raw2=raw[:,None] if raw.ndim==1 else raw;sinusoidal=np.asarray(raw2*(1-mask[:,None]),dtype=np.float32);transient=np.asarray(source32*mask[:,None],dtype=np.float32);residual=np.asarray(source32-sinusoidal-transient,dtype=np.float32);bundle,transform_frames,ambiguous_tracks=_track_bundle(source32,sample_rate_hz,tracks,spec,r,mask,residual,transient)
     reconstruction=np.asarray(sinusoidal,dtype=np.float64)+np.asarray(transient,dtype=np.float64)+np.asarray(residual,dtype=np.float64);err=float(np.sqrt(np.mean((reconstruction-np.asarray(source32,dtype=np.float64))**2))) if source32.size else 0.;tracked=sum(len(t['rows']) for t in tracks);source_rms=float(np.sqrt(np.mean(source32.astype(np.float64)**2))) if source32.size else 0.
     diag=dict(method=METHOD,tracks=len(tracks),tracked_frames=tracked,transform_frames=transform_frames,abstained_frames=abstained,ambiguous_tracks=ambiguous_tracks,detected_transient_onsets=onsets,transient_fraction=float(np.mean(mask)) if n else 0.,source_rms=source_rms,sinusoidal_rms=float(np.sqrt(np.mean(sinusoidal.astype(np.float64)**2))) if sinusoidal.size else 0.,residual_rms=float(np.sqrt(np.mean(residual.astype(np.float64)**2))) if residual.size else 0.,reconstruction_rms_error=err,window_samples=r.spec.window_samples,hop_samples=r.spec.hop_samples,fft_samples=r.spec.fft_samples)
     src=source32[:,0] if mono else source32;sin=sinusoidal[:,0] if mono else sinusoidal;tra=transient[:,0] if mono else transient;res=residual[:,0] if mono else residual
-    return ComponentAnalysis(bundle,src,sin,tra,res,mask,diag)
+    return ComponentAnalysis(bundle,src,sin,tra,res,mask,diag,sample_rate_hz)
