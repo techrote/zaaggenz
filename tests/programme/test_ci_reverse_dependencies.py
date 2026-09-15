@@ -59,15 +59,21 @@ class ReverseDependencyCI(unittest.TestCase):
     def test_contract_change_reaches_deep_consumers(self) -> None:
         result = ci.classify_changed_paths(["zaaggenz_contracts/validation.py"], ROOT)
         dispatch = {row["workflow"] for row in result["dispatch"]}
-        self.assertIn("ZG-002", result["direct_stable_ids"])
+        self.assertEqual(["ZG-002"], result["direct_stable_ids"])
         self.assertIn("zg002-contracts.yml", result["native"])
         self.assertIn("zg016-dsp.yml", dispatch)
         self.assertIn("zg023-inspector.yml", dispatch)
         self.assertIn("zg032-vocal.yml", dispatch)
 
+    def test_broad_consumer_filter_does_not_claim_source_ownership(self) -> None:
+        # ZG-024a natively triggers on zaaggenz_*/**, but that is compatibility
+        # coverage, not ownership of melody implementation.
+        result = ci.classify_changed_paths(["zaaggenz_melody/render.py"], ROOT)
+        self.assertEqual(["ZG-008"], result["direct_stable_ids"])
+
     def test_feature_local_change_still_runs_owner_natively(self) -> None:
         result = ci.classify_changed_paths(["zaaggenz_phrase/model.py"], ROOT)
-        self.assertIn("ZG-025", result["direct_stable_ids"])
+        self.assertEqual(["ZG-025"], result["direct_stable_ids"])
         self.assertIn("zg025-phrase.yml", result["native"])
         dispatch = {row["workflow"] for row in result["dispatch"]}
         self.assertIn("zg026-meter.yml", dispatch)
