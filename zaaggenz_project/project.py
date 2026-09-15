@@ -17,8 +17,24 @@ class ProjectError(ValueError): pass
 def _require(c,m):
     if not c: raise ProjectError(m)
 
+def _hex_sha(value):
+    return type(value) is str and len(value)==64 and all(c in '0123456789abcdef' for c in value)
+
 def _revision_id(recipe_sha,parent):
     return digest({'domain':'zaaggenz.project-revision-v1','recipe_sha256':recipe_sha,'parent':parent})
+
+def _cache_binding(cache,cache_key,asset,expected_payload=None):
+    """Verify one cache-key/asset binding without making cache presence part of project identity."""
+    from .cache import ArtifactCache
+    if not isinstance(cache,ArtifactCache): raise ProjectError('ArtifactCache required')
+    payload=cache.get(cache_key)
+    if payload is None: raise ProjectError('render slot artifact is absent from cache')
+    entry=cache.index.get('entries',{}).get(cache_key)
+    if entry is None or entry.get('asset')!=asset:
+        raise ProjectError('render slot AudioAssetRef does not match cached artifact')
+    if expected_payload is not None and payload!=expected_payload:
+        raise ProjectError('render artifact bytes do not match cached artifact')
+    return payload
 
 @dataclass(frozen=True)
 class Audition:
@@ -66,16 +82,39 @@ class Project:
             raise ProjectError('RenderRecipe Contract required')
         return Audition(self._head,recipe.sha256,recipe.to_json())
 
-    def bind_slot(self,name,*,revision_id,product,cache_key,asset):
+    def bind_slot(self,name,*,revision_id,product,cache_key,asset,cache=None):
         if not isinstance(name,str) or not name or len(name)>64 or '/' in name or '\\' in name:
             raise ProjectError('invalid render slot name')
         if revision_id not in self._revisions: raise ProjectError('unknown revision')
         if product not in ('synth','arrange','arrange_bass','bass'): raise ProjectError('unknown render product')
-        if not isinstance(cache_key,str) or len(cache_key)!=64: raise ProjectError('invalid cache key')
+        if not _hex_sha(cache_key): raise ProjectError('invalid cache key')
         try: validate(asset,'AudioAssetRef')
         except ContractError as e: raise ProjectError(str(e)) from e
+        if cache is not None: _cache_binding(cache,cache_key,asset)
         if len(self._slots)>=MAX_SLOTS and name not in self._slots: raise ProjectError('render slot limit reached')
         self._slots[name]={'revision_id':revision_id,'product':product,'cache_key':cache_key,'asset':deepcopy(asset)}
+
+    def bind_artifact_slot(self,name,artifact,*,cache=None):
+        """Bind one validated immutable RenderArtifact to the matching committed recipe revision."""
+        from zaaggenz_jobs.model import RenderArtifact
+        if not isinstance(artifact,RenderArtifact): raise ProjectError('RenderArtifact required')
+        record=self._revisions.get(artifact.revision_id)
+        if record is None: raise ProjectError('artifact references unknown revision')
+        if artifact.recipe_sha256!=record['recipe_sha256']:
+            raise ProjectError('artifact recipe identity does not match project revision')
+        if artifact.product not in ('synth','arrange','arrange_bass','bass'):
+            raise ProjectError('artifact product cannot be bound to a project render slot')
+        asset=artifact.asset
+        if cache is not None:
+            _cache_binding(cache,artifact.cache_key,asset,artifact.audio_bytes)
+        self.bind_slot(name,revision_id=artifact.revision_id,product=artifact.product,
+                       cache_key=artifact.cache_key,asset=asset)
+
+    def verify_slot(self,name,cache):
+        """Resolve and verify the optional local cache binding for a persisted portable slot."""
+        slot=self._slots.get(name)
+        if slot is None: raise ProjectError('unknown render slot')
+        return _cache_binding(cache,slot['cache_key'],slot['asset'])
 
     def slot(self,name): return deepcopy(self._slots.get(name))
 
@@ -139,7 +178,7 @@ def _validate_document(doc):
         _require(type(s) is dict and set(s)=={'revision_id','product','cache_key','asset'},'invalid slot record')
         _require(s['revision_id'] in ids,'slot revision missing')
         _require(s['product'] in ('synth','arrange','arrange_bass','bass'),'invalid slot product')
-        _require(type(s['cache_key']) is str and len(s['cache_key'])==64,'invalid slot cache key')
+        _require(_hex_sha(s['cache_key']),'invalid slot cache key')
 
 def load_project(path):
     path=Path(path)
