@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json,threading,unittest
+from unittest.mock import patch
 from urllib.request import Request,urlopen
 from urllib.error import HTTPError
 from pathlib import Path
@@ -57,6 +58,28 @@ class TrialTests(unittest.TestCase):
         t=make_trial('AB','ab',self.match2);sid=t.to_dict()['presentation_order'][0];counts={x:0 for x in t.to_dict()['presentation_order']};counts[sid]=3
         r=make_result(t,status='aborted',replay_counts=counts,annotations=[{'stimulus_id':sid,'time_seconds':.42,'label':'attack','note':'too sharp'}],effort=85,note='stopped')
         self.assertEqual(r.to_dict()['status'],'aborted');self.assertEqual(r.to_dict()['replay_counts'][sid],3);self.assertIsNone(r.to_dict()['abx_correct']);self.assertEqual(make_result(t,status='missing').to_dict()['status'],'missing')
+    def test_participant_projection_uses_opaque_identity_and_server_held_truth(self):
+        with patch('zaaggenz_listening.service.secrets.choice',return_value='B'),patch('zaaggenz_listening.service.secrets.token_hex',return_value='a'*64):
+            public=self.service.create_participant_trial('ABX','abx',self.match2,'77',['liking'],None)
+        trusted=self.service.participant_manifest(public['id']).to_dict()
+        self.assertEqual(trusted['abx_truth'],'B');self.assertEqual(public['id'],'a'*64);self.assertNotEqual(public['id'],trusted['id'])
+        self.assertIsNone(public['abx_truth']);self.assertNotIn('seed',public);self.assertNotIn(trusted['id'],json.dumps(public,sort_keys=True))
+    def test_participant_submission_is_one_shot_and_receipt_withholds_score(self):
+        public=self.service.create_participant_trial('ABX','abx',self.match2,'5',['liking'],None);counts={x:0 for x in public['presentation_order']}
+        payload={'status':'completed','choice':'A','ratings':{'liking':55},'confidence':60,'effort':20,'comfortable_level':50,'replay_counts':counts,'x_replay_count':0,'annotations':[],'note':''}
+        receipt=self.service.submit_participant(public['id'],payload);self.assertIsNone(receipt['result']['abx_correct']);self.assertEqual(receipt['result']['trial_id'],public['id'])
+        with self.assertRaisesRegex(ListeningError,'new trial'):self.service.submit_participant(public['id'],payload)
+    def test_participant_export_never_contains_trusted_trial_identity_seed_truth_or_accuracy(self):
+        public=self.service.create_participant_trial('ABX','abx',self.match2,'5',['liking'],None);trusted=self.service.participant_manifest(public['id']).to_dict();counts={x:0 for x in public['presentation_order']}
+        self.service.submit_participant(public['id'],{'status':'completed','choice':'A','ratings':{'liking':55},'confidence':60,'effort':20,'comfortable_level':50,'replay_counts':counts,'x_replay_count':0,'annotations':[],'note':''})
+        safe=self.service.export_participant_bundle(public['id']);encoded=json.dumps(safe,sort_keys=True)
+        self.assertEqual(safe['format'],'zaaggenz-listening-participant-bundle');self.assertNotIn('seed',safe['trial']);self.assertIsNone(safe['trial']['abx_truth']);self.assertIsNone(safe['results'][0]['abx_correct']);self.assertNotIn(trusted['id'],encoded)
+        full=self.service.export_bundle(public['id']);self.assertEqual(full['manifest']['id'],trusted['id']);self.assertIn(full['manifest']['abx_truth'],('A','B'));self.assertIsInstance(full['results'][0]['abx_correct'],bool)
+        with self.assertRaisesRegex(ListeningError,'trusted'):self.service.reopen_bundle(safe)
+    def test_ab_and_multi_participant_exports_do_not_gain_truth_fields(self):
+        for design,rows in (('ab',self.match2),('multi',self.match3)):
+            public=self.service.create_participant_trial(design.upper(),design,rows,'9',['liking'],None);safe=self.service.export_participant_bundle(public['id'])
+            self.assertNotIn('seed',safe['trial']);self.assertIsNone(safe['trial']['abx_truth']);self.assertEqual(safe['results'],[])
     def test_bundle_reopen_never_regenerates_missing_audio(self):
         public=self.service.create_trial('AB','ab',self.match2,'5',['liking'],None);tid=public['id'];self.service.submit(tid,{'status':'completed','choice':public['presentation_order'][0],'ratings':{'liking':55},'confidence':60,'effort':20,'comfortable_level':50,'replay_counts':{x:1 for x in public['presentation_order']},'x_replay_count':0,'annotations':[],'note':''})
         bundle=self.service.export_bundle(tid);self.assertEqual(self.service.reopen_bundle(bundle)['results'][0]['ratings']['liking'],55)
@@ -71,26 +94,43 @@ class HTTPTests(unittest.TestCase):
         cls.server=ListeningServer(0,12000);cls.thread=threading.Thread(target=cls.server.serve_forever,daemon=True);cls.thread.start();cls.url=f'http://127.0.0.1:{cls.server.server_port}'
     @classmethod
     def tearDownClass(cls):cls.server.shutdown();cls.server.server_close();cls.thread.join(2)
-    def request(self,path,data=None,token=True,headers=None):
-        h={'Content-Type':'application/json',**(headers or {})};
+    def request(self,path,data=None,token=True,trusted=False,headers=None):
+        h={'Content-Type':'application/json',**(headers or {})}
         if token:h['X-Zaaggenz-Token']=self.server.token
+        if trusted is True:h['X-Zaaggenz-Trusted-Token']=self.server.trusted_token
+        elif type(trusted)is str:h['X-Zaaggenz-Trusted-Token']=trusted
         body=None if data is None else json.dumps(data).encode()
         with urlopen(Request(self.url+path,data=body,headers=h),timeout=20) as r:return r.status,r.headers,r.read()
-    def test_bootstrap_listen_and_compose_pages_coexist(self):
-        _,_,raw=self.request('/api/listening/bootstrap');b=json.loads(raw);self.assertTrue(b['compose_independent']);self.assertIn('neutral-abx',b['templates'])
-        for path,needle in [('/listen',b'Listening'),('/timeline',b'Phrase timeline')]:_,_,body=self.request(path);self.assertIn(needle,body)
-    def test_end_to_end_freeze_match_trial_audio_submit_export(self):
+    def _two_stimuli(self):
         jobs=[]
         for d in (timeline(0),timeline(4)):
             j=self.server.timeline.submit(d,name='listen');self.assertEqual(self.server.timeline.scheduler.wait(j['job_id'],10).state,'completed');jobs.append(j['job_id'])
         stimuli=[]
         for i,j in enumerate(jobs):_,_,raw=self.request('/api/listening/freeze',{'job_id':j,'name':chr(65+i),'start_frame':0,'end_frame':None});stimuli.append(json.loads(raw)['id'])
-        _,_,raw=self.request('/api/listening/match',{'stimulus_ids':stimuli,'target_rms_dbfs':None,'peak_ceiling_dbfs':-3.});matched=json.loads(raw)['matched_stimuli']
-        _,_,raw=self.request('/api/listening/trial',{'title':'HTTP ABX','design':'abx','matched_stimuli':matched,'seed':'77','endpoints':['liking','groove'],'instruction_template':'neutral-abx'});trial=json.loads(raw)['trial'];self.assertIsNone(trial['abx_truth'])
+        _,_,raw=self.request('/api/listening/match',{'stimulus_ids':stimuli,'target_rms_dbfs':None,'peak_ceiling_dbfs':-3.});return stimuli,json.loads(raw)['matched_stimuli']
+    def test_bootstrap_listen_and_compose_pages_coexist(self):
+        _,_,raw=self.request('/api/listening/bootstrap');b=json.loads(raw);self.assertTrue(b['compose_independent']);self.assertIn('neutral-abx',b['templates']);self.assertEqual(b['capability']['role'],'participant');self.assertNotIn('trusted_token',b);self.assertNotEqual(b['token'],self.server.trusted_token)
+        for path,needle in [('/listen',b'Listening'),('/timeline',b'Phrase timeline')]:_,_,body=self.request(path);self.assertIn(needle,body)
+    def test_end_to_end_participant_surface_is_blind_and_trusted_archive_is_separate(self):
+        stimuli,matched=self._two_stimuli()
+        _,_,raw=self.request('/api/listening/trial',{'title':'HTTP ABX','design':'abx','matched_stimuli':matched,'seed':'77','endpoints':['liking','groove'],'instruction_template':'neutral-abx'});trial=json.loads(raw)['trial']
+        self.assertEqual(trial['format'],'zaaggenz-listening-participant-trial');self.assertIsNone(trial['abx_truth']);self.assertNotIn('seed',trial);self.assertNotIn(trial['id'],self.server.listening.trials)
+        trusted_id=self.server.listening._participant_to_trusted[trial['id']];self.assertNotEqual(trusted_id,trial['id']);self.assertNotIn(trusted_id,json.dumps(trial,sort_keys=True))
+        _,_,raw=self.request('/api/listening/export',{'trial_id':trial['id']});pre=json.loads(raw);self.assertEqual(pre['format'],'zaaggenz-listening-participant-bundle');self.assertEqual(pre['results'],[]);self.assertNotIn(trusted_id,json.dumps(pre,sort_keys=True));self.assertNotIn('seed',pre['trial']);self.assertIsNone(pre['trial']['abx_truth'])
+        with self.assertRaises(HTTPError) as cm:self.request('/api/listening/trusted-export',{'trial_id':trial['id']});self.assertEqual(cm.exception.code,403)
+        with self.assertRaises(HTTPError) as cm:self.request('/api/listening/trusted-export',{'trial_id':trial['id']},token=False,trusted='forged');self.assertEqual(cm.exception.code,403)
         psha=matched[0]['playback_sha256'];_,headers,wave=self.request(f'/api/listening/audio/{psha}.wav');self.assertEqual(headers['X-Playback-SHA256'],psha);self.assertTrue(wave.startswith(b'RIFF'))
+        _,xheaders,xwave=self.request(f"/api/listening/trial/{trial['id']}/X.wav");self.assertTrue(xwave.startswith(b'RIFF'));self.assertIsNone(xheaders.get('X-Playback-SHA256'))
         counts={x:1 for x in trial['presentation_order']};result={'status':'completed','choice':'A','ratings':{'liking':50,'groove':60},'confidence':70,'effort':30,'comfortable_level':50,'replay_counts':counts,'x_replay_count':2,'annotations':[],'note':''}
-        _,_,raw=self.request('/api/listening/submit',{'trial_id':trial['id'],'result':result});self.assertIn('result_sha256',json.loads(raw))
-        _,_,raw=self.request('/api/listening/export',{'trial_id':trial['id']});bundle=json.loads(raw);self.assertEqual(bundle['manifest']['id'],trial['id']);self.assertEqual(len(bundle['stimuli']),2);self.assertIn('alignment',bundle['stimuli'][0])
+        _,_,raw=self.request('/api/listening/submit',{'trial_id':trial['id'],'result':result});receipt=json.loads(raw);self.assertIn('result_sha256',receipt);self.assertIsNone(receipt['result']['abx_correct']);self.assertEqual(receipt['result']['trial_id'],trial['id']);self.assertNotIn(trusted_id,json.dumps(receipt,sort_keys=True))
+        with self.assertRaises(HTTPError) as cm:self.request('/api/listening/submit',{'trial_id':trial['id'],'result':result});self.assertEqual(cm.exception.code,400)
+        _,_,raw=self.request('/api/listening/export',{'trial_id':trial['id']});safe=json.loads(raw);self.assertIsNone(safe['results'][0]['abx_correct']);self.assertNotIn(trusted_id,json.dumps(safe,sort_keys=True))
+        _,_,raw=self.request('/api/listening/trusted-export',{'trial_id':trial['id']},token=False,trusted=True);full=json.loads(raw);self.assertEqual(full['manifest']['id'],trusted_id);self.assertIn(full['manifest']['abx_truth'],('A','B'));self.assertEqual(len(full['stimuli']),2);self.assertIn('alignment',full['stimuli'][0]);self.assertIsInstance(full['results'][0]['abx_correct'],bool)
+    def test_participant_capability_cannot_reopen_or_use_trusted_manifest_id(self):
+        _,matched=self._two_stimuli();_,_,raw=self.request('/api/listening/trial',{'title':'HTTP ABX','design':'abx','matched_stimuli':matched,'seed':'1','endpoints':['liking'],'instruction_template':'neutral-abx'});trial=json.loads(raw)['trial'];trusted_id=self.server.listening._participant_to_trusted[trial['id']]
+        with self.assertRaises(HTTPError) as cm:self.request('/api/listening/reopen',{'bundle':{}},trusted=False);self.assertEqual(cm.exception.code,403)
+        with self.assertRaises(HTTPError) as cm:self.request('/api/listening/export',{'trial_id':trusted_id});self.assertEqual(cm.exception.code,400)
+        with self.assertRaises(HTTPError) as cm:self.request(f'/api/listening/trial/{trusted_id}/X.wav');self.assertEqual(cm.exception.code,400)
     def test_foreign_origin_and_bad_token_rejected(self):
         with self.assertRaises(HTTPError) as cm:self.request('/api/listening/bootstrap',headers={'Origin':'https://foreign.invalid'});self.assertEqual(cm.exception.code,403)
         with self.assertRaises(HTTPError) as cm:self.request('/api/listening/export',{'trial_id':'0'*64},token=False);self.assertEqual(cm.exception.code,403)
