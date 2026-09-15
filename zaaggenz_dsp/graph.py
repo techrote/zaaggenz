@@ -110,10 +110,24 @@ def execute_graph(source,sample_rate_hz,nodes,output_node,source_id='source',cap
     return GraphResult(np.asarray(out),taps,order)
 
 def apply_output_policy(x,output):
-    a,_,mono=_audio(x);gain_db=float(output['master_gain_db']);gain=10**(gain_db/20);y=a*gain;driven=float(np.max(np.abs(y))) if y.size else 0.;clip_fraction=float(np.mean(np.abs(y)>1)) if y.size else 0.
+    a,_,mono=_audio(x)
+    gain_db=float(output['master_gain_db'])
+    if not np.isfinite(gain_db):raise GraphError('finite master gain required')
+    with np.errstate(over='ignore',invalid='ignore'):
+        gain=float(np.power(10.0,gain_db/20.0));y=a*gain
+    if not np.isfinite(gain) or not np.isfinite(y).all():
+        raise GraphError('master gain produced non-finite output')
+    driven=float(np.max(np.abs(y))) if y.size else 0.;clip_fraction=float(np.mean(np.abs(y)>1)) if y.size else 0.
     policy=output['clipping']
     if policy=='clip_at_full_scale' and clip_fraction:y=np.clip(y,-1,1)
     elif policy=='error' and clip_fraction:raise GraphError('output exceeds full scale under error clipping policy')
-    elif policy not in ('clip_at_full_scale','error','unbounded_float'):raise GraphError('unsupported clipping policy')
-    out=y.astype(np.float32);out=out[:,0] if mono else out
+    elif policy=='unbounded_float':
+        if driven>float(np.finfo(np.float32).max):
+            raise GraphError('unbounded_float output exceeds finite float32 range')
+    elif policy not in ('clip_at_full_scale','error'):raise GraphError('unsupported clipping policy')
+    with np.errstate(over='ignore',invalid='ignore'):
+        out=y.astype(np.float32)
+    if not np.isfinite(out).all():
+        raise GraphError('final output representation is non-finite')
+    out=out[:,0] if mono else out
     return out,{'gain_db':gain_db,'gain_linear':gain,'driven_peak':driven,'clip_fraction':clip_fraction,'output_peak':float(np.max(np.abs(out))) if out.size else 0.}

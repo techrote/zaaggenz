@@ -105,6 +105,11 @@ class ReverseDependencyCI(unittest.TestCase):
         self.assertIn("zg002-contracts.yml", contract["native"])
         self.assertIn("ZG-004", jobs["direct_stable_ids"])
 
+    def test_dispatch_polling_is_bounded_for_installation_rate_limits(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "zg000-ci-impact.yml").read_text(encoding="utf-8")
+        self.assertIn("max-parallel: 2", workflow)
+        self.assertIn('--interval 30 --exit-status', workflow)
+
 
 if __name__ == "__main__":
     unittest.main()

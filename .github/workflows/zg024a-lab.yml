@@ -6,6 +6,7 @@ on:
       - 'tests/inverse/**'
       - 'tools/inverse_foundation_report.py'
       - 'examples/zg024a_inverse_calibration.json.gz'
+      - 'examples/zg024a_implementation_transitions.json'
       - 'docs/inverse/**'
       - 'docs/zaaggenz/RAG_INDEX.md'
       - 'baseline/recovered_source/**'
@@ -53,6 +54,7 @@ jobs:
           --full-out inverse-full.json
           --telemetry-out inverse-timing.json
           --check examples/zg024a_inverse_calibration.json.gz
+          --implementation-transitions examples/zg024a_implementation_transitions.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
