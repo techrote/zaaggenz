@@ -97,6 +97,17 @@ class NumericRuntimeTests(unittest.TestCase):
             self.assertEqual(b.wait(good,1).state,'completed');self.assertEqual(b.result(good),7)
             b.shutdown();self.schedulers.remove(b)
 
+    def test_partial_scheduler_construction_releases_runtime_owner(self):
+        factory=_Factory();original_start=threading.Thread.start;calls={'n':0}
+        def flaky_start(thread):
+            calls['n']+=1
+            if calls['n']==2:raise RuntimeError('injected thread start failure')
+            return original_start(thread)
+        with mock.patch.object(runtime,'_load_threadpool_limits',return_value=factory),mock.patch.object(threading.Thread,'start',flaky_start):
+            with self.assertRaisesRegex(RuntimeError,'injected thread start failure'):
+                JobScheduler(limits(1),apply_numeric_limit=True)
+        self.assertEqual(runtime_state()['owners'],0);self.assertEqual(len(factory.guards),1);self.assertEqual(factory.guards[0].restores,1)
+
     def test_apply_numeric_limit_false_is_explicit_already_owned_runtime_path(self):
         with mock.patch.object(runtime,'_load_threadpool_limits',return_value=_Factory()):
             lease=runtime.numeric_thread_limit(2);self.leases.append(lease)
