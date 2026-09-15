@@ -43,6 +43,10 @@ def _clone(base,bundle,**changes):
     values.update(changes)
     return ComponentAnalysis(**values)
 
+def _mutate_remainder_shape_together(data,field,value):
+    for key in ('asset','residual_asset','transient_asset'):
+        data[key][field]=value
+
 class ComponentIdentityBindingTests(unittest.TestCase):
     def setUp(self):
         self.source=np.linspace(-.25,.25,64,dtype=np.float32)
@@ -61,14 +65,14 @@ class ComponentIdentityBindingTests(unittest.TestCase):
         self.assertEqual(tracked.reconstruction.shape,tracked.source.shape)
 
     def test_wrong_frame_count_is_rejected(self):
-        bundle=self.mutated_bundle(lambda d:d['asset'].__setitem__('frame_count',len(self.source)+1))
+        bundle=self.mutated_bundle(lambda d:_mutate_remainder_shape_together(d,'frame_count',len(self.source)+1))
         with self.assertRaisesRegex(ComponentError,'frame_count mismatch'):
             _clone(self.analysis,bundle)
 
     def test_wrong_channel_count_and_layout_are_rejected(self):
         def mutate(d):
-            d['asset']['channels']=2
-            d['asset']['channel_layout']='stereo-lr'
+            _mutate_remainder_shape_together(d,'channels',2)
+            _mutate_remainder_shape_together(d,'channel_layout','stereo-lr')
         bundle=self.mutated_bundle(mutate)
         with self.assertRaisesRegex(ComponentError,'channels mismatch'):
             _clone(self.analysis,bundle)
@@ -154,7 +158,7 @@ class ComponentIdentityBindingTests(unittest.TestCase):
 
     def test_concrete_source_mismatch_rejected_before_any_output_allocation(self):
         data=self.analysis.bundle.to_dict()
-        data['asset']['frame_count']=1_000_000_000
+        _mutate_remainder_shape_together(data,'frame_count',1_000_000_000)
         forged=Contract(data)
         with mock.patch('zaaggenz_components.reconstruct.np.zeros',
                         side_effect=AssertionError('allocation happened')) as zeros:
