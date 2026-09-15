@@ -7,6 +7,7 @@ on:
       - 'tests/dsp/**'
       - 'docs/dsp/**'
       - '.github/workflows/zg016-dsp.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:

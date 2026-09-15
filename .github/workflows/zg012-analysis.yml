@@ -6,6 +6,7 @@ on:
       - 'tests/analysis/**'
       - 'docs/analysis/**'
       - '.github/workflows/zg012-analysis.yml'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:

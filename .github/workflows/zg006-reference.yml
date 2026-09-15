@@ -9,6 +9,7 @@ on:
       - 'docs/references/**'
       - '.github/workflows/zg006-reference.yml'
       - '.gitignore'
+  workflow_dispatch:
 permissions:
   contents: read
 jobs:
