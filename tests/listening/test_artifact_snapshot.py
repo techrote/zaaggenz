@@ -18,7 +18,7 @@ class ListeningArtifactSnapshotTests(unittest.TestCase):
                    identity_domain='pcm-f32le-interleaved-v1',sample_rate_hz=48000,channels=1,
                    channel_layout='mono',frame_count=2,level_domain='source',sample_policy='unclamped_float')
         scopes={'region':{'start_frame':0,'end_frame':2},'offset_sample':7,'nested':{'points':[1,2]}}
-        artifact=RenderArtifact(R,Q,'preview',K,payload,asset,scopes)
+        artifact=RenderArtifact(R,Q,'synth',K,payload,asset,scopes)
 
         leaked_asset=artifact.asset;leaked_asset['content_sha256']='0'*64;leaked_asset['frame_count']=999
         leaked_scopes=artifact.scopes;leaked_scopes['region']['end_frame']=999;leaked_scopes['offset_sample']=999
