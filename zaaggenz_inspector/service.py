@@ -163,7 +163,7 @@ class InspectorService:
         def execute(ctx):
             ctx.check_cancelled();return build_analysis(source,sample_rate,controls,before_identity=expected,source_binding=binding,checkpoint=ctx.check_cancelled,progress=ctx.progress)
         jid=self.scheduler.submit(JobClass.ANALYSIS,expected.revision_id,execute,estimated_memory_bytes=max(8*1024*1024,int(source.nbytes*48)))
-        with self._lock:self._jobs[jid]={'expected_revision_id':expected.revision_id,'controls':deepcopy(controls)}
+        with self._lock:self._jobs[jid]={'expected_revision_id':expected.revision_id,'expected_source_binding':deepcopy(binding),'controls':deepcopy(controls)}
         return {'job_id':jid,'expected_revision_id':expected.revision_id,'controls':controls}
     def status(self,job_id):
         snapshot=self.scheduler.snapshot(job_id);response=asdict(snapshot)
@@ -171,10 +171,12 @@ class InspectorService:
         with self._lock:
             meta=self._jobs.get(job_id)
             if meta is None:raise JobError('unknown inspector job')
+            current_revision=self.source_identity.revision_id;current_binding=deepcopy(self._source_binding)
+            if current_revision!=meta['expected_revision_id'] or current_binding!=meta['expected_source_binding']:
+                return {**response,'published':False,'stale':True,'expected_revision_id':meta['expected_revision_id'],'current_revision_id':current_revision,
+                        'expected_source_binding':deepcopy(meta['expected_source_binding']),'current_source_binding':current_binding}
             if job_id in self._published:return {**response,'published':True,'stale':False,'state_payload':self.state()}
-            result=self.scheduler.result(job_id);current=self.source_identity.revision_id
-            if current!=meta['expected_revision_id']:
-                return {**response,'published':False,'stale':True,'expected_revision_id':meta['expected_revision_id'],'current_revision_id':current}
+            result=self.scheduler.result(job_id)
             self._after=np.asarray(result['after'],dtype=np.float32);self._snapshot=result['snapshot'];self._published.add(job_id)
             return {**response,'published':True,'stale':False,'state_payload':self.state()}
     def freeze(self,snapshot_id):
@@ -195,4 +197,5 @@ class InspectorService:
             self._working=self._history.pop();return {'working':self._working.to_dict(),'undo_depth':len(self._history)}
     def replace_source_for_test(self,variant=1):
         """Test-only explicit fixture rebinding hook; production uses bind_artifact()."""
-        return self.bind_demo_fixture(int(variant),analyse=False)['slots']['A']
+        self.bind_demo_fixture(int(variant),analyse=False)
+        return self.source_identity
