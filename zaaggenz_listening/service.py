@@ -67,6 +67,6 @@ class ListeningService:
         if {s.to_dict()['id'] for s in stimuli}!={r['stimulus_id'] for r in trial.to_dict()['matched_stimuli']}:raise ListeningError('bundle stimulus provenance does not match trial')
         for row in trial.to_dict()['matched_stimuli']:
             if not self.audio.has_playback(row['playback_sha256']):raise ListeningError('bundle playback bytes are missing; silent regeneration is forbidden')
-        results=[TrialResult(r,trial) for r in bundle['results']];tid=trial.to_dict()['id'];public=self._register_trial(trial);self.results[tid]=results;return {'trial':public,'results':[public_result(r,public['id']) for r in results]}
+        results=[TrialResult(r,trial) for r in bundle['results']];tid=trial.to_dict()['id'];public=self._register_trial(trial);self.results[tid]=results;return {'trial':public,'results':[r.to_dict() for r in results]}
     @property
     def templates(self):return deepcopy(INSTRUCTIONS)
