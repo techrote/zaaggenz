@@ -1,7 +1,7 @@
 # zaaggenz — master programme overview and task atlas
 
 **Repository:** `techrote/zaaggenz` · **Deployment:** ZG-000 plus ZG-001…ZG-045 published as GitHub issues.  
-**Implementation status:** planned/audited programme; production baseline recovery remains gated by ZG-001.
+**Live implementation/readiness status:** [`programme/task_state.json`](../../programme/task_state.json). Narrative status reconciliation is tracked separately in #88.
 
 ## Mission
 
@@ -45,6 +45,8 @@ Milestones are reporting groups, **not global serial barriers**. Readiness is de
 ## Authoritative task atlas
 
 Stable IDs are authoritative; actual issue numbers are in [`programme/issue_map.json`](../../programme/issue_map.json). Machine-readable dependencies/locks are in [`programme/tasks.json`](../../programme/tasks.json) and [`programme/dependency_graph.json`](../../programme/dependency_graph.json).
+
+The planned DAG and the current state are deliberately separate. [`programme/task_state.json`](../../programme/task_state.json) records orthogonal implementation, evidence, research, owner-gate and blocker state plus the explicit `dependency_satisfied` decision for each stable task. GitHub issue open/closed is mirrored there for navigation only; it is not used to compute readiness. Validate and derive readiness with `python tools/validate_programme_state.py --validate` / `--report`. Accepted corrective debt does not automatically revoke prerequisite evidence; a task is withheld only when the state record explicitly says its acceptance/gate is not dependency-satisfying.
 
 | ID | Task | Milestone | Hard prerequisites |
 |---|---|---|---|
@@ -118,7 +120,7 @@ These levels ignore write conflicts. `render-integration`, `frontend-integration
 ## Orchestrator rules
 
 1. Stable `ZG-*` IDs are authoritative. Do not encode dependencies by issue number.
-2. A parent is satisfied only when its required artefact/evidence is accepted or an explicit equivalent is approved. Closing/abandoning an issue is not enough.
+2. A parent is satisfied only when `programme/task_state.json` records `dependency_satisfied: true` from accepted evidence/gates or an explicit approved equivalent is recorded through review. Closing/abandoning an issue is not enough.
 3. One branch/worktree per stable ID. Acquire declared shared locks before touching common entrypoints/contracts.
 4. Preserve bypass/identity paths and add positive, negative, boundary and adversarial fixtures.
 5. Audible default changes require reproducible level-matched comparison and explicit owner approval.
@@ -128,7 +130,7 @@ These levels ignore write conflicts. `render-integration`, `frontend-integration
 
 ## Important blockers and non-blockers
 
-**Immediate blocker:** ZG-001 must recover and provenance-check the actual v1.2.1 source before feature tasks assume production paths or golden hashes.
+**Historical bootstrap gate:** ZG-001 originally gated all production-path assumptions on recovery/provenance of the v1.2.1 source. That evidence is now accepted; live blockers and gates are represented in `programme/task_state.json`. The separate #88 reconciliation pass will remove remaining stale bootstrap-era prose throughout the programme documentation.
 
 **Spectral bottleneck:** trusted component/remainder reconstruction precedes retuning; calibrated descriptors precede Chordness; validated graph insertion precedes band-local hybrid presets.
 
@@ -147,6 +149,7 @@ These levels ignore write conflicts. `render-integration`, `frontend-integration
 - [`briefs/EXPERIMENTS.md`](briefs/EXPERIMENTS.md) — bounded empirical programme.
 - [`briefs/VALIDATION_GATES.md`](briefs/VALIDATION_GATES.md) — G0–G6 evidence gates.
 - [`RAG_INDEX.md`](RAG_INDEX.md) — section/read-set navigation.
-- [`programme/tasks.json`](../../programme/tasks.json), [`dependency_graph.json`](../../programme/dependency_graph.json), [`issue_map.json`](../../programme/issue_map.json) — machine-readable orchestration.
+- [`programme/tasks.json`](../../programme/tasks.json), [`dependency_graph.json`](../../programme/dependency_graph.json), [`issue_map.json`](../../programme/issue_map.json) — planned machine-readable orchestration.
+- [`programme/task_state.json`](../../programme/task_state.json) — live evidence-aware task/readiness state.
 
-The repository destination is resolved. The source-baseline gate is not.
+The repository destination and source-baseline gate are resolved. Current readiness is the validated state record, not GitHub issue closure.
