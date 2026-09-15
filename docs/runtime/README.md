@@ -36,7 +36,7 @@ Listening stimuli/trials remain immutable derived research records and retain th
 
 The public session token is shared by Compose, Inspector, Vocal and **participant** Listening mutations because they belong to the same local session. ABX trusted authority is intentionally **not** unified with that capability. The `X-Zaaggenz-Trusted-Token` remains a separate server-held capability for trusted archive/reopen routes; it is never returned by `/api/runtime/bootstrap` or participant bootstrap. Participant trial IDs, server-held ABX truth, participant-safe exports/receipts and one-shot participant submission retain the #93 contract.
 
-All composed handlers retain the existing loopback Host/Origin checks, bounded request bodies and workspace CSP. The runtime root also sends a restrictive same-origin CSP. Sharing an origin does not broaden trusted Listening authority.
+All composed handlers retain the existing loopback Host/Origin checks, bounded request bodies and the restrictive CSP already attached to the accepted workspace pages. The recovered root keeps its existing response policy rather than imposing a new CSP that could disable mature inline UI. Sharing an origin does not broaden trusted Listening authority.
 
 ## Shutdown and failure semantics
 
@@ -46,6 +46,6 @@ A job ID is not an ambient capability. Timeline and Inspector verify service-loc
 
 ## Verification
 
-`tests/runtime/test_runtime.py` covers one-origin route availability, shared-resource identity, exact Compose artifact handoff to Listening and Inspector, Compose-edit stale rejection, job-ownership isolation, preserved blind participant/trusted separation, Vocal proposal provenance, session serialization identity and exactly-once scheduler shutdown.
+`tests/runtime/test_runtime.py` covers one-origin route availability, shared-resource identity, exact Compose artifact handoff to Listening and Inspector, Compose-edit stale rejection, job-ownership isolation, preserved blind participant/trusted separation, Vocal proposal capture/compile provenance, session serialization identity and exactly-once scheduler shutdown.
 
 `tests/runtime/browser.py` performs a real Chromium traversal of the recovered root plus all four workspaces, renders one Compose artifact, freezes/binds that exact artifact across Research surfaces, verifies participant capability remains non-trusted, verifies Vocal proposal provenance, advances Compose, and observes Inspector source staleness and current timeline bootstrap on the same origin.
