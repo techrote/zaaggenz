@@ -1,8 +1,10 @@
 """Bounded offline renders; immutable full-phrase state precedes region extraction."""
 from __future__ import annotations
+from collections import OrderedDict
 from dataclasses import asdict
 import hashlib
 import io
+import threading
 import numpy as np
 from scipy.io import wavfile
 from zaaggenz_contracts import digest
@@ -10,6 +12,13 @@ from zaaggenz_contracts.music import beat_to_sample
 from zaaggenz_jobs import JobScheduler, SchedulerLimits, JobClass, RenderArtifact, JobError
 from zaaggenz_melody import MelodicRenderSpec, make_render_executor
 from .model import TimelineDocument, compile_recipe, render_region, memory_estimate, text, describe
+
+
+def scheduler_limits():
+    """Authoritative local interactive/background scheduler envelope for timeline consumers."""
+    return SchedulerLimits(interactive_workers=1, background_workers=1,
+                           max_queued_jobs=8, max_background_queued_jobs=4,
+                           max_history_jobs=16)
 
 
 def region_executor(recipe, revision, region):
@@ -45,10 +54,51 @@ def region_executor(recipe, revision, region):
 
 
 class TimelineService:
-    def __init__(self):
-        self.scheduler = JobScheduler(SchedulerLimits(interactive_workers=1, background_workers=1,
-                                                      max_queued_jobs=8, max_background_queued_jobs=4,
-                                                      max_history_jobs=16))
+    """Timeline job owner.
+
+    A standalone service owns its scheduler.  A composed runtime may inject one
+    shared scheduler; in that case this service never shuts the scheduler down.
+    Job ownership remains service-local so one workspace cannot cancel or read
+    another workspace's jobs merely because they share the scheduler.
+    """
+    _MAX_OWNED_JOB_IDS = 64
+
+    def __init__(self, scheduler=None):
+        if scheduler is not None and not isinstance(scheduler, JobScheduler):
+            raise TypeError('scheduler must be a JobScheduler')
+        self._owns_scheduler = scheduler is None
+        self.scheduler = JobScheduler(scheduler_limits()) if scheduler is None else scheduler
+        self._jobs = OrderedDict()
+        self._jobs_lock = threading.RLock()
+        self._closed = False
+
+    @property
+    def owns_scheduler(self):
+        return self._owns_scheduler
+
+    def _remember_job(self, job_id):
+        with self._jobs_lock:
+            self._jobs[job_id] = None
+            self._jobs.move_to_end(job_id)
+            if len(self._jobs) <= self._MAX_OWNED_JOB_IDS:
+                return
+            # The scheduler itself retains only bounded history.  Drop only
+            # terminal/evicted ownership records; active records are never lost.
+            for candidate in list(self._jobs):
+                if len(self._jobs) <= self._MAX_OWNED_JOB_IDS:
+                    break
+                try:
+                    state = self.scheduler.snapshot(candidate).state
+                except JobError:
+                    self._jobs.pop(candidate, None)
+                    continue
+                if state in ('completed', 'failed', 'cancelled'):
+                    self._jobs.pop(candidate, None)
+
+    def _require_job(self, job_id):
+        with self._jobs_lock:
+            if job_id not in self._jobs:
+                raise JobError('job is not owned by timeline service')
 
     def validate(self, data):
         document = TimelineDocument(data)
@@ -65,23 +115,39 @@ class TimelineService:
         job_id = self.scheduler.submit(JobClass.RENDER, document.revision_id,
                                         region_executor(recipe, document.revision_id, region),
                                         estimated_memory_bytes=estimate)
+        self._remember_job(job_id)
         return {'job_id': job_id, 'revision_id': document.revision_id, 'recipe_sha256': recipe.sha256,
                 'region': region, 'name': name}
 
     def status(self, job_id):
+        self._require_job(job_id)
         snapshot = self.scheduler.snapshot(job_id)
         response = asdict(snapshot)
         if snapshot.state == 'completed':
-            response['artifact'] = self.scheduler.result(job_id).metadata()
+            response['artifact'] = self.artifact(job_id).metadata()
         return response
 
-    def wave(self, job_id):
+    def artifact(self, job_id):
+        """Return an exact completed RenderArtifact owned by this timeline."""
+        self._require_job(job_id)
         result = self.scheduler.result(job_id)
         if not isinstance(result, RenderArtifact):
-            raise JobError('audio is not available')
+            raise JobError('timeline job did not produce a RenderArtifact')
+        return result
+
+    def wave(self, job_id):
+        result = self.artifact(job_id)
         buffer = io.BytesIO()
         wavfile.write(buffer, result.asset['sample_rate_hz'], np.frombuffer(result.audio_bytes, dtype='<f4'))
         return buffer.getvalue(), result.revision_id
 
+    def cancel(self, job_id):
+        self._require_job(job_id)
+        return self.scheduler.cancel(job_id)
+
     def close(self):
-        self.scheduler.shutdown(cancel=True, timeout=5)
+        if self._closed:
+            return
+        self._closed = True
+        if self._owns_scheduler:
+            self.scheduler.shutdown(cancel=True, timeout=5)
