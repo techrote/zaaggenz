@@ -2,7 +2,7 @@ from __future__ import annotations
 import unittest
 import numpy as np
 from zaaggenz_components.model import ComponentTrackerSpec
-from zaaggenz_components.tracker import _track_bundle
+from zaaggenz_components.tracker import _track_bundle,_transient_provenance
 
 class ReanchoredContractTests(unittest.TestCase):
     def test_reanchored_history_is_preserve_only_under_frozen_partial_contract(self):
@@ -13,7 +13,8 @@ class ReanchoredContractTests(unittest.TestCase):
         tracks=[dict(serial=1,rows=rows,missed=0,ambiguous=False,had_gap=True,last_frame=2)]
         stft_spec=type('S',(),{'window_samples':512,'hop_samples':128,'fft_samples':2048})()
         result=type('R',(),{'spec':stft_spec})()
-        bundle,transform_frames,ambiguous_tracks=_track_bundle(source,12000,tracks,spec,result,mask,zero,zero)
+        transient_provenance=_transient_provenance('short-flux-plus-derivative','ok')
+        bundle,transform_frames,ambiguous_tracks=_track_bundle(source,12000,tracks,spec,result,mask,zero,zero,transient_provenance)
         d=bundle.to_dict();self.assertEqual(d['tracks'][0]['continuity'],'reanchored');self.assertEqual(transform_frames,0);self.assertEqual(ambiguous_tracks,0)
         self.assertTrue(all(frame['action']=='preserve' for frame in d['tracks'][0]['frames']))
 
