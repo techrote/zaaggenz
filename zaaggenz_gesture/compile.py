@@ -7,7 +7,7 @@ from zaaggenz_contracts.model import fraction
 from zaaggenz_melody import note_event,make_phrase_plan,transform_melodic_recipe
 from zaaggenz_project import Project
 from zaaggenz_timeline import TimelineDocument,default_document
-from .model import DirectionalGesture,GestureError
+from .model import DirectionalGesture,GestureError,trajectory_value,effective_event_gains
 
 DEFERRED_AXES={'brightness_hz':('post-shaper','synthline'),
                'roughness_fraction':('post-shaper','synthline'),
@@ -17,21 +17,6 @@ DEFERRED_AXES={'brightness_hz':('post-shaper','synthline'),
 def _rat(q): return f'{q.numerator}/{q.denominator}'
 def _trajectory(data,axis): return next(t for t in data['trajectories'] if t['axis']==axis)
 def _beat_value(v): return Fraction(str(float(v))).limit_denominator(960)
-
-def trajectory_value(trajectory,beat):
-    """Evaluate authored control points; step values change at the point itself."""
-    beat=fraction(beat) if isinstance(beat,str) else beat
-    points=[(fraction(p['beat']),float(p['value'])) for p in trajectory['points']]
-    if beat<=points[0][0]: return points[0][1]
-    if beat>=points[-1][0]: return points[-1][1]
-    left=points[0]
-    for right in points[1:]:
-        if beat==right[0]: return right[1]
-        if beat<right[0]:
-            if trajectory['interpolation']=='step': return left[1]
-            alpha=float((beat-left[0])/(right[0]-left[0])); return left[1]+alpha*(right[1]-left[1])
-        left=right
-    return points[-1][1]
 
 @dataclass(frozen=True)
 class GestureCompilation:
@@ -52,14 +37,15 @@ def compile_gesture(plan,tuning_id,*,source_id='source'):
     if not isinstance(plan,DirectionalGesture): raise GestureError('DirectionalGesture required')
     if type(tuning_id)is not str or not tuning_id: raise GestureError('active tuning id required')
     data=plan.to_dict(); landing=data['landing']; landing_at=fraction(landing['beat'])
-    density=_trajectory(data,'onset_density'); accent=_trajectory(data,'accent_db'); durations=_trajectory(data,'duration_beats'); pitch=_trajectory(data,'pitch_cents')
+    density=_trajectory(data,'onset_density'); durations=_trajectory(data,'duration_beats'); pitch=_trajectory(data,'pitch_cents')
+    gain_rows=dict(effective_event_gains(data,landing_at))
     events=[]; trace=[]; at=Fraction(0); index=0
     while at<landing_at:
         density_value=trajectory_value(density,at); density_int=int(round(density_value))
         if density_int<1 or abs(density_value-density_int)>1e-9: raise GestureError('compiled onset density must be an integer')
         event_duration=_beat_value(trajectory_value(durations,at)); event_duration=min(event_duration,landing_at-at)
         if event_duration<=0: raise GestureError('compiled event duration collapsed')
-        cents=trajectory_value(pitch,at); gain=float(data['base_gain_db'])+trajectory_value(accent,at)
+        cents=trajectory_value(pitch,at); gain=gain_rows[at]
         event_id=f'gesture-{index:04d}'
         events.append(note_event(event_id,_rat(at),_rat(event_duration),tuning_id,data['base_degree'],detune_cents=cents,gain_db=gain,source_id=source_id))
         trace.append({'event_id':event_id,'beat':_rat(at),'duration_beats':_rat(event_duration),'pitch_cents':cents,'gain_db':gain,
