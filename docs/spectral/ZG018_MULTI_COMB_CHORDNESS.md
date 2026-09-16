@@ -21,6 +21,22 @@ Candidate templates are carried in `ChordnessRequest` and therefore remain visib
 
 ZG-014 pairwise roughness is retained as a separate before/after descriptor. It is not folded into a hidden chord-quality label.
 
+## Executable selected-target budget
+
+The executable target lattice is bounded by the **combined unique usable teeth**, not only by the size of each `CombTemplate`. After applying the asset/sample-rate Nyquist rule (`tooth_hz < sample_rate_hz / 2`), an active selection may contain at most **128 unique target teeth** across all selected templates.
+
+The same rule now owns manual selection, descriptor selection and union evaluation:
+
+- manual active selections are rejected before candidate-descriptor or transform work when their combined usable union contains more than 128 teeth;
+- descriptor selection considers candidates in the existing deterministic score order and selects a whole template only when adding all of its usable teeth keeps the union within 128; an over-budget template is skipped as a whole and its teeth are never silently truncated;
+- overlapping teeth are deduplicated exactly as union evaluation already did;
+- teeth at or above Nyquist do not contribute to the union budget, while every selected template must still contain at least one usable tooth below Nyquist;
+- exactly 128 unique usable teeth is valid; 129 is not.
+
+Descriptor candidate evidence remains visible when a candidate is not selected because of the union budget. `selection_budget` records whether a candidate was selected and, for an over-budget candidate, the union cardinality that would have resulted. Active transform diagnostics expose `selected_union_size` and the fixed `selected_union_limit=128`; off mode reports size zero. This is an executable-resource/contract consistency bound only. It does not change a comb's musical score, truncate authored target teeth, or reinterpret Chordness as a preference metric.
+
+`ChordnessRequest` remains version `1.0.0`: this is a fail-closed correction of a pre-existing executor invariant. Requests whose selected target exceeded 128 usable teeth were already non-executable because `evaluate_union()` rejected them later. The repair moves that invariant to authoritative selection and makes descriptor construction respect it; valid in-bound requests retain their previous target ordering and DSP semantics.
+
 ## Capacity-aware assignment
 
 At each component-analysis anchor, transform-eligible rows compete for target teeth from the selected combs. Each tooth exposes a finite capacity. Rows are considered deterministically by amplitude × confidence and are assigned to the nearest target slot still below capacity and inside `max_assignment_cents`.
@@ -51,7 +67,7 @@ The result also exposes candidate descriptor inputs, selected templates, every f
 
 `submit_chordness_job()` runs the transform as a normal bounded `JobClass.RENDER` job with cooperative cancellation/progress and a conservative memory estimate.
 
-`tests/spectral/test_chordness_model.py` and `tests/spectral/test_chordness_engine.py` cover:
+`tests/spectral/test_chordness_model.py`, `tests/spectral/test_chordness_engine.py` and `tests/spectral/test_chordness_union_bounds.py` cover:
 
 - explicit inharmonic/local combs and sonority adapters;
 - exact off-state identity;
@@ -59,8 +75,10 @@ The result also exposes candidate descriptor inputs, selected templates, every f
 - simultaneous capacity-bounded comb assignment;
 - retune/hybrid movement toward declared targets;
 - descriptor-selected visible candidates;
+- exact 128/129 combined-target boundaries, overlap deduplication and Nyquist filtering;
+- deterministic descriptor selection under the combined-target budget without tooth truncation;
 - unchanged transient/residual ownership;
-- inspection/objective transparency;
+- inspection/objective transparency including selected-union cardinality;
 - bounded scheduler execution.
 
 `tools/chordness_report.py` emits deterministic 48 kHz synthetic engineering evidence on Windows and Ubuntu. The report is not listening evidence and makes no musical-preference claim.
