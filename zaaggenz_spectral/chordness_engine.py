@@ -1,7 +1,7 @@
 from __future__ import annotations
 import numpy as np
 from zaaggenz_components import ComponentAnalysis,exact_bypass,reconstruct_components
-from .chordness_descriptors import evaluate_union,objective_terms,select_templates
+from .chordness_descriptors import MAX_SELECTED_UNION_TEETH,evaluate_union,objective_terms,select_templates
 from .chordness_model import ChordnessError
 from .chordness_request import ChordnessRequest
 from .chordness_result import ChordnessResult
@@ -20,7 +20,8 @@ def apply_chordness(analysis,request,*,checkpoint=None,progress=None):
     if request.mode=='off':
         source=np.asarray(analysis.source,dtype=np.float32).copy();audio=exact_bypass(source)
         diagnostics={'method':'zg.multi_comb_chordness.v1','version':'1.0.0','mode':'off','identity_path':True,
-                     'selected_templates':0,'frames':sum(len(t['frames']) for t in analysis.bundle.to_dict()['tracks']),
+                     'selected_templates':0,'selected_union_size':0,'selected_union_limit':MAX_SELECTED_UNION_TEETH,
+                     'frames':sum(len(t['frames']) for t in analysis.bundle.to_dict()['tracks']),
                      'changed_frames':0,'retuned_frames':0,'reweighted_frames':0,'preserved_frames':sum(len(t['frames']) for t in analysis.bundle.to_dict()['tracks']),
                      'transient_unchanged':True,'residual_unchanged':True,
                      'interpretation':'configured engineering transform; no preference or pleasure claim'}
@@ -46,8 +47,9 @@ def apply_chordness(analysis,request,*,checkpoint=None,progress=None):
     retuned=sum(abs(x.correction_cents)>1e-12 for x in decisions);reweighted=sum(abs(x.gain_db)>1e-12 for x in decisions)
     assigned=sum(x.template_id is not None for x in decisions);preserved=sum(x.decision=='preserve' for x in decisions)
     diagnostics={'method':'zg.multi_comb_chordness.v1','version':'1.0.0','mode':request.mode,'identity_path':changed==0,
-                 'selected_templates':len(selected),'selected_template_ids':[x.id for x in selected],'frames':len(decisions),
-                 'assigned_frames':assigned,'changed_frames':changed,'retuned_frames':retuned,'reweighted_frames':reweighted,
+                 'selected_templates':len(selected),'selected_template_ids':[x.id for x in selected],
+                 'selected_union_size':len(before['target_teeth_hz']),'selected_union_limit':MAX_SELECTED_UNION_TEETH,
+                 'frames':len(decisions),'assigned_frames':assigned,'changed_frames':changed,'retuned_frames':retuned,'reweighted_frames':reweighted,
                  'preserved_frames':preserved,'target_comb_fit_before':_metric(before,'target_comb_fit'),
                  'target_comb_fit_after':_metric(after,'target_comb_fit'),'roughness_before':_metric(before,'roughness_pairwise'),
                  'roughness_after':_metric(after,'roughness_pairwise'),'transient_unchanged':True,'residual_unchanged':True,
