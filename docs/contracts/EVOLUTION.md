@@ -15,6 +15,12 @@ DSP nodes, analysis methods, tuning loaders and grammar/source families use revi
 
 The initial DSP node registry is intentionally tiny and contract-only. ZG-016 owns executable graph semantics and must preserve ZG-002 identities or explicitly migrate them.
 
+### ZG-016 automation-capability correction
+
+The ZG-016 automation validation repair is classified **patch-compatible** under contract `1.0.0`. Registry entries already declared `x-automatable`, the ZG-016 documentation already limited v1 automation to gain/tanh/hard-clip parameters, and the executable graph already rejected unsupported automation. A serialized `DSPNodeSpec` carrying automation for a parameter whose registry capability is not exactly `x-automatable: true` was therefore never an executable v1 state; accepting it in shared semantic validation was a validator defect rather than a supported contract meaning.
+
+Corrected v1 semantic validation rejects those documents at admission. Existing valid serialized nodes and their identities are unchanged. No migration or silent lane removal is performed: a formerly shape-valid but non-executable node receives an explicit `… is not automatable` error and must be corrected by its author.
+
 ## Legacy v1.2.1
 
 The legacy adapter is a compatibility bridge, not the new musical renderer. It must round-trip every recovered preset/default without changing audio. It rejects recipes containing new musical or DSP intent rather than dropping that intent when calling the old engine.
