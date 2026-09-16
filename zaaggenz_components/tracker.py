@@ -10,6 +10,15 @@ from .model import ComponentTrackerSpec,ComponentAnalysis,ComponentError,exact_b
 from .reconstruct import reconstruct_components
 
 METHOD='zg-component-tracker-v1'
+TRANSIENT_POLICY='zg013-transient-detector-fail-closed-v1'
+TRANSIENT_PRIMARY='multiresolution-short-flux-v1'
+TRANSIENT_SENTINEL='sample-derivative-v1'
+
+
+def _detector_status(mode,transform_eligible,reason='none',failure_class='none'):
+    return dict(policy=TRANSIENT_POLICY,primary=TRANSIENT_PRIMARY,sentinel=TRANSIENT_SENTINEL,
+                mode=mode,failure_class=failure_class,reason=reason,
+                transform_eligibility='normal' if transform_eligible else 'preserve-all')
 
 def _audio(x):
     a=np.asarray(x)
@@ -119,11 +128,16 @@ def _track(frame_rows,spec):
 
 def _transient_mask(a,sr,spec):
     n=len(a);mask=np.zeros(n,dtype=np.float32)
-    if n==0:return mask,0
+    if n==0:return mask,0,_detector_status('empty-source-v1',False,'empty-source','data-level-abstention')
     mono=np.mean(a,axis=1)
     try:
-        timeline=analyse_multiresolution(a,sr)['short'];eligible=[f for f in timeline.frames if f.spectral_flux is not None and f.support_fraction>=.999];vals=np.array([f.spectral_flux for f in eligible],dtype=float)
-    except Exception:eligible=[];vals=np.empty(0)
+        timeline=analyse_multiresolution(a,sr)['short']
+    except Exception as exc:
+        exc.add_note('ZG-013 transient detector failed before a valid short-resolution timeline was produced; no derivative-only fallback was used')
+        raise
+    eligible=[f for f in timeline.frames if f.spectral_flux is not None and f.support_fraction>=.999];vals=np.array([f.spectral_flux for f in eligible],dtype=float)
+    if len(vals):status=_detector_status('multiresolution-flux-plus-derivative-v1',True)
+    else:status=_detector_status('derivative-only-degraded-v1',False,'no-full-support-short-flux','data-level-abstention')
     anchors=[]
     if len(vals):
         med=float(np.median(vals));mad=float(np.median(np.abs(vals-med)));thr=max(1e-6,med+spec.transient_sigma*(1.4826*mad+1e-12));anchors.extend(f.anchor_sample for f in eligible if f.spectral_flux>thr)
@@ -131,21 +145,24 @@ def _transient_mask(a,sr,spec):
         d=np.abs(np.diff(mono,prepend=mono[0]));med=float(np.median(d));mad=float(np.median(np.abs(d-med)));peak=max(float(np.max(np.abs(mono))),1e-12);idx=np.flatnonzero((d>med+20*(1.4826*mad+1e-12))&(d>.15*peak));anchors.extend(int(x) for x in idx)
     guard=max(1,round(spec.transient_guard_ms*sr/1000))
     for x in anchors:mask[max(0,x-guard):min(n,x+guard+1)]=1
-    return mask,len(set(anchors))
+    return mask,len(set(anchors)),status
 
-def _track_bundle(source,sr,tracks,spec,r,transient_mask,residual,transient):
+def _track_bundle(source,sr,tracks,spec,r,transient_mask,residual,transient,detector):
     source1=source[:,0] if source.shape[1]==1 else source;residual1=residual[:,0] if residual.shape[1]==1 else residual;transient1=transient[:,0] if transient.shape[1]==1 else transient
-    asset=pcm_asset_ref(source1,sr);resasset=pcm_asset_ref(residual1,sr);transasset=pcm_asset_ref(transient1,sr);exported=[];transform_frames=0;ambiguous_tracks=0
+    asset=pcm_asset_ref(source1,sr);resasset=pcm_asset_ref(residual1,sr);transasset=pcm_asset_ref(transient1,sr);exported=[];transform_frames=0;ambiguous_tracks=0;allow_transform=detector['transform_eligibility']=='normal'
     for idx,t in enumerate(tracks,1):
         continuity='unknown' if t['ambiguous'] else ('reanchored' if t['had_gap'] else 'continuous')
         if continuity=='unknown':ambiguous_tracks+=1
         frames=[]
         for row in t['rows']:
-            action='transform' if continuity=='continuous' and row['confidence']>=spec.transform_confidence and transient_mask[row['anchor']]<.5 else 'preserve'
+            action='transform' if allow_transform and continuity=='continuous' and row['confidence']>=spec.transform_confidence and transient_mask[row['anchor']]<.5 else 'preserve'
             if action=='transform':transform_frames+=1
             frames.append(dict(support=dict(start_sample=row['start'],end_sample=row['end'],anchor_sample=row['anchor'],padding='zero'),frequency_hz=row['frequency_hz'],amplitudes=list(row['amplitudes']),phases_radians=list(row['phases']),confidence=row['confidence'],action=action))
         exported.append(dict(id=f'p{idx:04d}',segment_id=f's{idx:04d}',continuity=continuity,frames=frames))
-    conf=dict(spec.metadata());conf.update(window_samples=r.spec.window_samples,hop_samples=r.spec.hop_samples,fft_samples=r.spec.fft_samples)
+    conf=dict(spec.metadata());conf.update(window_samples=r.spec.window_samples,hop_samples=r.spec.hop_samples,fft_samples=r.spec.fft_samples,
+            transient_detector_policy=detector['policy'],transient_detector_primary=detector['primary'],transient_detector_sentinel=detector['sentinel'],
+            transient_detector_mode=detector['mode'],transient_detector_failure_class=detector['failure_class'],transient_detector_reason=detector['reason'],
+            transient_transform_eligibility=detector['transform_eligibility'])
     return Contract(dict(kind='PartialTrackBundle',version='1.0.0',asset=asset,method=dict(id=METHOD,version='1.0.0',configuration=conf),phase_convention='cosine-at-anchor-radians-v1',channel_policy='shared-frequency-independent-channel-coefficients',data_origin='estimated',tracks=exported,residual_asset=resasset,transient_asset=transasset,remainder_policy='additive-owned-remainders-v1')),transform_frames,ambiguous_tracks
 
 def analyse_components(x,sample_rate_hz,spec=ComponentTrackerSpec()):
@@ -153,11 +170,11 @@ def analyse_components(x,sample_rate_hz,spec=ComponentTrackerSpec()):
     if type(sample_rate_hz)is not int or not 8000<=sample_rate_hz<=192000:raise ComponentError('sample rate out of range')
     a,mono=_audio(x);source32=np.asarray(a,dtype=np.float32);n=len(a)
     if n==0:
-        dummy=type('R',(),{'spec':type('S',(),{'window_samples':_pow2(sample_rate_hz*spec.window_seconds),'hop_samples':1,'fft_samples':_pow2(sample_rate_hz*spec.window_seconds)*spec.fft_factor})()})();z=np.zeros_like(source32);mask=np.zeros(0,dtype=np.float32);bundle,_,_=_track_bundle(source32,sample_rate_hz,[],spec,dummy,mask,z,z);src=source32[:,0] if mono else source32
-        return ComponentAnalysis(bundle,src,src.copy(),src.copy(),src.copy(),mask,dict(method=METHOD,tracks=0,tracked_frames=0,transform_frames=0,abstained_frames=0,ambiguous_tracks=0,transient_fraction=0.,reconstruction_rms_error=0.),sample_rate_hz)
-    r,frames,abstained=_candidate_frames(a,sample_rate_hz,spec);tracks=_track(frames,spec);mask,onsets=_transient_mask(a,sample_rate_hz,spec);zero=np.zeros_like(source32);temp,_,_=_track_bundle(source32,sample_rate_hz,tracks,spec,r,mask,zero,zero)
-    source_view=source32[:,0] if mono else source32;raw=reconstruct_components(temp,source=source_view,sample_rate_hz=sample_rate_hz);raw2=raw[:,None] if raw.ndim==1 else raw;sinusoidal=np.asarray(raw2*(1-mask[:,None]),dtype=np.float32);transient=np.asarray(source32*mask[:,None],dtype=np.float32);residual=np.asarray(source32-sinusoidal-transient,dtype=np.float32);bundle,transform_frames,ambiguous_tracks=_track_bundle(source32,sample_rate_hz,tracks,spec,r,mask,residual,transient)
+        detector=_detector_status('empty-source-v1',False,'empty-source','data-level-abstention');dummy=type('R',(),{'spec':type('S',(),{'window_samples':_pow2(sample_rate_hz*spec.window_seconds),'hop_samples':1,'fft_samples':_pow2(sample_rate_hz*spec.window_seconds)*spec.fft_factor})()})();z=np.zeros_like(source32);mask=np.zeros(0,dtype=np.float32);bundle,_,_=_track_bundle(source32,sample_rate_hz,[],spec,dummy,mask,z,z,detector);src=source32[:,0] if mono else source32
+        return ComponentAnalysis(bundle,src,src.copy(),src.copy(),src.copy(),mask,dict(method=METHOD,tracks=0,tracked_frames=0,transform_frames=0,abstained_frames=0,ambiguous_tracks=0,detected_transient_onsets=0,transient_fraction=0.,reconstruction_rms_error=0.,transient_detector=dict(detector)),sample_rate_hz)
+    r,frames,abstained=_candidate_frames(a,sample_rate_hz,spec);tracks=_track(frames,spec);mask,onsets,detector=_transient_mask(a,sample_rate_hz,spec);zero=np.zeros_like(source32);temp,_,_=_track_bundle(source32,sample_rate_hz,tracks,spec,r,mask,zero,zero,detector)
+    source_view=source32[:,0] if mono else source32;raw=reconstruct_components(temp,source=source_view,sample_rate_hz=sample_rate_hz);raw2=raw[:,None] if raw.ndim==1 else raw;sinusoidal=np.asarray(raw2*(1-mask[:,None]),dtype=np.float32);transient=np.asarray(source32*mask[:,None],dtype=np.float32);residual=np.asarray(source32-sinusoidal-transient,dtype=np.float32);bundle,transform_frames,ambiguous_tracks=_track_bundle(source32,sample_rate_hz,tracks,spec,r,mask,residual,transient,detector)
     reconstruction=np.asarray(sinusoidal,dtype=np.float64)+np.asarray(transient,dtype=np.float64)+np.asarray(residual,dtype=np.float64);err=float(np.sqrt(np.mean((reconstruction-np.asarray(source32,dtype=np.float64))**2))) if source32.size else 0.;tracked=sum(len(t['rows']) for t in tracks);source_rms=float(np.sqrt(np.mean(source32.astype(np.float64)**2))) if source32.size else 0.
-    diag=dict(method=METHOD,tracks=len(tracks),tracked_frames=tracked,transform_frames=transform_frames,abstained_frames=abstained,ambiguous_tracks=ambiguous_tracks,detected_transient_onsets=onsets,transient_fraction=float(np.mean(mask)) if n else 0.,source_rms=source_rms,sinusoidal_rms=float(np.sqrt(np.mean(sinusoidal.astype(np.float64)**2))) if sinusoidal.size else 0.,residual_rms=float(np.sqrt(np.mean(residual.astype(np.float64)**2))) if residual.size else 0.,reconstruction_rms_error=err,window_samples=r.spec.window_samples,hop_samples=r.spec.hop_samples,fft_samples=r.spec.fft_samples)
+    diag=dict(method=METHOD,tracks=len(tracks),tracked_frames=tracked,transform_frames=transform_frames,abstained_frames=abstained,ambiguous_tracks=ambiguous_tracks,detected_transient_onsets=onsets,transient_fraction=float(np.mean(mask)) if n else 0.,source_rms=source_rms,sinusoidal_rms=float(np.sqrt(np.mean(sinusoidal.astype(np.float64)**2))) if sinusoidal.size else 0.,residual_rms=float(np.sqrt(np.mean(residual.astype(np.float64)**2))) if residual.size else 0.,reconstruction_rms_error=err,window_samples=r.spec.window_samples,hop_samples=r.spec.hop_samples,fft_samples=r.spec.fft_samples,transient_detector=dict(detector))
     src=source32[:,0] if mono else source32;sin=sinusoidal[:,0] if mono else sinusoidal;tra=transient[:,0] if mono else transient;res=residual[:,0] if mono else residual
     return ComponentAnalysis(bundle,src,sin,tra,res,mask,diag,sample_rate_hz)
