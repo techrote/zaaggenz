@@ -90,8 +90,11 @@ class DescriptorBundle:
         n=self.asset['frame_count']
         for o in obs:
             s=o.support
+            if n==0:
+                if s['padding']=='none':raise DescriptorError('empty asset observations require explicit padding')
+                continue
+            if not 0<=s['anchor_sample']<n:raise DescriptorError('descriptor support anchor lies outside source asset')
             if s['padding']=='none' and not (0<=s['start_sample']<=s['anchor_sample']<s['end_sample']<=n):raise DescriptorError('unpadded descriptor support lies outside asset')
-            if n==0 and s['padding']=='none':raise DescriptorError('empty asset observations require explicit padding')
         object.__setattr__(self,'asset',deepcopy(self.asset));object.__setattr__(self,'observations',obs);object.__setattr__(self,'configuration',_details(self.configuration or {}))
     def to_dict(self):
         return dict(format='zaaggenz-descriptors',version='1.0.0',asset=deepcopy(self.asset),method=dict(id=self.method_id,version=self.method_version,configuration=deepcopy(self.configuration)),observations=[x.to_dict() for x in self.observations])
