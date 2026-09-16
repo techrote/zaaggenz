@@ -29,8 +29,8 @@ class ScalaKBM:
         if not 0<=self.map_size<=128:raise TuningError('KBM map size out of range')
         if not 0<=self.first_key<=self.last_key<=127 or not 0<=self.middle_key<=127 or not 0<=self.reference_key<=127:raise TuningError('KBM key out of MIDI range')
         if not math.isfinite(self.reference_hz) or self.reference_hz<=0:raise TuningError('KBM reference Hz invalid')
-        if not valid_formal_period_degrees(self.formal_period_degrees):
-            raise TuningError('KBM formal period degrees must be '+formal_period_degrees_description())
+        if type(self.formal_period_degrees) is not int or not valid_formal_period_degrees(self.formal_period_degrees):
+            raise TuningError('KBM formal period degrees must be an integer '+formal_period_degrees_description())
         if self.map_size==0 and self.entries:raise TuningError('zero-size KBM cannot contain entries')
         if self.map_size==0 and not 1<=self.formal_period_degrees<=128:
             raise TuningError('zero-size KBM needs formal period 1..128 for explicit contract mapping')
