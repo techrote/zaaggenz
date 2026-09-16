@@ -79,6 +79,6 @@ The generated ZG-022 pack is initially `pending-owner`. It does **not** include 
 
 ## Evidence and claims
 
-`tools/zaag_family_report.py` renders every family, records deterministic hashes and engineering descriptors, renders the one-shot/4-bar/16-bar examples, and can emit WAV files plus the owner-audition manifest as a CI artifact. The report also records a multi-rate formant-admissibility matrix at 8, 12, 48 and 96 kHz so the fail-closed boundary remains visible in engineering evidence.
+`tools/zaag_family_report.py` renders every family, records deterministic hashes and engineering descriptors, renders the one-shot/4-bar/16-bar examples, and can emit WAV files plus the owner-audition manifest as a CI artifact. The report also records a multi-rate formant-admissibility matrix at 8, 12, 24, 48 and 96 kHz so the fail-closed boundary remains visible in engineering evidence.
 
 Spectral flatness, centroid and harmonic-band concentration are logged only to establish that the source families are measurably distinct. They are never aggregated into a preference, bounce or usefulness score.
