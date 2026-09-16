@@ -4,6 +4,7 @@ on:
     paths:
       - 'zaaggenz_dsp/**'
       - 'zaaggenz_contracts/registry.py'
+      - 'zaaggenz_contracts/multiband.py'
       - 'tests/dsp/**'
       - 'docs/dsp/**'
       - '.github/workflows/zg016-dsp.yml'
