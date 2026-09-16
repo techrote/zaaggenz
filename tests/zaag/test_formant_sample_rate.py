@@ -22,7 +22,7 @@ class FormantSampleRateContractTests(unittest.TestCase):
         return replace(self.base, expert=expert, macros=macros)
 
     def test_exact_low_and_high_boundaries_are_realized_without_remap(self):
-        for sample_rate_hz in (8000, 12000):
+        for sample_rate_hz in (8000, 12000, 24000, 48000):
             with self.subTest(sample_rate_hz=sample_rate_hz):
                 high = 0.45 * sample_rate_hz
                 recipe = self.recipe(20.0, high)
@@ -47,20 +47,28 @@ class FormantSampleRateContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(ZaagFamilyError, label):
                     render_family_source(self.recipe(start_hz, end_hz), sample_rate_hz)
 
-    def test_invalid_active_formants_reject_before_legacy_source_execution(self):
-        recipe = self.recipe(4000.0, 1000.0)
+    def test_historical_10khz_at_12khz_mismatch_now_rejects_before_source_execution(self):
+        recipe = self.recipe(10000.0, 1000.0)
         with mock.patch('uptempo_harmony.synth.synthesize_one', side_effect=AssertionError('source must not execute')):
-            with self.assertRaisesRegex(ZaagFamilyError, 'supported formant band'):
-                render_family_source(recipe, 8000)
+            with self.assertRaisesRegex(ZaagFamilyError, '5400'):
+                render_family_source(recipe, 12000)
 
-    def test_same_recipe_has_explicit_multi_rate_admissibility(self):
-        recipe = self.recipe(4000.0, 4000.0)
-        with self.assertRaisesRegex(ZaagFamilyError, '3600'):
-            render_family_source(recipe, 8000)
-        for sample_rate_hz in (12000, 48000, 96000):
-            with self.subTest(sample_rate_hz=sample_rate_hz):
-                rendered = render_family_source(recipe, sample_rate_hz)
-                self.assertEqual(rendered.diagnostics['formant']['realized_hz'], {'start_hz': 4000.0, 'end_hz': 4000.0})
+    def test_same_recipes_have_explicit_12_24_48khz_admissibility(self):
+        cases = (
+            (4000.0, {8000: True, 12000: True, 24000: True, 48000: True, 96000: True}),
+            (8000.0, {8000: False, 12000: False, 24000: True, 48000: True, 96000: True}),
+            (15000.0, {8000: False, 12000: False, 24000: False, 48000: True, 96000: True}),
+        )
+        for hz, expectations in cases:
+            recipe = self.recipe(hz, hz)
+            for sample_rate_hz, accepted in expectations.items():
+                with self.subTest(hz=hz, sample_rate_hz=sample_rate_hz):
+                    if accepted:
+                        rendered = render_family_source(recipe, sample_rate_hz)
+                        self.assertEqual(rendered.diagnostics['formant']['realized_hz'], {'start_hz': hz, 'end_hz': hz})
+                    else:
+                        with self.assertRaises(ZaagFamilyError):
+                            render_family_source(recipe, sample_rate_hz)
 
     def test_reverse_sweep_is_valid_when_both_endpoints_are_in_band(self):
         rendered = render_family_source(self.recipe(3600.0, 20.0), 8000)
