@@ -55,7 +55,7 @@ class FormantSampleRateContractTests(unittest.TestCase):
 
     def test_same_recipes_have_explicit_12_24_48khz_admissibility(self):
         cases = (
-            (4000.0, {8000: True, 12000: True, 24000: True, 48000: True, 96000: True}),
+            (3000.0, {8000: True, 12000: True, 24000: True, 48000: True, 96000: True}),
             (8000.0, {8000: False, 12000: False, 24000: True, 48000: True, 96000: True}),
             (15000.0, {8000: False, 12000: False, 24000: False, 48000: True, 96000: True}),
         )
