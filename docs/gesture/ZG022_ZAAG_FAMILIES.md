@@ -42,6 +42,16 @@ The post-source motion path is fixed and inspectable:
 
 No final normalization is performed. The vowel stage is an engineered resonant gesture, not a physiological vocal-formant model. Sample hold is allowed to produce deliberate alias/images and is documented as such.
 
+### Formant sample-rate contract
+
+Active vowel motion uses the versioned `fail-closed-exact-v1` formant policy. A formant endpoint is admissible only when its requested centre frequency is in the inclusive range `20 Hz .. 0.45 * sample_rate_hz`. `formant_start_hz` and `formant_end_hz` are checked independently against the actual render sample rate before the recovered source is synthesised and before any formant filter executes. A reverse sweep is valid when both endpoints are in range; a sweep with either endpoint outside the range is rejected with `ZaagFamilyError`.
+
+There is no formant-frequency clamping, remapping or hidden adaptive transform. For every successful active render, the requested and realised formant endpoints are therefore identical and are recorded in `ZaagSourceRender.diagnostics.formant` together with the policy and supported band. The exact boundary is accepted; values immediately outside it fail closed. This keeps a recipe's stored formant values semantically exact instead of allowing the same recipe identity to mean different silently-clamped frequencies at different sample rates.
+
+The runtime check applies only when the vowel filter actually executes (`vowel_motion > 0` and non-zero formant boost). Inert formant controls do not impose an unrelated sample-rate restriction. The static recipe schema continues to bound expert formant values independently of render sample rate; the runtime contract adds the stricter rate-dependent admissibility needed by the filter.
+
+This repair does not alter `locked_bloom`, any registered family values, source topology, protected defaults or preference status. Existing registered active vowel families already lie inside the supported band at their accepted evidence rates, so they retain their exact requested frequencies rather than receiving a new adaptation.
+
 ## Example manifests
 
 `examples/zg022_zaag_family_examples.json` freezes three reproducibility targets:
@@ -69,6 +79,6 @@ The generated ZG-022 pack is initially `pending-owner`. It does **not** include 
 
 ## Evidence and claims
 
-`tools/zaag_family_report.py` renders every family, records deterministic hashes and engineering descriptors, renders the one-shot/4-bar/16-bar examples, and can emit WAV files plus the owner-audition manifest as a CI artifact.
+`tools/zaag_family_report.py` renders every family, records deterministic hashes and engineering descriptors, renders the one-shot/4-bar/16-bar examples, and can emit WAV files plus the owner-audition manifest as a CI artifact. The report also records a multi-rate formant-admissibility matrix at 8, 12, 24, 48 and 96 kHz so the fail-closed boundary remains visible in engineering evidence.
 
 Spectral flatness, centroid and harmonic-band concentration are logged only to establish that the source families are measurably distinct. They are never aggregated into a preference, bounce or usefulness score.
