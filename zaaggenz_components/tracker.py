@@ -132,10 +132,10 @@ def _transient_mask(a,sr,spec):
     mono=np.mean(a,axis=1)
     try:
         timeline=analyse_multiresolution(a,sr)['short']
+        eligible=[f for f in timeline.frames if f.spectral_flux is not None and f.support_fraction>=.999];vals=np.array([f.spectral_flux for f in eligible],dtype=float)
     except Exception as exc:
-        exc.add_note('ZG-013 transient detector failed before a valid short-resolution timeline was produced; no derivative-only fallback was used')
+        exc.add_note('ZG-013 transient detector failed before valid short-resolution flux observations were produced; no derivative-only fallback was used')
         raise
-    eligible=[f for f in timeline.frames if f.spectral_flux is not None and f.support_fraction>=.999];vals=np.array([f.spectral_flux for f in eligible],dtype=float)
     if len(vals):status=_detector_status('multiresolution-flux-plus-derivative-v1',True)
     else:status=_detector_status('derivative-only-degraded-v1',False,'no-full-support-short-flux','data-level-abstention')
     anchors=[]
