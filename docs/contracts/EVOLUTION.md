@@ -21,6 +21,14 @@ The ZG-016 automation validation repair is classified **patch-compatible** under
 
 Corrected v1 semantic validation rejects those documents at admission. Existing valid serialized nodes and their identities are unchanged. No migration or silent lane removal is performed: a formerly shape-valid but non-executable node receives an explicit `… is not automatable` error and must be corrected by its author. The resulting implementation-identity transition is recorded explicitly for ZG-024a and does not waive any frozen calibration, holdout, provenance, or numerical comparison.
 
+### ZG-016 multiband-crossover correction
+
+The ZG-016 multiband feasibility repair is also classified **patch-compatible** under contract `1.0.0`. The accepted executable node already required `20 <= low_xover_hz < mid_xover_hz < high_xover_hz < 0.49 * sample_rate_hz`; shared semantic validation merely failed to reject serialized states that the executor could never construct safely. The correction therefore narrows admission to the already-executable v1 meaning instead of redefining any crossover field, filter, phase, routing, source or automation semantics.
+
+Registry minimum/maximum values remain independent descriptive bounds. The relational rule is enforced by one semantic helper: standalone `DSPNodeSpec` validation can reject crossover ordering without inventing a sample rate, while `RenderRecipe` validation binds the same rule to the recipe's actual rate. Direct multiband and band-router consumers use that helper before filter allocation and before zero-effect/identity return, so bypass cannot conceal an impossible configuration. Formerly admitted but non-executable documents are rejected with field-specific errors and must be corrected by their author; values are never reordered, clamped or migrated silently.
+
+Default crossover values (`105`, `520`, `3600` Hz), filter topology, zero-effect identity output, dry reconstruction, source/protected-audio handling and all valid serialized v1 documents retain their existing meaning. The #107 automation-capability correction remains orthogonal: multiband parameters are still static/non-automatable. No contract version bump or audio-baseline approval is required because this repair changes validation timing only for impossible states and does not change a valid render.
+
 ### ZG-002 formal-period correction
 
 The `TuningSpec.keyboard.formal_period_degrees` correction is also classified **patch-compatible** under contract `1.0.0`. Frozen v1 already had an executable `KeyboardMap` consumer whose wrapping relation rejected zero; a zero formal period therefore had no executable v1 meaning even though the original JSON Schema interval `[-256, 256]` accidentally admitted it. Rejecting zero at shared admission makes the contract tell the truth earlier rather than reinterpreting a previously executable document.
