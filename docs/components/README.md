@@ -16,6 +16,12 @@ Each exported phase is the cosine phase at the frame's declared anchor sample. S
 
 A conservative transient mask is derived from short-resolution spectral flux plus a robust sample-derivative sentinel. Sinusoidal reconstruction is removed inside the protected transient region. The transient asset owns the original audio under that mask; the residual is defined as source minus protected sinusoidal and transient ownership. Their float32 PCM identities are embedded in the bundle.
 
+Transient analysis uses the versioned `zg013-transient-detector-fail-closed-v1` policy. A successfully computed short-resolution timeline with at least one full-support spectral-flux observation runs in `multiresolution-flux-plus-derivative-v1` mode. The sample derivative is a second conservative sentinel; it is not an exception-recovery path.
+
+There is deliberately **no exception-based derivative-only fallback**. `analyse_multiresolution()` programming errors, dependency failures and resource failures propagate with their original exception type; cancellation-style `BaseException` failures are not intercepted. The tracker adds context to ordinary propagated exceptions stating that no derivative-only fallback was used. A successful timeline that contains no full-support short-resolution flux observations is the only degraded non-empty mode: `derivative-only-degraded-v1`. This is recorded as a `data-level-abstention` with reason `no-full-support-short-flux`, and **all component frames are forced to `preserve`**. The derivative sentinel may still increase transient protection in that state, but missing primary confidence can never become transform permission. Empty input similarly records `empty-source-v1` with preserve-all eligibility.
+
+Detector policy, primary detector, sentinel, mode, failure class/reason and transform-eligibility policy are copied into both `ComponentAnalysis.diagnostics["transient_detector"]` and the `PartialTrackBundle.method.configuration` fields prefixed `transient_`. This makes any supported degraded analysis provenance-visible without changing the v1 contract shape or audio identity domain.
+
 This gives two deliberately separate checks:
 
 1. **Exact bypass:** `exact_bypass()` is a float32 source copy and must be sample-identical.
@@ -43,4 +49,4 @@ python -m unittest discover -s tests/components -v
 python tools/component_fixture_report.py --out component-fixtures.json
 ```
 
-Fixtures cover stable tones, chirps, amplitude modulation, crossings, white noise, impulses, empty/short signals and stereo antiphase. Aggregate identity regressions additionally cover forged frame/channel/sample-rate/content identity, transient/residual provenance, non-finite arrays, concrete-source allocation bounds, mono canonicalization, zero-track inputs, and large legitimate zero-track inputs. The report is deterministic synthetic evidence, not a listening result.
+Fixtures cover stable tones, chirps, amplitude modulation, crossings, white noise, impulses, empty/short signals and stereo antiphase. Transient-failure regressions additionally cover normal detector provenance, the supported no-primary-observation degraded mode, programming/dependency/resource exception propagation, cancellation propagation, preserve-all eligibility under degradation, and transient-protected frame ownership. Aggregate identity regressions additionally cover forged frame/channel/sample-rate/content identity, transient/residual provenance, non-finite arrays, concrete-source allocation bounds, mono canonicalization, zero-track inputs, and large legitimate zero-track inputs. The report is deterministic synthetic evidence, not a listening result.
