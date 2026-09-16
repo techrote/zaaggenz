@@ -81,6 +81,13 @@ class CompilationTests(unittest.TestCase):
         self.assertEqual(format_text(soft.ast),format_text(bright.ast));self.assertEqual(soft.ast,bright.ast)
         self.assertNotEqual(soft.preview['events'][0]['degree'],bright.preview['events'][0]['degree'])
         self.assertNotEqual(soft.gesture.to_dict()['trajectories'][4]['points'][0]['value'],bright.gesture.to_dict()['trajectories'][4]['points'][0]['value'])
+    def test_dictionary_effective_gain_uses_same_phrase_boundary_as_directional_gesture(self):
+        data=self.registry.get('local-soft').to_dict();data['base_gain_db']=24.;dictionary=MnemonicDictionary(data);registry=DictionaryRegistry([dictionary])
+        boundary=compile_text('bu @return',registry,'local-soft',sample_rate=12000)
+        self.assertTrue(all(event['gain_db']==24. for event in boundary.preview['events']))
+        self.assertEqual(boundary.gesture.to_dict()['base_gain_db'],24.)
+        with self.assertRaisesRegex(TextSyntaxError,r'base gain \+ accent lies outside -120\.\.24 dB'):
+            compile_text('budu @return',registry,'local-soft',sample_rate=12000)
     def test_unknown_token_reports_original_line_and_column(self):
         with self.assertRaises(TextSyntaxError) as cm:compile_text('bu |\n  mystery @return',self.registry,'local-soft',sample_rate=12000)
         self.assertEqual((cm.exception.line,cm.exception.column),(2,3));self.assertIn("'mystery'",str(cm.exception))

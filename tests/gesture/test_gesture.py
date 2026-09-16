@@ -13,7 +13,8 @@ from zaaggenz_melody import render_phrase
 from zaaggenz_project import Project
 from zaaggenz_timeline import default_document
 from zaaggenz_gesture import (GestureError,DirectionalGesture,rise_turn_return,vary_surface,reverse_direction,
-                              replace_trajectory_points,edit_landing,trajectory_value,compile_gesture,compile_gesture_recipe)
+                              replace_trajectory_points,edit_landing,trajectory_value,effective_event_gains,
+                              compile_gesture,compile_gesture_recipe)
 
 
 def trajectory(plan,axis): return next(t for t in plan.to_dict()['trajectories'] if t['axis']==axis)
@@ -44,6 +45,32 @@ class ValidationTests(unittest.TestCase):
         self.bad(lambda d:d['trajectories'][0]['points'][1].update(value=4.5),'integers')
         self.bad(lambda d:d['trajectories'][0].update(interpolation='linear'),'step interpolation')
         self.bad(lambda d:d['trajectories'][2].update(interpolation='linear'),'step interpolation')
+    def test_effective_gain_upper_overflow_is_rejected_at_interpolated_event_start(self):
+        data=self.plan.to_dict();data['base_gain_db']=24.
+        with self.assertRaisesRegex(GestureError,r'effective event gain at beat 1/2 lies outside -120\.\.24 dB'):
+            DirectionalGesture(data)
+        accent=next(t for t in data['trajectories'] if t['axis']=='accent_db')
+        self.assertEqual(trajectory_value(accent,Fraction(1,2)),.75)
+    def test_effective_gain_lower_underflow_is_rejected_before_compilation(self):
+        data=self.plan.to_dict();data['base_gain_db']=-120.
+        accent=next(t for t in data['trajectories'] if t['axis']=='accent_db')
+        for point in accent['points']:point['value']=float(point['value'])-1.
+        with self.assertRaisesRegex(GestureError,r'effective event gain at beat 0/1 lies outside -120\.\.24 dB'):
+            DirectionalGesture(data)
+    def test_effective_gain_exact_phrase_boundaries_are_valid_and_compile_unchanged(self):
+        upper=self.plan.to_dict();upper['base_gain_db']=21.;upper_plan=DirectionalGesture(upper)
+        upper_rows=effective_event_gains(upper_plan.to_dict());upper_compiled=compile_gesture(upper_plan,'twelve-tet')
+        self.assertEqual(max(gain for _,gain in upper_rows),24.)
+        self.assertEqual(max(event['gain_db'] for event in upper_compiled.phrase.to_dict()['events'][:-1]),24.)
+        lower=self.plan.to_dict();lower['base_gain_db']=-120.;lower_plan=DirectionalGesture(lower)
+        lower_rows=effective_event_gains(lower_plan.to_dict());lower_compiled=compile_gesture(lower_plan,'twelve-tet')
+        self.assertEqual(min(gain for _,gain in lower_rows),-120.)
+        self.assertEqual(min(event['gain_db'] for event in lower_compiled.phrase.to_dict()['events'][:-1]),-120.)
+    def test_terminal_landing_gain_is_independent_at_both_boundaries(self):
+        for gain in (-120.,24.):
+            data=self.plan.to_dict();data['landing']['gain_db']=gain;plan=DirectionalGesture(data)
+            compiled=compile_gesture(plan,'twelve-tet')
+            self.assertEqual(compiled.phrase.to_dict()['events'][-1]['gain_db'],gain)
 
 class TransformTests(unittest.TestCase):
     def setUp(self): self.plan=rise_turn_return()
