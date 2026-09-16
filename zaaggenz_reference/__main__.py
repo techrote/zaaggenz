@@ -5,6 +5,12 @@ from .analysis import analyse_file,compare_planning
 
 ROOT=Path(__file__).resolve().parents[1]
 
+
+def _strict_json_dumps(value,**kwargs):
+    """Serialize evidence as RFC-compatible JSON; NaN/Infinity are forbidden."""
+    return json.dumps(value,allow_nan=False,**kwargs)
+
+
 def main():
     p=argparse.ArgumentParser(description='Verify private references without copying source audio')
     p.add_argument('--registry',type=Path,default=ROOT/'references/private_registry_v1.json');p.add_argument('--locators',type=Path,required=True);p.add_argument('--out',type=Path,required=True);p.add_argument('--analyse',action='store_true')
@@ -17,5 +23,5 @@ def main():
         out.append(clean)
     report={'version':'zg-private-reference-verification-v1','source_paths_included':False,'all_ok':bool(ok),'assets':out,
             'warning':'Content identity is the hard source gate. Descriptor agreement is dependency-tolerant and does not imply provenance, rights, chord labels, genre labels or a production chain.'}
-    a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8');print(json.dumps({'all_ok':bool(ok),'assets':len(out)}));return 0 if ok else 2
+    a.out.parent.mkdir(parents=True,exist_ok=True);a.out.write_text(_strict_json_dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8');print(_strict_json_dumps({'all_ok':bool(ok),'assets':len(out)}));return 0 if ok else 2
 if __name__=='__main__':sys.exit(main())
