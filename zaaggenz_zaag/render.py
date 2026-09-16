@@ -8,6 +8,10 @@ from zaaggenz_contracts.legacy import adapt_parameters,legacy_object
 from zaaggenz_dsp import BitcrushSpec,bitcrush,oversampled_shaper
 from .model import ZaagFamilyError,ZaagFamilyRecipe
 
+FORMANT_POLICY='fail-closed-exact-v1'
+FORMANT_MIN_HZ=20.0
+FORMANT_NYQUIST_FRACTION=.45
+
 @dataclass(frozen=True)
 class ZaagSourceRender:
     audio:np.ndarray
@@ -28,8 +32,21 @@ def _safe_filtfilt(b,a,x):
     pad=min(len(x)-1,3*max(len(a),len(b)));return signal.filtfilt(b,a,x,padlen=pad)
 def _lp(x,sr,hz):
     hz=min(float(hz),.45*sr);b,a=signal.butter(3,hz,fs=sr);return _safe_filtfilt(b,a,x)
+def _formant_band(sr):return FORMANT_MIN_HZ,FORMANT_NYQUIST_FRACTION*float(sr)
+def _formant_active(recipe):return recipe.macros.vowel_motion>0 and abs(recipe.expert.formant_boost_db)>=1e-12
+def _validate_formants(recipe,sr):
+    low,high=_formant_band(sr);e=recipe.expert;active=_formant_active(recipe)
+    requested={'start_hz':float(e.formant_start_hz),'end_hz':float(e.formant_end_hz)}
+    if active:
+        for label,hz in requested.items():
+            if not low<=hz<=high:
+                raise ZaagFamilyError(f'{label}={hz:g} outside supported formant band [{low:g}, {high:g}] Hz at {sr} Hz sample rate ({FORMANT_POLICY})')
+    return {'policy':FORMANT_POLICY,'active':active,'supported_band_hz':[low,high],'requested_hz':requested,
+            'realized_hz':deepcopy(requested) if active else None}
 def _band_peak(x,sr,hz,q):
-    hz=min(max(20.,float(hz)),.45*sr);b,a=signal.iirpeak(hz,q,fs=sr);return _safe_filtfilt(b,a,x)
+    low,high=_formant_band(sr);hz=float(hz)
+    if not low<=hz<=high:raise ZaagFamilyError(f'formant={hz:g} outside supported formant band [{low:g}, {high:g}] Hz at {sr} Hz sample rate ({FORMANT_POLICY})')
+    b,a=signal.iirpeak(hz,q,fs=sr);return _safe_filtfilt(b,a,x)
 
 def _vowel_motion(x,sr,bpm,recipe):
     m=recipe.macros.vowel_motion;e=recipe.expert
@@ -66,6 +83,7 @@ def render_family_source(recipe,sample_rate_hz=48000,*,beats=1):
     if not isinstance(recipe,ZaagFamilyRecipe):raise ZaagFamilyError('ZaagFamilyRecipe required')
     if type(sample_rate_hz)is not int or not 8000<=sample_rate_hz<=96000:raise ZaagFamilyError('sample rate outside recovered source bounds')
     if type(beats)is not int or not 1<=beats<=8:raise ZaagFamilyError('beats must be integer 1..8')
+    formant=_validate_formants(recipe,sample_rate_hz)
     params=adapt_parameters('synth',{**recipe.synth_overrides,'sr':sample_rate_hz,'beats':beats})
     from uptempo_harmony.synth import synthesize_one
     base=np.asarray(synthesize_one(legacy_object('synth',params))[0],dtype=np.float64)
@@ -78,5 +96,5 @@ def render_family_source(recipe,sample_rate_hz=48000,*,beats=1):
     diagnostics={'method':'zg.zaag-family-source.v1','recipe_id':recipe.id,'recipe_sha256':recipe.sha256,'sample_rate_hz':sample_rate_hz,
                  'samples':len(y),'base_pcm_sha256':_sha(base),'output_pcm_sha256':_sha(y),'base_rms':_rms(base),'output_rms':_rms(y),
                  'peak':float(np.max(np.abs(y),initial=0.)),'normalization':'none','phase_policy':recipe.expert.phase_policy,'tail_policy':recipe.expert.tail_policy,
-                 'motion_order':['vowel','upper-bounce','complementary','grit'],'quality_cost':recipe.expert.quality_cost}
+                 'motion_order':['vowel','upper-bounce','complementary','grit'],'quality_cost':recipe.expert.quality_cost,'formant':formant}
     return ZaagSourceRender(np.asarray(y,dtype=np.float32),recipe.id,recipe.sha256,params,diagnostics)
