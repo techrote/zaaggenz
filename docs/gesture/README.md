@@ -26,6 +26,12 @@ The starter `rise_turn_return()` is four beats long. Its density, accent, pitch,
 
 The authoring `source_family` is retained in the compile trace, not masqueraded as multiple audio sources. RenderRecipe v1 still has exactly one protected source.
 
+### Effective event-gain admission
+
+Directional-gesture format `1.0.0` retains the frozen PhrasePlan event-gain domain of **-120..+24 dB**. `base_gain_db` and `accent_db` remain separately authored controls, but a plan is admissible only when their sum is in that range at every pre-landing event start produced by the authored density trajectory. Linear accent interpolation is evaluated at those exact event starts; it is not deferred until PhrasePlan construction. The terminal landing keeps its own independently validated `landing.gain_db`.
+
+This is a patch-compatible validator correction rather than a format migration: plans that would previously fail later in `make_phrase_plan()` now fail at `DirectionalGesture` construction. Valid plans keep identical JSON, hashes, event gains and audio. No clipping, normalisation or silent gain clamp is introduced. ZG-031 text/dictionary compilation retains its own source-span diagnostic but uses the same -120..+24 dB effective event boundary, and every generated DirectionalGesture is revalidated by this rule.
+
 ## Deferred timbral/stem automation
 
 Brightness, roughness, spectral occupancy and spectral width are exported in `zaaggenz-gesture-automation` as typed rows with units, layer, stage and exact points. They are marked `deferred-explicit` and `protected_topology_rewrite=false`:
