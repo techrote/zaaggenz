@@ -59,7 +59,7 @@ def _preserve_reason(track,row,request):
     return None
 
 def _plan_and_bundle(analysis,request,checkpoint=None,progress=None):
-    source=analysis.bundle.to_dict();out=deepcopy(source);schedule=build_target_schedule(request);decisions=[]
+    source=analysis.bundle.to_dict();out=deepcopy(source);schedule=build_target_schedule(request,checkpoint=checkpoint);decisions=[]
     all_teeth=tuple(tooth for _,_,teeth in schedule for tooth in teeth)
     total=max(1,sum(len(t['frames']) for t in source['tracks']));done=0;sr=source['asset']['sample_rate_hz']
     for src_track,dst_track in zip(source['tracks'],out['tracks']):
