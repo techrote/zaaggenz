@@ -1,5 +1,6 @@
 """Musical intent: no synthesized data, automatic retuning or executor."""
 from .schema import *
+from .tuning_rules import formal_period_degrees_schema
 
 
 def musical():
@@ -7,7 +8,7 @@ def musical():
     meter = obj(beat=RAT, numerator=integer(1, 32), denominator=enum(1, 2, 4, 8, 16, 32))
     mapping = obj(first_key=integer(0, 127), last_key=integer(0, 127),
                   middle_key=integer(0, 127), reference_key=integer(0, 127),
-                  formal_period_degrees=integer(-256, 256),
+                  formal_period_degrees=formal_period_degrees_schema(),
                   entries=array(nullable(integer(-4096, 4096)), 1, 128))
     curve = obj(axis=enum('pitch_cents', 'brightness_hz', 'roughness_fraction', 'density_per_beat', 'gain_db'),
                 unit=enum('cents', 'Hz', 'ratio', 'events/beat', 'dB'),
