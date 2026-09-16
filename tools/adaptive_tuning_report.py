@@ -31,11 +31,22 @@ def main():
     for _ in range(a['sequence_steps']):
         proposal=propose_adaptive_tuning(seq_req,state);history.append({'step':state.step_index,'proposal':proposal.offset_mapping(),'status':proposal.status});state=commit_proposal(proposal)
     low_conf=propose_adaptive_tuning(make_request(recipe,0.,confidence=.2));moving_root=propose_adaptive_tuning(make_request(recipe,a['high_tension'],root_lock=False))
+
+    lock_req=make_request(recipe,a['low_tension'],max_total=a['max_total_drift_cents'],max_step=a['max_step_cents'],root_lock=True)
+    lock_state=AdaptiveState((('root',18.),('upper',0.)),7);lock_history=[]
+    for _ in range(4):
+        before=lock_state.mapping()['root'];proposal=propose_adaptive_tuning(lock_req,lock_state);after=proposal.offset_mapping()['root']
+        lock_history.append({'step':lock_state.step_index,'before_root_cents':before,'after_root_cents':after,'status':proposal.status,'transition':proposal.search['root_lock_transition']})
+        if proposal.status!='proposed':break
+        lock_state=commit_proposal(proposal)
+        if abs(after)<=1e-9:break
+
     report={'scope':recipe['scope'],'platform':platform.platform(),'python':sys.version,'recipe':recipe,
         'dissonance':{'method':hcurve.model.to_dict(),'harmonic_fifth_candidate':hf.to_dict(),'stretched_fifth_candidate':sf.to_dict(),
                       'harmonic_sensitivity':hmeta,'stretched_sensitivity':smeta,'global_gain_invariance_abs_error':abs(gain_base-gain_loud)},
         'adaptive':{'low_tension':low.to_dict(),'high_tension':high.to_dict(),'low_tension_ab':ab_recipe(low),'high_tension_ab':ab_recipe(high),
-                    'sequence_history':history,'sequence_final_state':state.to_dict(),'low_confidence':low_conf.to_dict(),'moving_root':moving_root.to_dict()},
+                    'sequence_history':history,'sequence_final_state':state.to_dict(),'low_confidence':low_conf.to_dict(),'moving_root':moving_root.to_dict(),
+                    'root_lock_transition_history':lock_history,'root_lock_transition_final_state':lock_state.to_dict()},
         'interpretation':'engineering compatibility/tuning proposals only; candidate minima and objective values do not predict liking or style'}
     failures=[]
     if abs(hf.cents-702.)>4.:failures.append('harmonic fifth-region minimum moved outside fixture tolerance')
@@ -48,6 +59,10 @@ def main():
     if low_conf.status!='abstained':failures.append('low-confidence input did not abstain')
     if moving_root.status!='proposed':failures.append('moving-root mode failed to produce a bounded proposal')
     if not low.request.to_dict()['amplitude_policy'].startswith('immutable'):failures.append('adaptive amplitude policy was not immutable')
+    if not lock_history or any(row['status']!='proposed' for row in lock_history):failures.append('root-lock transition did not remain proposal-valid')
+    if any(abs(row['after_root_cents']-row['before_root_cents'])>a['max_step_cents']+1e-9 for row in lock_history):failures.append('root-lock transition exceeded max step')
+    if any(abs(row['after_root_cents'])>abs(row['before_root_cents'])+1e-9 for row in lock_history):failures.append('root-lock transition moved away from zero')
+    if abs(lock_state.mapping()['root'])>1e-9:failures.append('root-lock transition did not converge to zero')
     report['acceptance_failures']=failures;args.out.parent.mkdir(parents=True,exist_ok=True);args.out.write_text(json.dumps(report,indent=2)+'\n');print(json.dumps(report,indent=2))
     if failures:raise SystemExit('ZG-020 evidence failed: '+'; '.join(failures))
 if __name__=='__main__':main()
