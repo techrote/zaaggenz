@@ -1,6 +1,8 @@
 from __future__ import annotations
 import numpy as np
 from scipy import signal
+from zaaggenz_contracts.model import ContractError
+from zaaggenz_contracts.multiband import validate_multiband_crossovers
 
 class BandError(ValueError):pass
 
@@ -11,11 +13,11 @@ def _audio(x):
     if a.ndim!=2 or a.shape[1] not in (1,2) or not np.isfinite(a).all():raise BandError('finite mono/stereo audio required')
     return a,mono
 
-def _cross(crossovers,sr):
-    if len(crossovers)!=3:raise BandError('exactly three crossovers required')
-    c=tuple(float(v) for v in crossovers)
-    if not all(np.isfinite(c)) or not 20<=c[0]<c[1]<c[2]<.49*sr:raise BandError('crossovers must increase from >=20 Hz to below Nyquist')
-    return c
+def validate_crossovers(crossovers,sr):
+    try:return validate_multiband_crossovers(crossovers,sr)
+    except ContractError as e:raise BandError(str(e)) from e
+
+def _cross(crossovers,sr):return validate_crossovers(crossovers,sr)
 
 def _lp(x,sr,f):
     if len(x)<8:raise BandError('nonzero multiband processing requires at least 8 samples')
@@ -32,16 +34,16 @@ def _project(delta,sr,crossovers,index):return split_bands(delta,sr,crossovers)[
 
 def route_effect_deltas(x,sr,crossovers,processors,confine_delta=True):
     """y = x + Σ P_i(F_i(B_i x)-B_i x). Zero effects never touch the dry path."""
-    a,mono=_audio(x)
+    a,mono=_audio(x);c=_cross(crossovers,sr)
     if len(processors)!=4:raise BandError('four band processors required')
     if all(p is None for p in processors):return np.asarray(x).copy()
-    bands=split_bands(a[:,0] if mono else a,sr,crossovers);out=a.copy()
+    bands=split_bands(a[:,0] if mono else a,sr,c);out=a.copy()
     for i,(band,processor) in enumerate(zip(bands,processors)):
         if processor is None:continue
         original,_=_audio(band);changed,_=_audio(processor(np.asarray(band).copy()))
         if changed.shape!=original.shape or not np.isfinite(changed).all():raise BandError('band processor changed shape or produced nonfinite samples')
         delta=changed-original
-        if confine_delta:delta,_=_audio(_project(delta[:,0] if mono else delta,sr,crossovers,i))
+        if confine_delta:delta,_=_audio(_project(delta[:,0] if mono else delta,sr,c,i))
         out+=delta
     return out[:,0] if mono else out
 
