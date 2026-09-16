@@ -52,15 +52,31 @@ Amplitudes are immutable in the adaptive layer. The optimiser can change pitch o
 Every candidate state must satisfy hard constraints before scoring:
 
 - absolute offset for every voice remains inside `max_total_drift_cents`;
-- each accepted step is inside `max_step_cents` relative to the previous state;
+- every realised voice movement is inside `max_step_cents` relative to the exact previous committed state;
 - locked voices and pedal voices remain fixed;
-- the root is fixed when `root_lock=True` and can participate normally when `root_lock=False`;
+- a settled root is fixed at zero when `root_lock=True`; a non-zero previously unlocked root enters the staged lock transition described below;
 - nominal voice ordering cannot cross;
 - adjacent adjusted voices cannot violate `min_separation_cents`.
 
 The configured objective exposes separate terms for desired-tension error, voice-leading movement, cumulative drift and proximity to visible candidate intervals. Desired tension is explicit, so the system may intentionally prefer a rougher proposal rather than always minimizing interaction roughness.
 
 The scalar total is only a deterministic search objective for the supplied configuration. Lower is not a general musical-quality or preference score.
+
+## Root-lock state transitions
+
+Root locking uses the explicit policy `staged-zero-convergence-v1`. The previous committed root offset is authoritative state: enabling `root_lock` no longer rewrites a non-zero value to zero before search.
+
+If a request enables root lock while the committed root is non-zero, the proposal has one mandatory root target for that step:
+
+`sign(previous) * max(0, abs(previous) - max_step_cents)`.
+
+Thus the root moves monotonically toward the hard locked target of 0 cents, by no more than `max_step_cents` per accepted proposal. At an exact step boundary it reaches zero exactly. Repeated manual commits converge deterministically; rejection keeps the previous state byte-for-byte/field-for-field unchanged. Once zero is reached, ordinary root-lock semantics resume and the root remains fixed there.
+
+The lock transition does not weaken any other constraint. If the staged target would violate voice ordering, minimum separation, a separate explicit voice lock/pedal lock, or another hard constraint, the proposal abstains rather than teleporting or silently relaxing the rule. A non-zero root combined with `max_step_cents == 0` likewise returns the explicit `root-lock-transition-zero-step` abstention: zero is still the required eventual target, but the current request provides no legal motion budget.
+
+Low-confidence abstention occurs before any staged movement is published, so it cannot mutate the root or any other voice. Disabling `root_lock` has no inverse transition/reset: the previous root remains the baseline and may only move through the ordinary bounded adaptive search.
+
+Every proposal's `search.root_lock_transition` diagnostic records the policy, previous offset, zero target, staged target, planned and realised step, remaining distance, completion state and any blocking reason. `candidate_tuning_set()` and `ab_recipe()` carry the same realised transition record so A/B material cannot describe a zero-locked root while actually rendering an intermediate bounded step.
 
 ## Confidence and abstention
 
@@ -76,9 +92,9 @@ This preserves the existing ZaagGenZ policy that uncertainty remains visible rat
 
 ## Export and A/B evidence
 
-`candidate_tuning_set()` exports the proposed offsets in a compact manually reviewable form. `ab_recipe()` records baseline and candidate states, immutable-timbre/amplitude controls and a canonical SHA-256 recipe identity.
+`candidate_tuning_set()` exports the proposed offsets in a compact manually reviewable form, including any active root-lock transition and its remaining distance. `ab_recipe()` records baseline and candidate states, the same transition diagnostics, immutable-timbre/amplitude controls and a canonical SHA-256 recipe identity.
 
-`examples/zg020_adaptive_tuning.json` freezes the synthetic evidence recipe. `tools/adaptive_tuning_report.py` reports harmonic/stretched minima, sensitivity metadata, global-gain invariance, low/high desired-tension proposals, a twenty-step bounded sequence, low-confidence abstention, moving-root operation and reproducible A/B recipes.
+`examples/zg020_adaptive_tuning.json` freezes the synthetic evidence recipe. `tools/adaptive_tuning_report.py` reports harmonic/stretched minima, sensitivity metadata, global-gain invariance, low/high desired-tension proposals, a twenty-step bounded sequence, low-confidence abstention, moving-root operation, the staged non-zero-root lock sequence, and reproducible A/B recipes.
 
 The report is synthetic engineering evidence. It does not establish that a candidate tuning sounds better; that decision remains available for manual listening/acceptance.
 
