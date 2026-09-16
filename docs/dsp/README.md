@@ -10,6 +10,8 @@ Every node declares channels, state/reset, phase, latency/lookahead, bounds and 
 
 Automation capability is authoritative in the node registry through `x-automatable`. Shared `DSPNodeSpec` semantic validation and graph execution use the same registry capability lookup: an automation lane is accepted only for a registered numeric parameter whose `x-automatable` value is exactly `true`. Boolean, enum/integer, crossover, antialiased nonlinear and legacy-SCULPT parameters therefore fail contract validation before rendering rather than becoming contract-valid states that fail later in the executor. Unsupported lanes are rejected; they are never stripped, clamped or silently made static.
 
+For `core.multiband_gain.v1`, the executable crossover invariant is `20 <= low_xover_hz < mid_xover_hz < high_xover_hz < 0.49 * sample_rate_hz`. Independent registry bounds remain descriptive per-parameter metadata; the cross-parameter and sample-rate relationship is owned by one shared semantic helper. Standalone `DSPNodeSpec` validation rejects impossible ordering immediately. `RenderRecipe` validation binds the same helper to the recipe's actual sample rate, and all direct multiband/router consumers reuse it before filter allocation or identity bypass. Diagnostics name the offending crossover field rather than deferring failure into SciPy filter construction.
+
 Node outputs are labelled taps when requested, so transforms can be placed before/after/between explicit nonlinear graph nodes and inspected independently. The authenticated legacy source remains opaque internally: its exposed tap is `legacy-source-post-internal-nonlinear`. ZG-016 does **not** fabricate unsupported pre-waveshaper access inside the old source.
 
 ## Final output policy
@@ -32,7 +34,7 @@ The four analysis bands are a nested zero-phase Butterworth decomposition whose 
 
 `y = x + Σ P_i(F_i(B_i x) - B_i x)`
 
-Only the **effect delta** is optionally re-confined. If every effect is identity, the router returns the original dry array without invoking a crossover at all. This prevents the earlier failure mode where re-filtering unchanged bands squared their transfer functions and coloured bypass.
+Only the **effect delta** is optionally re-confined. If every effect is identity, the router validates the stored crossover configuration but returns the original dry array without allocating or running filters. This preserves bit-exact dry identity while preventing an impossible crossover configuration from being hidden behind a bypass path. It also prevents the earlier failure mode where re-filtering unchanged bands squared their transfer functions and coloured bypass.
 
 Transition regions are deliberately filters, not brick walls. `confine_delta` means reduce out-of-band effect energy under the declared filter policy, not eliminate it mathematically.
 
