@@ -7,6 +7,48 @@ from scipy import signal
 METHOD='zg-reference-descriptor-v1'
 BANDS=((20,120),(120,500),(500,2000),(2000,6000),(6000,10000))
 
+
+def _correlation_evidence(left,right):
+    """Return Pearson correlation plus explicit availability provenance.
+
+    Pearson correlation is undefined when either channel has zero variance.  Scale
+    each channel before centering so otherwise-finite high-magnitude inputs do not
+    overflow merely while deciding whether correlation is defined.
+    """
+    def centered(v):
+        scale=float(np.max(np.abs(v)))
+        if scale==0.0:
+            return None,None
+        y=v/scale
+        y=y-np.mean(y)
+        energy=float(np.dot(y,y))
+        if energy==0.0 or not math.isfinite(energy):
+            return None,None
+        return y,energy
+
+    l,le=centered(left);r,re_=centered(right)
+    if l is None or r is None:
+        if l is None and r is None:reason='both-channels-zero-variance'
+        elif l is None:reason='left-channel-zero-variance'
+        else:reason='right-channel-zero-variance'
+        return None,{'status':'unknown','reason':reason}
+    denominator=math.sqrt(le*re_)
+    value=float(np.dot(l,r)/denominator)
+    # Roundoff can exceed the mathematical range by a few ulps.
+    value=max(-1.0,min(1.0,value))
+    return value,{'status':'observed','reason':None}
+
+
+def _require_finite_evidence(value,path='descriptor'):
+    """Fail closed before descriptor evidence containing NaN/Infinity escapes."""
+    if isinstance(value,dict):
+        for key,item in value.items():_require_finite_evidence(item,f'{path}.{key}')
+    elif isinstance(value,(list,tuple)):
+        for index,item in enumerate(value):_require_finite_evidence(item,f'{path}[{index}]')
+    elif isinstance(value,(float,np.floating)) and not math.isfinite(float(value)):
+        raise ValueError(f'nonfinite descriptor evidence at {path}')
+
+
 def descriptor_pcm(x,sr=24000):
     a=np.asarray(x,dtype=np.float64)
     if a.ndim==1:a=a[:,None]
@@ -27,15 +69,24 @@ def descriptor_pcm(x,sr=24000):
     threshold=float(np.quantile([r['rms'] for r in rows],.75));hot=[r for r in rows if r['rms']>=threshold]
     keys=['power_centroid_hz','power_flatness','crest_db']+[f'energy_{a}_{b}' for a,b in BANDS]
     left=a[:,0];right=a[:,-1]
-    return {'method':METHOD,'analysis_sr':sr,'complete_windows':len(rows),'energetic_window_count':len(hot),
+    if a.shape[1]==2:
+        correlation,correlation_evidence=_correlation_evidence(left,right)
+    else:
+        correlation=1.0
+        correlation_evidence={'status':'legacy-mono-convention','reason':'mono-input'}
+    result={'method':METHOD,'analysis_sr':sr,'complete_windows':len(rows),'energetic_window_count':len(hot),
       'sample_peak':float(np.max(np.abs(a))),'samples_abs_ge_1_fraction':float(np.mean(np.abs(a)>=1)),
-      'stereo_correlation':float(np.corrcoef(left,right)[0,1]) if a.shape[1]==2 else 1.,
+      'stereo_correlation':correlation,'stereo_correlation_evidence':correlation_evidence,
       'side_mid_energy_ratio':float(np.mean(((left-right)/2)**2)/max(np.mean(((left+right)/2)**2),1e-30)) if a.shape[1]==2 else 0.,
       'energetic_medians':{k:float(np.median([r[k] for r in hot])) for k in keys},'timeline':rows}
+    _require_finite_evidence(result)
+    return result
+
 
 def _ffprobe(path):
     raw=subprocess.check_output(['ffprobe','-v','error','-show_streams','-show_format','-of','json',str(path)],text=True,timeout=60)
     d=json.loads(raw);s=next(v for v in d['streams'] if v['codec_type']=='audio');return d,s
+
 
 def _loudness(path):
     cp=subprocess.run(['ffmpeg','-nostdin','-hide_banner','-i',str(path),'-af','ebur128=peak=true','-f','null','-'],capture_output=True,text=True,timeout=180)
@@ -45,6 +96,7 @@ def _loudness(path):
         m=re.search(p,text);return float(m.group(1)) if m else None
     return {'integrated_lufs':one(r'I:\s+(-?[\d.]+) LUFS'),'loudness_range_lu':one(r'LRA:\s+(-?[\d.]+) LU'),'true_peak_dbtp':one(r'Peak:\s+(-?[\d.]+) dBFS')}
 
+
 def analyse_file(path,analysis_sr=24000):
     path=Path(path);meta,stream=_ffprobe(path);duration=float(meta['format']['duration'])
     if duration>1800:raise ValueError('reference exceeds 30-minute ingest bound')
@@ -53,14 +105,26 @@ def analyse_file(path,analysis_sr=24000):
     if len(pcm)%2:raise ValueError('decoded stereo byte count mismatch')
     pcm=pcm.reshape(-1,2);d=descriptor_pcm(pcm,analysis_sr);d.update(decoded_duration_s=len(pcm)/analysis_sr,native_sample_rate=int(stream['sample_rate']),native_channels=int(stream['channels']),codec=stream['codec_name'],loudness=_loudness(path))
     d['dependency_versions']={'numpy':np.__version__,'scipy':__import__('scipy').__version__,'ffmpeg':subprocess.check_output(['ffmpeg','-version'],text=True).splitlines()[0]}
+    _require_finite_evidence(d)
     return d
+
 
 def compare_planning(observed,expected):
     checks={}
-    def ck(name,a,b,tol):checks[name]={'observed':a,'expected':b,'delta':a-b,'tolerance':tol,'pass':abs(a-b)<=tol}
+    def ck(name,a,b,tol):
+        if a is None or b is None:
+            checks[name]={'observed':a,'expected':b,'delta':None,'tolerance':tol,'pass':False,'status':'unavailable'}
+            return
+        checks[name]={'observed':a,'expected':b,'delta':a-b,'tolerance':tol,'pass':abs(a-b)<=tol,'status':'compared'}
     ck('duration_s',observed['decoded_duration_s'],expected['decoded_24k_duration_s'],.001)
     ck('sample_peak',observed['sample_peak'],expected['sample_peak_24k'],.005)
     ck('integrated_lufs',observed['loudness']['integrated_lufs'],expected['integrated_lufs'],.2)
     ck('true_peak_dbtp',observed['loudness']['true_peak_dbtp'],expected['true_peak_dbtp'],.2)
     for key,tol in [('power_centroid_hz',2.),('power_flatness',.005),('crest_db',.15)]:ck(key,observed['energetic_medians'][key],expected['energetic_medians'][key],tol)
-    return {'checks':checks,'pass':all(v['pass'] for v in checks.values()),'warning':'descriptor tolerance covers dependency-version numerical differences; exact file identity remains the hard source gate'}
+    if 'stereo_correlation' in expected:
+        ck('stereo_correlation',observed.get('stereo_correlation'),expected['stereo_correlation'],.005)
+        if observed.get('stereo_correlation') is None:
+            checks['stereo_correlation']['evidence']=observed.get('stereo_correlation_evidence')
+    result={'checks':checks,'pass':all(v['pass'] for v in checks.values()),'warning':'descriptor tolerance covers dependency-version numerical differences; exact file identity remains the hard source gate'}
+    _require_finite_evidence(result)
+    return result
