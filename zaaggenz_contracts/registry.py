@@ -100,3 +100,14 @@ def node_definition(type_id):
     if found is None:
         raise ContractError('unregistered DSP type/version: ' + str(type_id))
     return deepcopy(found)
+
+
+def automation_parameter_definition(type_id, parameter):
+    """Return the registry entry for an explicitly automatable numeric parameter."""
+    definition = node_definition(type_id)
+    spec = definition['parameters'].get(parameter)
+    if spec is None:
+        raise ContractError(f'{type_id}.{parameter} is not a registered DSP parameter')
+    if spec.get('type') != 'number' or spec.get('x-automatable') is not True:
+        raise ContractError(f'{type_id}.{parameter} is not automatable')
+    return spec

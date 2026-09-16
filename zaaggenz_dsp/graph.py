@@ -2,7 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
 from zaaggenz_contracts import validate, ContractError
-from zaaggenz_contracts.registry import node_definition
+from zaaggenz_contracts.registry import node_definition, automation_parameter_definition
 from .multiband import multiband_gain, BandError
 
 class GraphError(ValueError):pass
@@ -43,8 +43,8 @@ def _toposort(nodes,source_id,output_id):
 def _curve(node,param,n,base):
     lane=next((a for a in node['automation'] if a['parameter']==param),None)
     if lane is None:return float(base)
-    spec=node_definition(node['type_id'])['parameters'][param]
-    if not spec.get('x-automatable',False):raise GraphError(f'{node["type_id"]}.{param} is not automatable')
+    try:spec=automation_parameter_definition(node['type_id'],param)
+    except ContractError as e:raise GraphError(str(e)) from e
     points=lane['points'];samples=np.arange(n,dtype=np.float64);xp=[p['sample'] for p in points];yp=[p['value'] for p in points]
     if lane['interpolation']=='linear':
         if xp[0]>0:xp=[0,*xp];yp=[base,*yp]
@@ -69,7 +69,6 @@ def _execute_node(node,x,sr):
     if t=='core.hard_clip.v1':
         threshold=_curve(node,'threshold',n,p['threshold']);mix=_curve(node,'mix',n,p['mix']);th=_broadcast(threshold,x);wet=np.clip(x,-th,th);m=_broadcast(mix,x);return (1-m)*x+m*wet
     if t in ('core.tanh_aa.v1','core.hard_clip_aa.v1'):
-        if node['automation']:raise GraphError('antialiased nonlinear automation is not registered in v1')
         try:
             from .antialias import oversampled_shaper,AntialiasError
             if t=='core.tanh_aa.v1':
@@ -77,12 +76,10 @@ def _execute_node(node,x,sr):
             return oversampled_shaper(x,kind='hard_clip',factor=p['oversample'],threshold=p['threshold'],mix=p['mix'])
         except AntialiasError as e:raise GraphError(str(e)) from e
     if t=='core.multiband_gain.v1':
-        if node['automation']:raise GraphError('multiband gain automation is not registered in v1')
         cross=(p['low_xover_hz'],p['mid_xover_hz'],p['high_xover_hz']);g=(p['sub_gain_db'],p['lowmid_gain_db'],p['highmid_gain_db'],p['air_gain_db'])
         try:return np.asarray(multiband_gain(x,sr,cross,g,p['confine_delta']),dtype=np.float64)
         except BandError as e:raise GraphError(str(e)) from e
     if t=='legacy.sculpt.v1':
-        if node['automation']:raise GraphError('legacy SCULPT automation is not registered in v1')
         try:
             from uptempo_harmony.multiband import SpectralSculptParams, process_spectral_sculpt
             y=process_spectral_sculpt((x[:,0] if x.shape[1]==1 else x).astype(np.float32),sr,SpectralSculptParams(**p))
