@@ -26,6 +26,7 @@ class ChordnessEngineTests(unittest.TestCase):
         result=apply_chordness(analysis,ChordnessRequest((CombTemplate('a',(440.,)),),mode='off'))
         self.assertTrue(np.array_equal(result.audio,x));self.assertTrue(result.diagnostics['identity_path'])
         self.assertEqual(result.diagnostics['changed_frames'],0);self.assertEqual(result.selected_template_ids,())
+        self.assertEqual(result.diagnostics['selected_union_size'],0);self.assertEqual(result.diagnostics['selected_union_limit'],128)
 
     def test_reweight_only_changes_amplitudes_not_frequency_or_phase(self):
         analysis=analyse_components(tone(445.),SR);template=CombTemplate('a',(440.,))
@@ -82,6 +83,7 @@ class ChordnessEngineTests(unittest.TestCase):
         self.assertEqual(payload['request']['templates'][0]['id'],'a');self.assertTrue(payload['frames'])
         self.assertIn('target_comb_fit',payload['descriptor_before']['target']);self.assertIn('roughness',payload['objective_after']['terms'])
         self.assertIn('configured engineering objective',payload['objective_after']['interpretation'])
+        self.assertEqual(payload['diagnostics']['selected_union_size'],1);self.assertEqual(payload['diagnostics']['selected_union_limit'],128)
 
     def test_bounded_render_job_completes(self):
         analysis=analyse_components(tone(445.,.6),SR);template=CombTemplate('a',(440.,));scheduler=JobScheduler()
