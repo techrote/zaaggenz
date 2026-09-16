@@ -51,8 +51,9 @@ class AutomationCapabilityContractTests(unittest.TestCase):
     def test_registry_is_single_capability_source_for_every_parameter(self):
         for type_id, definition in node_catalogue().items():
             for parameter, spec in definition['parameters'].items():
-                contract = node(type_id, [lane(parameter, spec['unit'], spec['default'])])
                 supported = spec.get('type') == 'number' and spec.get('x-automatable') is True
+                lane_value = spec['default'] if supported else 0.0
+                contract = node(type_id, [lane(parameter, spec['unit'], lane_value)])
                 with self.subTest(type_id=type_id, parameter=parameter, supported=supported):
                     if supported:
                         self.assertEqual(
