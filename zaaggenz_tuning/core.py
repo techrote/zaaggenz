@@ -4,6 +4,7 @@ import math
 from copy import deepcopy
 from zaaggenz_contracts import validate
 from zaaggenz_contracts.legacy import envelope
+from zaaggenz_contracts.tuning_rules import formal_period_degrees_description, valid_formal_period_degrees
 
 class TuningError(ValueError): pass
 
@@ -32,8 +33,8 @@ class KeyboardMap:
         if not (0<=self.first_key<=self.last_key<=127 and 0<=self.middle_key<=127 and 0<=self.reference_key<=127):
             raise TuningError('keyboard key range must be MIDI 0..127')
         if not 1<=len(self.entries)<=128: raise TuningError('keyboard map requires 1..128 entries')
-        if not -4096<=self.formal_period_degrees<=4096 or self.formal_period_degrees==0:
-            raise TuningError('formal period degrees must be nonzero and bounded')
+        if not valid_formal_period_degrees(self.formal_period_degrees):
+            raise TuningError('formal period degrees must be '+formal_period_degrees_description())
         for x in self.entries:
             if x is not None and (type(x)is not int or not -4096<=x<=4096):raise TuningError('invalid keyboard degree')
     def degree(self,key):
