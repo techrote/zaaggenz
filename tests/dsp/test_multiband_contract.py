@@ -79,7 +79,10 @@ class SharedCrossoverRuleTests(unittest.TestCase):
                     validate_multiband_crossovers((20, 100, high), sample_rate_hz)
 
     def test_render_recipe_binds_rule_to_actual_recipe_rate(self):
-        for sample_rate_hz in (8000, 12000, 48000, 192000):
+        # The authoritative helper covers the contract-wide 192 kHz RATE ceiling above.
+        # The current legacy source-backed RenderRecipe is independently capped at 96 kHz,
+        # so recipe integration is exercised across its actual executable rate domain.
+        for sample_rate_hz in (8000, 12000, 48000, 96000):
             high = min(3600.0, math.nextafter(0.49 * sample_rate_hz, -math.inf))
             with self.subTest(sample_rate_hz=sample_rate_hz):
                 validate(recipe_with_multiband(sample_rate_hz, (105, 520, high)), 'RenderRecipe')
