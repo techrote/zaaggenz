@@ -4,7 +4,7 @@ import math
 from copy import deepcopy
 from zaaggenz_contracts import validate
 from zaaggenz_contracts.legacy import envelope
-from zaaggenz_contracts.tuning_rules import formal_period_degrees_description, valid_formal_period_degrees
+from zaaggenz_contracts.tuning_rules import formal_period_degrees_description, formal_period_degrees_value, valid_formal_period_degrees
 
 class TuningError(ValueError): pass
 
@@ -41,7 +41,7 @@ class KeyboardMap:
         if type(key)is not int or not 0<=key<=127:raise TuningError('keyboard key must be MIDI integer 0..127')
         if not self.first_key<=key<=self.last_key:return None
         q,r=divmod(key-self.middle_key,len(self.entries));entry=self.entries[r]
-        return None if entry is None else q*self.formal_period_degrees+entry
+        return None if entry is None else q*formal_period_degrees_value(self.formal_period_degrees)+entry
 
 @dataclass(frozen=True)
 class Tuning:
