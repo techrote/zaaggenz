@@ -5,6 +5,7 @@ from referencing import Registry
 from .model import ContractError, check_json, fraction, seed_value
 from .schema import schema, KINDS, VERSION
 from .registry import node_definition, automation_parameter_definition
+from .multiband import MULTIBAND_TYPE_ID, validate_multiband_crossovers
 from .audio_schema import FEATURE_UNITS
 
 
@@ -148,10 +149,21 @@ def _phrase(d):
         previous = at + duration
 
 
+def _multiband_node(d, sample_rate_hz=None):
+    if d['type_id'] != MULTIBAND_TYPE_ID:
+        return
+    p = d['params']
+    validate_multiband_crossovers(
+        (p['low_xover_hz'], p['mid_xover_hz'], p['high_xover_hz']),
+        sample_rate_hz,
+    )
+
+
 def _node(d):
     definition = node_definition(d['type_id'])
     properties = definition['parameters']
     shape(d['params'], dict(type='object', properties=properties, required=list(properties), additionalProperties=False))
+    _multiband_node(d)
     require(d['state_policy'] == definition['state'] and d['bypass'] == definition['bypass'], 'node state/bypass metadata mismatch')
     require(d['latency_samples'] == definition['latency'] and d['lookahead_samples'] == definition['lookahead'], 'node latency metadata mismatch')
     require(definition['inputs'][0] <= len(d['inputs']) <= definition['inputs'][1], 'node input arity mismatch')
@@ -185,6 +197,7 @@ def _recipe(d):
     for node in nodes.values():
         require(set(node['inputs']) <= ids, 'graph has dangling input')
         require(node['channels'] == d['channels'], 'implicit channel conversion prohibited')
+        _multiband_node(node, d['time_map']['sample_rate_hz'])
     visiting, visited = set(), set()
 
     def visit(key):
