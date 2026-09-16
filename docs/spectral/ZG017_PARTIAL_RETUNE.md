@@ -10,6 +10,19 @@ Each `LatticeVoice` contains an explicit tuning degree and an ordered set of pos
 
 The base lattice begins at sample 0. Optional `LatticeSegment` entries replace the active voices at strictly increasing positive sample indices. This provides a deterministic target-change fixture without adding timing semantics to the frozen `TuningSpec`.
 
+### Target-schedule resource contract
+
+ZG-017 method `1.0.0` now fail-closes pathological request cardinality before tuning lookup or target-lattice construction. This is a bounded-resource correction, not a change to the sound or target semantics of previously practical requests.
+
+- A request may contain at most **64 explicit `LatticeSegment` changes**, in addition to the base segment at sample 0, for at most 65 target schedule entries.
+- Across the base voices plus every explicit segment, the complete declared pre-filter lattice may contain at most **32,768 candidate teeth**. Candidate count is the sum of every voice's declared partial-ratio count before `min_hz`/`max_hz` filtering. Out-of-band teeth therefore cannot be used to bypass admission.
+- The pre-filter count is also a strict upper bound on retained `TargetTooth` records and the target-lattice part of inspection serialization: band filtering can only remove teeth. Voice count, ratio count and label lengths retain their existing individual bounds.
+- Schedule construction performs cooperative cancellation checks before segments and at bounded intervals within a dense lattice. Excess requests fail during `SpectralRetuneRequest` construction rather than after component analysis or proportional target allocation has begun.
+
+The asynchronous admission estimate reserves the existing component/reconstruction working set plus the complete declared target budget. Target reservation is conservatively `512 bytes × candidate_teeth + 1024 bytes × target_segments`; it is an admission model, not an operating-system RSS claim. `submit_retune_job()` always includes this request-specific reservation before handing work to the shared scheduler.
+
+The limits permit the former normal single/few-segment fixtures unchanged while giving the request, schedule and inspection target material a finite reviewable ceiling. Requests that exceeded these limits were never required musical evidence and now receive an explicit resource error rather than silent segment/tooth dropping. Target IDs, strict segment ordering, frequency filtering and all accepted in-bound request serialization remain unchanged.
+
 ## Transform eligibility and assignment
 
 ZG-013 retains ownership of confidence and continuity. A frame is transform-eligible only when its component row is already marked `transform`, it meets the request confidence threshold, and—by default—the track remains `continuous`. Ambiguous/reanchored material, transient-owned frames and other ZG-013 preserves remain unchanged rather than receiving guessed targets.
@@ -34,11 +47,11 @@ The transformed `PartialTrackBundle` remains schema-valid. The result exposes so
 
 ## Bounded job adapter
 
-`submit_retune_job()` submits the transform as a normal bounded `JobClass.RENDER` job. The executor checks cooperative cancellation during planning and before publication of the typed result, and reports monotonic progress through the existing scheduler.
+`submit_retune_job()` submits the transform as a normal bounded `JobClass.RENDER` job. The executor checks cooperative cancellation during target-schedule construction and planning and before publication of the typed result, and reports monotonic progress through the existing scheduler. Request-specific target-lattice reservation is included in the scheduler's authoritative memory estimate.
 
 ## Acceptance evidence
 
-`tests/spectral/test_spectral_retune.py` covers exact bypass, harmonic/inharmonic target construction, isolated retuning, scheduled target changes and slew limits, crossing-track abstention, unchanged transient/residual arrays, stereo antiphase preservation, request validation and bounded job execution.
+`tests/spectral/test_spectral_retune.py` covers exact bypass, harmonic/inharmonic target construction, isolated retuning, scheduled target changes and slew limits, crossing-track abstention, unchanged transient/residual arrays, stereo antiphase preservation, request validation and bounded job execution. Corrective coverage also exercises the exact segment and candidate-tooth ceilings, one-over rejection, dense 32-voice × 128-partial lattices, out-of-band filtering, bounded inspection target material, cooperative cancellation and request-aware job admission.
 
 `tools/spectral_retune_report.py` generates deterministic 48 kHz engineering evidence on CI. It records exact-bypass PCM identity, realised-target error, transformed-output target/source-bin power, inter-channel phase error, transient/residual identities and target-change slew excess. These are synthetic engineering controls, not listening results or claims about musical preference.
 

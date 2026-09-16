@@ -1,7 +1,7 @@
 from __future__ import annotations
 import math
 from zaaggenz_tuning import tuning_from_spec
-from .model import SpectralRetuneError,SpectralRetuneRequest,TargetTooth
+from .model import SpectralRetuneError,SpectralRetuneRequest,TargetTooth,retune_request_work_counts
 
 def cents_distance(a,b):
     if a<=0 or b<=0:raise SpectralRetuneError('positive frequencies required')
@@ -9,26 +9,34 @@ def cents_distance(a,b):
 
 def cents_ratio(cents):return 2.**(float(cents)/1200.)
 
-def _build(request,voices,segment_index):
-    tuning=tuning_from_spec(request.tuning_spec);teeth=[]
+def _build(request,voices,segment_index,checkpoint=None):
+    tuning=tuning_from_spec(request.tuning_spec);teeth=[];visited=0
     for vi,voice in enumerate(voices):
         root=tuning.frequency(voice.degree)
         for pi,ratio in enumerate(voice.partial_ratios):
+            if checkpoint is not None and visited%256==0:checkpoint()
+            visited+=1
             hz=root*ratio
             if request.min_hz<=hz<=request.max_hz:
                 teeth.append(TargetTooth(f's{segment_index}:v{vi}:d{voice.degree}:p{pi}',vi,voice.degree,pi,ratio,hz,voice.label,segment_index))
+    if checkpoint is not None:checkpoint()
     teeth.sort(key=lambda x:(x.frequency_hz,x.voice_index,x.partial_index))
     if not teeth:raise SpectralRetuneError('target lattice has no teeth in requested band')
     return tuple(teeth)
 
-def build_target_lattice(request):
+def build_target_lattice(request,checkpoint=None):
     if not isinstance(request,SpectralRetuneRequest):raise SpectralRetuneError('SpectralRetuneRequest required')
-    return _build(request,request.voices,0)
+    retune_request_work_counts(request)
+    return _build(request,request.voices,0,checkpoint)
 
-def build_target_schedule(request):
+def build_target_schedule(request,checkpoint=None):
     if not isinstance(request,SpectralRetuneRequest):raise SpectralRetuneError('SpectralRetuneRequest required')
-    schedule=[(0,0,_build(request,request.voices,0))]
-    for si,segment in enumerate(request.segments,1):schedule.append((segment.start_sample,si,_build(request,segment.voices,si)))
+    retune_request_work_counts(request)
+    if checkpoint is not None:checkpoint()
+    schedule=[(0,0,_build(request,request.voices,0,checkpoint))]
+    for si,segment in enumerate(request.segments,1):
+        if checkpoint is not None:checkpoint()
+        schedule.append((segment.start_sample,si,_build(request,segment.voices,si,checkpoint)))
     return tuple(schedule)
 
 def lattice_at(schedule,anchor_sample):

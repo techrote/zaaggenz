@@ -7,6 +7,16 @@ from zaaggenz_tuning import tuning_from_spec
 METHOD_ID='zg-partial-spectral-retune-v1'
 METHOD_VERSION='1.0.0'
 
+# Authoring/resource bounds for the retune target schedule.  A request may have
+# many musically useful target changes, but the complete pre-filter lattice is
+# bounded before tuning lookup or schedule construction.  The candidate bound
+# also bounds the maximum number of retained inspection teeth because in-band
+# filtering can only remove candidates.
+MAX_RETUNE_SEGMENTS=64
+MAX_RETUNE_CANDIDATE_TEETH=32768
+RETUNE_TARGET_TOOTH_RESERVATION_BYTES=512
+RETUNE_TARGET_SEGMENT_RESERVATION_BYTES=1024
+
 class SpectralRetuneError(ValueError):pass
 
 def _finite(v,name):
@@ -24,6 +34,19 @@ def _voices(values):
     if not 1<=len(out)<=32 or any(not isinstance(v,LatticeVoice) for v in out):
         raise SpectralRetuneError('1..32 LatticeVoice values required')
     return out
+
+def _candidate_count(voices):
+    return sum(len(v.partial_ratios) for v in voices)
+
+def _work_counts(voices,segments):
+    segment_count=len(segments)
+    if segment_count>MAX_RETUNE_SEGMENTS:
+        raise SpectralRetuneError(f'segments exceeds bounded maximum of {MAX_RETUNE_SEGMENTS}')
+    candidate_teeth=_candidate_count(voices)+sum(_candidate_count(segment.voices) for segment in segments)
+    if candidate_teeth>MAX_RETUNE_CANDIDATE_TEETH:
+        raise SpectralRetuneError(
+            f'target lattice candidate count {candidate_teeth} exceeds bounded maximum of {MAX_RETUNE_CANDIDATE_TEETH}')
+    return {'segments':segment_count,'target_segments':segment_count+1,'candidate_teeth':candidate_teeth}
 
 @dataclass(frozen=True)
 class LatticeVoice:
@@ -65,12 +88,14 @@ class SpectralRetuneRequest:
     preserve_ambiguous:bool=True
     def __post_init__(self):
         if not isinstance(self.tuning_spec,dict):raise SpectralRetuneError('TuningSpec mapping required')
-        try:tuning_from_spec(self.tuning_spec)
-        except Exception as exc:raise SpectralRetuneError('valid TuningSpec required') from exc
         voices=_voices(self.voices);segments=tuple(self.segments)
         if any(not isinstance(v,LatticeSegment) for v in segments):raise SpectralRetuneError('segments must contain LatticeSegment values')
         starts=[v.start_sample for v in segments]
         if starts!=sorted(starts) or len(starts)!=len(set(starts)):raise SpectralRetuneError('segment starts must be strictly increasing')
+        # Resource admission deliberately precedes tuning/lattice construction.
+        _work_counts(voices,segments)
+        try:tuning_from_spec(self.tuning_spec)
+        except Exception as exc:raise SpectralRetuneError('valid TuningSpec required') from exc
         amount=_finite(self.amount,'amount');confidence=_finite(self.min_confidence,'min_confidence')
         lo=_positive(self.min_hz,'min_hz');hi=_positive(self.max_hz,'max_hz')
         disp=_positive(self.max_displacement_cents,'max_displacement_cents')
@@ -93,6 +118,15 @@ class SpectralRetuneRequest:
                 'max_displacement_cents':self.max_displacement_cents,
                 'max_correction_slew_cents_per_second':self.max_correction_slew_cents_per_second,
                 'assignment_hysteresis_cents':self.assignment_hysteresis_cents,'preserve_ambiguous':self.preserve_ambiguous}
+
+def retune_request_work_counts(request):
+    if not isinstance(request,SpectralRetuneRequest):raise SpectralRetuneError('SpectralRetuneRequest required')
+    return _work_counts(request.voices,request.segments)
+
+def estimate_retune_target_bytes(request):
+    counts=retune_request_work_counts(request)
+    return (counts['candidate_teeth']*RETUNE_TARGET_TOOTH_RESERVATION_BYTES+
+            counts['target_segments']*RETUNE_TARGET_SEGMENT_RESERVATION_BYTES)
 
 @dataclass(frozen=True)
 class TargetTooth:

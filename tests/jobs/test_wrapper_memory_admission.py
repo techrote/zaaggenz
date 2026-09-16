@@ -67,7 +67,7 @@ class WrapperMemoryAdmissionTests(unittest.TestCase):
                 authoritative_memory_reservation(minimum,value)
 
     def test_retune_and_chordness_authoritative_floors_and_extra_reservation(self):
-        cases=((submit_retune_job,estimate_retune_memory_bytes(self.small),self.spectral),
+        cases=((submit_retune_job,estimate_retune_memory_bytes(self.small,self.spectral),self.spectral),
                (submit_chordness_job,estimate_chordness_memory_bytes(self.small),self.chordness))
         for submit,minimum,request in cases:
             with self.subTest(submit=submit.__name__):
@@ -91,10 +91,11 @@ class WrapperMemoryAdmissionTests(unittest.TestCase):
         def resident(analysis):
             return sum(np.asarray(x).nbytes for x in (analysis.source,analysis.sinusoidal,
                 analysis.transient,analysis.residual,analysis.transient_mask))
-        self.assertGreater(estimate_retune_memory_bytes(self.small),resident(self.small))
+        self.assertGreater(estimate_retune_memory_bytes(self.small,self.spectral),resident(self.small))
         self.assertGreater(estimate_chordness_memory_bytes(self.small),resident(self.small))
-        self.assertGreater(estimate_retune_memory_bytes(self.large),estimate_retune_memory_bytes(self.small))
+        self.assertGreater(estimate_retune_memory_bytes(self.large,self.spectral),estimate_retune_memory_bytes(self.small,self.spectral))
         self.assertGreater(estimate_chordness_memory_bytes(self.large),estimate_chordness_memory_bytes(self.small))
+        self.assertGreater(estimate_retune_memory_bytes(self.small,self.spectral),estimate_retune_memory_bytes(self.small))
 
     def test_placement_single_and_family_cannot_understate(self):
         source=np.zeros((512,2),dtype=np.float32);a=NonlinearStageSpec();b=NonlinearStageSpec('hard_clip')
@@ -122,7 +123,7 @@ class WrapperMemoryAdmissionTests(unittest.TestCase):
             self.assertEqual(len(scheduler.calls),before)
 
     def test_forged_spectral_estimates_cannot_bypass_scheduler_admission(self):
-        retune=estimate_retune_memory_bytes(self.small);chord=estimate_chordness_memory_bytes(self.small)
+        retune=estimate_retune_memory_bytes(self.small,self.spectral);chord=estimate_chordness_memory_bytes(self.small)
         budget=min(retune,chord)-1
         limits=SchedulerLimits(interactive_workers=1,background_workers=1,max_queued_jobs=8,
             max_background_queued_jobs=8,max_history_jobs=32,max_memory_bytes=budget,
@@ -140,7 +141,7 @@ class WrapperMemoryAdmissionTests(unittest.TestCase):
         finally:scheduler.shutdown(cancel=True)
 
     def test_concurrent_retune_and_chordness_underdeclarations_never_reach_shared_scheduler(self):
-        retune=estimate_retune_memory_bytes(self.small);chord=estimate_chordness_memory_bytes(self.small)
+        retune=estimate_retune_memory_bytes(self.small,self.spectral);chord=estimate_chordness_memory_bytes(self.small)
         budget=min(retune,chord)-1
         limits=SchedulerLimits(interactive_workers=1,background_workers=1,max_queued_jobs=16,
             max_background_queued_jobs=16,max_history_jobs=32,max_memory_bytes=budget,
