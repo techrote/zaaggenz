@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from fractions import Fraction
 import math,re
+from zaaggenz_contracts.tuning_rules import formal_period_degrees_description, valid_formal_period_degrees
 from .core import Tuning,KeyboardMap,TuningError,cents_to_ratio,ratio_to_cents
 
 MAX_TEXT=1_000_000
@@ -28,13 +29,16 @@ class ScalaKBM:
         if not 0<=self.map_size<=128:raise TuningError('KBM map size out of range')
         if not 0<=self.first_key<=self.last_key<=127 or not 0<=self.middle_key<=127 or not 0<=self.reference_key<=127:raise TuningError('KBM key out of MIDI range')
         if not math.isfinite(self.reference_hz) or self.reference_hz<=0:raise TuningError('KBM reference Hz invalid')
+        if not valid_formal_period_degrees(self.formal_period_degrees):
+            raise TuningError('KBM formal period degrees must be '+formal_period_degrees_description())
         if self.map_size==0 and self.entries:raise TuningError('zero-size KBM cannot contain entries')
+        if self.map_size==0 and not 1<=self.formal_period_degrees<=128:
+            raise TuningError('zero-size KBM needs formal period 1..128 for explicit contract mapping')
         if self.map_size and len(self.entries)!=self.map_size:raise TuningError('KBM entry count mismatch')
         for x in self.entries:
             if x is not None and (type(x)is not int or not -4096<=x<=4096):raise TuningError('KBM map degree invalid')
     def expanded_entries(self):
         if self.map_size:return self.entries
-        if not 1<=self.formal_period_degrees<=128:raise TuningError('zero-size KBM needs formal period 1..128 for explicit contract mapping')
         return tuple(range(self.formal_period_degrees))
     def degree(self,key):
         entries=self.expanded_entries();m=len(entries)
