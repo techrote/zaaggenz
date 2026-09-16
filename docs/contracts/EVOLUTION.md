@@ -21,6 +21,14 @@ The ZG-016 automation validation repair is classified **patch-compatible** under
 
 Corrected v1 semantic validation rejects those documents at admission. Existing valid serialized nodes and their identities are unchanged. No migration or silent lane removal is performed: a formerly shape-valid but non-executable node receives an explicit `… is not automatable` error and must be corrected by its author. The resulting implementation-identity transition is recorded explicitly for ZG-024a and does not waive any frozen calibration, holdout, provenance, or numerical comparison.
 
+### ZG-002 formal-period correction
+
+The `TuningSpec.keyboard.formal_period_degrees` correction is also classified **patch-compatible** under contract `1.0.0`. Frozen v1 already had an executable `KeyboardMap` consumer whose wrapping relation rejected zero; a zero formal period therefore had no executable v1 meaning even though the original JSON Schema interval `[-256, 256]` accidentally admitted it. Rejecting zero at shared admission makes the contract tell the truth earlier rather than reinterpreting a previously executable document.
+
+The authoritative v1 domain is now `[-256, -1]` or `[1, 256]`. Existing positive values keep their meaning. Negative values also keep their existing arithmetic meaning and are covered by explicit end-to-end fixtures: each advance of one explicit keyboard-map period subtracts `abs(formal_period_degrees)` tuning degrees. The positive tuning `period_ratio` itself is unchanged. Scala/KBM explicit maps use the same domain; zero-size KBM expansion retains its narrower representability rule of positive `[1, 128]` because it must synthesize an explicit entry list.
+
+No migration or contract-version bump is required for valid v1 documents. A serialized zero formal period is now rejected explicitly and must be corrected by its author; it is never clamped or replaced. Draft 2020-12 `integer` semantics still admit mathematically integral JSON numbers such as `12.0`, and the executable consumer evaluates those by the same exact integer value so schema-valid representation does not create a hidden consumer-only failure. No default tuning, automatic retuning, source audio, protected-source processing or audible baseline semantics are changed by this repair.
+
 ## Legacy v1.2.1
 
 The legacy adapter is a compatibility bridge, not the new musical renderer. It must round-trip every recovered preset/default without changing audio. It rejects recipes containing new musical or DSP intent rather than dropping that intent when calling the old engine.
