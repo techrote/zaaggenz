@@ -103,7 +103,7 @@ class ConsumerConsistencyTests(unittest.TestCase):
     def test_contract_graph_and_direct_dsp_report_same_rate_failure(self):
         sample_rate_hz = 8000
         crossovers = (105, 520, 0.49 * sample_rate_hz)
-        expected = 'high_xover_hz must be < 0.49 * sample_rate_hz'
+        expected = r'high_xover_hz must be < 0\.49 \* sample_rate_hz'
         node = multiband_node(crossovers)
         validate(node, 'DSPNodeSpec')  # ordering is knowable without a bound sample rate
 
