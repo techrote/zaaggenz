@@ -6,6 +6,8 @@ Version `1.0.0` defines eleven contracts: `AudioAssetRef`, `TimeMap`, `TuningSpe
 
 Beats and tempo positions use reduced rational strings. Event scheduling resolves absolute musical positions to integer samples with nearest/ties-to-even rounding. Tuning supports non-octave periods, sparse keyboard maps and negative degrees. Analysis distinguishes target, estimate and measurement, with explicit validity, confidence and sample support. Partial tracks declare phase convention, continuity, channel coefficients and residual/transient ownership.
 
+For every FeatureBundle/PartialTrackBundle observation on a non-empty asset, `anchor_sample` names an actual source frame (`0 <= anchor_sample < frame_count`). Explicit `zero`/`reflect` padding may place support edges outside the source but does not make the anchor synthetic. Unpadded support remains wholly source-bounded. A zero-frame FeatureBundle consequently has no representable observation anchor and must contain no observations; descriptor-specific formats may retain padded empty-source evidence only if their compatibility projection omits it rather than fabricating an anchor.
+
 `RenderRecipe` stores source intent, time/tuning/phrase state, a bounded typed DSP DAG, phase/reset/tail semantics, deterministic named random streams and one final output policy. The initial DSP registry is data-only and does not execute arbitrary recipe code.
 
 The legacy adapter is strict: only exact projections of recovered v1.2.1 behaviour can be thawed into the legacy engine. New tuning, tempo-map, phrase or DSP intent is rejected rather than silently ignored.

@@ -15,6 +15,10 @@ ZG-002 `FeatureBundle` version `1.0.0` is frozen and its feature enum is not wid
 - half-open sample support and padding policy;
 - bounded method details/assumptions.
 
+For every non-empty source, `anchor_sample` is always a real source frame: `0 <= anchor_sample < frame_count`, including when `padding` is `zero` or `reflect`. Padding may extend `start_sample` below zero or `end_sample` beyond `frame_count`; it does not move the anchor outside the source. With `padding: none`, the entire half-open support must remain inside the source. This is deliberately the same anchor rule enforced by frozen `FeatureBundle` v1, so a DescriptorBundle admitted for a non-empty asset cannot later fail compatibility projection merely because of padded support geometry.
+
+A zero-frame source has no in-source anchor. DescriptorBundle `1.0.0` therefore retains its existing explicit padded placeholder support for empty-source measurements/abstentions, while `feature_projection()` emits no FeatureBundle observations for that source. It does not invent an anchor to satisfy the frozen contract. This is a validator correction within the existing descriptor format: unaffected valid bundles keep identical serialization and hashes, while previously admitted padded observations with an out-of-source anchor are rejected at DescriptorBundle construction.
+
 `feature_projection()` deliberately projects only the four measurements already representable in frozen FeatureBundle v1: RMS, f0 candidate, relative roughness and balanced target-comb fit. Unknown/abstained estimates are converted to the frozen v1 null-value/null-confidence convention. Rich metrics stay in the descriptor bundle.
 
 ## Audio-domain measurements
