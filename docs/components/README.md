@@ -16,6 +16,10 @@ Each exported phase is the cosine phase at the frame's declared anchor sample. S
 
 A conservative transient mask is derived from short-resolution spectral flux plus a robust sample-derivative sentinel. Sinusoidal reconstruction is removed inside the protected transient region. The transient asset owns the original audio under that mask; the residual is defined as source minus protected sinusoidal and transient ownership. Their float32 PCM identities are embedded in the bundle.
 
+Transient detection uses the explicit `short-flux-plus-derivative-fail-closed-v1` policy. A successful multiresolution analysis with eligible fully-supported short-resolution spectral-flux frames runs the normal short-flux-plus-derivative detector. The one designed fallback is **analysis abstention, not an exception path**: if multiresolution analysis succeeds but produces no eligible short-flux evidence, the derivative sentinel may still identify obvious sample-local attacks, while every component frame is forced to `preserve`. Missing primary evidence therefore cannot become transform permission.
+
+There is deliberately no exception-based detector fallback. `ValueError`, `RuntimeError`, dependency failures, malformed analysis results, allocation/resource failures, cancellation and other unexpected faults retain their native exception class/traceback and abort component analysis. They are not converted into derivative-only success. Runtime detector provenance is present both in `ComponentAnalysis.diagnostics['transient_detector']` and in the bundle method configuration: policy, detector mode, primary status, fallback class/reason and resulting transform eligibility. Empty input is reported separately as `not-run-empty-input`, not as a detector failure.
+
 This gives two deliberately separate checks:
 
 1. **Exact bypass:** `exact_bypass()` is a float32 source copy and must be sample-identical.
@@ -43,4 +47,4 @@ python -m unittest discover -s tests/components -v
 python tools/component_fixture_report.py --out component-fixtures.json
 ```
 
-Fixtures cover stable tones, chirps, amplitude modulation, crossings, white noise, impulses, empty/short signals and stereo antiphase. Aggregate identity regressions additionally cover forged frame/channel/sample-rate/content identity, transient/residual provenance, non-finite arrays, concrete-source allocation bounds, mono canonicalization, zero-track inputs, and large legitimate zero-track inputs. The report is deterministic synthetic evidence, not a listening result.
+Fixtures cover stable tones, chirps, amplitude modulation, crossings, white noise, impulses, empty/short signals and stereo antiphase. Transient-policy regressions additionally inject programmer, dependency, malformed-result, resource and cancellation faults; exercise the declared no-flux-evidence abstention path; prove that fallback is preserve-only; and verify that detector provenance is exported. Aggregate identity regressions additionally cover forged frame/channel/sample-rate/content identity, transient/residual provenance, non-finite arrays, concrete-source allocation bounds, mono canonicalization, zero-track inputs, and large legitimate zero-track inputs. The report is deterministic synthetic evidence, not a listening result.
