@@ -1,6 +1,9 @@
 """Phase-coherent retuning, multi-comb shaping, placement and band-selective DSP experiments."""
 from .model import (METHOD_ID,METHOD_VERSION,SpectralRetuneError,LatticeVoice,LatticeSegment,
-                    SpectralRetuneRequest,TargetTooth,FrameDecision)
+                    SpectralRetuneRequest,TargetTooth,FrameDecision,MAX_RETUNE_SEGMENTS,
+                    MAX_RETUNE_CANDIDATE_TEETH,RETUNE_TARGET_TOOTH_RESERVATION_BYTES,
+                    RETUNE_TARGET_SEGMENT_RESERVATION_BYTES,retune_request_work_counts,
+                    estimate_retune_target_bytes)
 from .lattice import (cents_distance,cents_ratio,build_target_lattice,build_target_schedule,
                       lattice_at,nearest_tooth)
 from .engine import SpectralRetunePlan,SpectralRetuneResult,retune_components,inspection_payload
@@ -22,8 +25,10 @@ from .band_selective import (BandSelectiveError,BandSlotSpec,BandSelectiveReques
                              process_band_selective)
 
 __all__=['METHOD_ID','METHOD_VERSION','SpectralRetuneError','LatticeVoice','LatticeSegment',
-         'SpectralRetuneRequest','TargetTooth','FrameDecision','cents_distance','cents_ratio',
-         'build_target_lattice','build_target_schedule','lattice_at','nearest_tooth',
+         'SpectralRetuneRequest','TargetTooth','FrameDecision','MAX_RETUNE_SEGMENTS',
+         'MAX_RETUNE_CANDIDATE_TEETH','RETUNE_TARGET_TOOTH_RESERVATION_BYTES',
+         'RETUNE_TARGET_SEGMENT_RESERVATION_BYTES','retune_request_work_counts','estimate_retune_target_bytes',
+         'cents_distance','cents_ratio','build_target_lattice','build_target_schedule','lattice_at','nearest_tooth',
          'SpectralRetunePlan','SpectralRetuneResult','retune_components','inspection_payload',
          'estimate_retune_memory_bytes','make_retune_executor','submit_retune_job',
          'ChordnessError','CombTemplate','ChordnessCoefficients','ChordnessRequest','harmonic_comb',
