@@ -4,7 +4,7 @@ from jsonschema import Draft202012Validator
 from referencing import Registry
 from .model import ContractError, check_json, fraction, seed_value
 from .schema import schema, KINDS, VERSION
-from .registry import node_definition
+from .registry import node_definition, automation_parameter_definition
 from .audio_schema import FEATURE_UNITS
 
 
@@ -158,8 +158,7 @@ def _node(d):
     require(d['phase_policy'] == 'source-derived', 'these stateless nodes preserve source phase')
     unique(d['automation'], 'parameter')
     for lane in d['automation']:
-        spec = properties.get(lane['parameter'])
-        require(spec is not None and spec.get('type') == 'number', 'unregistered/non-automatable parameter')
+        spec = automation_parameter_definition(d['type_id'], lane['parameter'])
         require(lane['unit'] == spec['unit'], 'automation unit mismatch')
         increasing([p['sample'] for p in lane['points']], 'automation samples')
         for point in lane['points']:
