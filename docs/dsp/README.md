@@ -8,6 +8,8 @@ ZG-016 makes stage order explicit without rewriting the known-good v1.2.1 source
 
 Every node declares channels, state/reset, phase, latency/lookahead, bounds and automation. Gain/tanh/hard-clip parameters can use deterministic sample-domain step or linear automation. Linear interpolation is the smoothing mechanism; a requested `step` remains deliberately discontinuous rather than receiving hidden smoothing. Static multiband/legacy-SCULPT parameters reject automation until a versioned implementation exists.
 
+Automation capability is authoritative in the node registry through `x-automatable`. Shared `DSPNodeSpec` semantic validation and graph execution use the same registry capability lookup: an automation lane is accepted only for a registered numeric parameter whose `x-automatable` value is exactly `true`. Boolean, enum/integer, crossover, antialiased nonlinear and legacy-SCULPT parameters therefore fail contract validation before rendering rather than becoming contract-valid states that fail later in the executor. Unsupported lanes are rejected; they are never stripped, clamped or silently made static.
+
 Node outputs are labelled taps when requested, so transforms can be placed before/after/between explicit nonlinear graph nodes and inspected independently. The authenticated legacy source remains opaque internally: its exposed tap is `legacy-source-post-internal-nonlinear`. ZG-016 does **not** fabricate unsupported pre-waveshaper access inside the old source.
 
 ## Final output policy
