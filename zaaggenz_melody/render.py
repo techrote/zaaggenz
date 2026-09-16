@@ -137,6 +137,20 @@ def _roll_density(curve,spec):
     if rounded>spec.max_roll_density:raise MelodyError('roll density exceeds declared render bound')
     return int(rounded)
 
+def _requested_roll_retriggers(duration,density):
+    if density<=1:return 0
+    return max(0,math.ceil(duration*density)-1)
+
+def _preflight_roll_retriggers(phrase,gestures,spec):
+    """Reject roll requests that cannot be rendered in full before source/DSP work begins."""
+    for ev in phrase['events']:
+        if ev['pitch'] is None:continue
+        gesture=gestures.get(ev['gesture_id']) if ev['gesture_id'] is not None else None
+        density=_roll_density(_curve(gesture,'density_per_beat'),spec)
+        requested=_requested_roll_retriggers(fraction(ev['duration_beats']),density)
+        if requested>spec.max_roll_retriggers:
+            raise MelodyError(f"roll {ev['id']}: requested {requested} retriggers exceeds max_roll_retriggers={spec.max_roll_retriggers}; split the event or lower density")
+
 def _apply_preserved_topology(pre,d):
     """Apply topology that the base-preserving compiler has kept on SYNTHLINE."""
     if d['sculpt'] is not None:
@@ -155,7 +169,7 @@ def _apply_preserved_topology(pre,d):
 def render_phrase(recipe,spec=MelodicRenderSpec(),*,job_context=None):
     if not isinstance(spec,MelodicRenderSpec):raise MelodyError('MelodicRenderSpec required')
     c=_contract(recipe);d=_validate_consumer(c,spec);phrase=d['phrase'];tm=d['time_map'];tuning=tuning_from_spec(d['tuning']);base_params=legacy_object('synth',d['source']['params']);gestures=_gesture_map(phrase)
-    _checkpoint(job_context,.03)
+    _checkpoint(job_context,.03);_preflight_roll_retriggers(phrase,gestures,spec)
     pitched=any(ev['pitch'] is not None for ev in phrase['events'])
     base_source=np.zeros(0,dtype=np.float32)
     if pitched and spec.mode is NoteMode.SOURCE_DERIVED:
@@ -176,10 +190,9 @@ def render_phrase(recipe,spec=MelodicRenderSpec(),*,job_context=None):
         natural=len(base_source) if spec.mode is NoteMode.SOURCE_DERIVED else len(_target_source(base_params,target,target_cache,job_context))
         cents=_curve_samples(pitch_curve,beat,tm,natural,0.);wave,ratios=_pitch_event_source(base_source,base_params,target,cents,gate_n,d,spec,target_cache,job_context)
         gain_offsets=_curve_samples(gain_curve,beat,tm,len(wave),0.);wave=_apply_gain(wave,float(ev['gain_db'])+gain_offsets);main=_event_tail(wave,gate_n,d,spec);synthline=_add(synthline,main,onset)
-        density=_roll_density(density_curve,spec);rolls=0;roll_slice_max=0;roll_interval_min=None
+        density=_roll_density(density_curve,spec);requested=_requested_roll_retriggers(duration,density);rolls=0;roll_slice_max=0;roll_interval_min=None
         if density>1:
-            j=1
-            while Fraction(j,density)<duration and rolls<spec.max_roll_retriggers:
+            for j in range(1,requested+1):
                 _checkpoint(job_context)
                 off=Fraction(j,density);roll_start=beat_to_sample(tm,_rat(beat+off))-phrase_start
                 next_off=min(duration,Fraction(j+1,density));interval=max(1,beat_to_sample(tm,_rat(beat+next_off))-beat_to_sample(tm,_rat(beat+off)))
@@ -189,7 +202,7 @@ def render_phrase(recipe,spec=MelodicRenderSpec(),*,job_context=None):
                 if not spec.pitch_ratio_min<=local_ratio<=spec.pitch_ratio_max:raise MelodyError('roll pitch ratio outside declared bound')
                 shifted=pitch_shift_static(roll_source,local_ratio,fft_size=_fft_for(d,spec));max_slice=max(16,round(spec.roll_slice_max_ms*base_params.sr/1000));slice_n=max(16,min(len(shifted),round(interval*spec.roll_slice_fraction),max_slice));sl=shifted[:slice_n]
                 fade=max(1,min(slice_n-1,round(slice_n*spec.roll_fade_fraction)));sl=cosine_taper(sl,fade)
-                group=density**(-.5*spec.roll_energy_compensation);sl=(sl*(10**(local_gain/20))*group).astype(np.float32);exciter=_add(exciter,sl,roll_start);rolls+=1;j+=1
+                group=density**(-.5*spec.roll_energy_compensation);sl=(sl*(10**(local_gain/20))*group).astype(np.float32);exciter=_add(exciter,sl,roll_start);rolls+=1
                 roll_slice_max=max(roll_slice_max,slice_n);roll_interval_min=interval if roll_interval_min is None else min(roll_interval_min,interval)
         roll_total+=rolls
         records.append(dict(id=ev['id'],rest=False,onset_sample=onset,gate_samples=gate_n,target_hz=float(target),mode=spec.mode.value,
