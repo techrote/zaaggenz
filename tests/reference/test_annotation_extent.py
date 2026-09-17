@@ -85,7 +85,7 @@ class AnnotationTimingTests(unittest.TestCase):
     def test_missing_timing_metadata_fails_closed(self):
         timing = copy.deepcopy(self.timing)
         timing["assets"] = [row for row in timing["assets"] if row["id"] != "activation"]
-        with self.assertRaisesRegex(AnnotationError, "unknown annotated asset"):
+        with self.assertRaisesRegex(AnnotationError, "asset set mismatch"):
             validate_annotation(annotation(segment()), timing)
 
     def test_same_id_rebound_to_different_content_is_rejected(self):
@@ -111,14 +111,9 @@ class AnnotationTimingTests(unittest.TestCase):
     def test_tampered_timing_catalog_is_rejected_before_segment_validation(self):
         timing = copy.deepcopy(self.timing)
         timing["assets"][0]["frame_count"] += 1
-        # validate_annotation accepts only a structurally valid timing context; it
-        # must not silently repair or infer a different endpoint.
         data = annotation(segment(end=self.rows["activation"]["frame_count"] + 1))
-        self.assertIs(validate_annotation(data, timing), data)
-        # Binding that same tampered record back to the authoritative registry is
-        # what authenticates its frame count and must fail closed.
         with self.assertRaisesRegex(AnnotationError, "frame-count mismatch"):
-            load_annotation_timing(TIMING_PATH, {**self.registry})
+            validate_annotation(data, timing)
 
     def test_relation_and_ambiguous_meter_semantics_are_unchanged(self):
         left = segment("activation", 0, 48000, "a")
