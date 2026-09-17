@@ -1,0 +1,29 @@
+{
+  "candidate_method": {
+    "aggregate": "minimum anchor score across all target anchors and physical channels",
+    "amplitude_component": "(candidate early_rms/late_rms)/(target early_rms/late_rms), early=6 ms, late end=24 ms",
+    "anchor": "target-only 4 ms pre/post RMS contrast; >= max(0.05, 0.25*target peak contrast); <=8 anchors/channel; >=12 ms separation",
+    "anchor_score": "min(nonnegative onset_component, amplitude_component, spectral_component)",
+    "id": "zg.inverse.transient-onset-contrast.v3",
+    "inactive_target": "neutral 1.0 only when target has no qualifying anchor; existing activity/silence gates stay authoritative",
+    "onset_component": "candidate target-anchored normalized positive pre/post RMS contrast divided by target contrast",
+    "spectral_component": "target-applicable attack-local high-band contrast ratio using cutoff min(1000 Hz,0.20*sample_rate), target fraction floor 1e-4",
+    "threshold": 0.4
+  },
+  "compatibility": {
+    "evidence": "InverseValidation 1.0.0 retains raw per-anchor components and method id; inverse implementation/feature identity changes.",
+    "old_records": "Historical v1 records keep derivative-anchor meaning through their stored implementation identity; rejected research v2 candidates are research evidence only.",
+    "policy": "ValidationPolicy.min_transient_ratio remains 0.4 with no threshold migration."
+  },
+  "decision_rule": {
+    "confirmation": "Fresh confirmation v2 decides acceptance. All preserved cases ratio >=0.4; all damaged/adversarial cases ratio <0.4 unless a separate unchanged hard gate directly demonstrates the declared damage.",
+    "no_retuning": "No candidate parameters or confirmation-v2 fixtures may change after results are inspected.",
+    "raw": "Report v1 derivative baseline, rejected v2/v3 research candidates where available, and final v3 raw components."
+  },
+  "design_history": "Confirmation v1 rejected the prior candidate: a removed secondary onset retained aggregate ratio 0.8310780175536643. The failure is structural, not a threshold problem: amplitude and high-band contrasts did not directly test whether target onset contrast survived. This revision adds that missing target-anchored onset-contrast component and leaves every threshold/window/cutoff unchanged.",
+  "falsified_by_confirmation_sha256": "455bdaa8ee48e4427e4c50cbb65119fe617bb53bc18edaa4fd7b56ca6fd0ccf7",
+  "issue": 87,
+  "kind": "ZG024TransientGateAblationProtocol",
+  "supersedes_sha256": "ca6e4361ecd34aea9f7f92fd6bd1052dd70c0c33f113da0862e96bfd62bf815f",
+  "version": "4.0.0"
+}
