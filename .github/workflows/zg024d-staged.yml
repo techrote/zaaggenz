@@ -1,0 +1,54 @@
+name: ZG-024d staged deterministic strategy research
+on:
+  pull_request:
+    paths:
+      - 'research/zg024d/**'
+      - 'tests/inverse_research/**'
+      - 'tools/inverse_staged_report.py'
+      - 'docs/inverse/**'
+      - '.github/workflows/zg024d-staged.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  staged-research:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+      PYTHONHASHSEED: '0'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Materialize authenticated unmodified baseline
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install declared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: ZG-024b and ZG-024d research acceptance tests
+        run: python -m unittest discover -s tests/inverse_research -v
+      - name: Frozen inverse laboratory regressions
+        run: python -m unittest discover -s tests/inverse -v
+      - name: Run preregistered calibration and independent audits
+        run: >-
+          python tools/inverse_staged_report.py
+          --out zg024d-evidence.json
+          --full-out zg024d-full.json
+          --telemetry-out zg024d-telemetry.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg024d-staged-research-${{ matrix.os }}
+          path: |
+            zg024d-evidence.json
+            zg024d-full.json
+            zg024d-telemetry.json
+          retention-days: 7
+          compression-level: 9
