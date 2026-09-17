@@ -9,7 +9,7 @@ from zaaggenz_contracts.model import fraction
 from zaaggenz_melody import note_event,make_phrase_plan,transform_melodic_recipe
 from zaaggenz_project import Project
 from zaaggenz_timeline import TimelineDocument,default_document
-from zaaggenz_tuning import tuning_from_spec,analyse_frequency
+from zaaggenz_tuning import tuning_from_spec,analyse_frequency,ratio_to_cents
 from zaaggenz_meter import MeterPlan,generate_ticks
 from .model import LinkedEventError,LinkedEventPlan,ControlledVariant
 
@@ -27,6 +27,9 @@ def _linked_coord(tuning,start_degree,start_detune,target_degree,target_detune,p
     a=tuning.frequency(start_degree,start_detune);b=tuning.frequency(target_degree,target_detune)
     hz=math.exp(math.log(a)+(math.log(b)-math.log(a))*progress)
     return _coordinate(tuning,hz),hz
+def _distance_to_return_cents(tuning,degree,detune_cents,return_degree,return_detune_cents):
+    event_hz=tuning.frequency(degree,detune_cents);return_hz=tuning.frequency(return_degree,return_detune_cents)
+    return abs(ratio_to_cents(event_hz/return_hz))
 
 @dataclass(frozen=True)
 class LinkedExpansion:
@@ -63,14 +66,14 @@ def expand_linked(plan,variant,tuning,*,source_id='source'):
     for i in range(count):
         beat=bstart+i*bstep;progress=(i+1)/(count+1)
         if variant.linkage=='linked':
-            (degree,detune),hz=_linked_coord(t,actual,loc['detune_cents'],ret['degree'],ret['detune_cents'],progress);link=progress;distance=abs(math.log2(hz/t.frequency(ret['degree'],ret['detune_cents'])))*1200.;linked_dist.append(distance)
+            (degree,detune),_= _linked_coord(t,actual,loc['detune_cents'],ret['degree'],ret['detune_cents'],progress);link=progress;distance=_distance_to_return_cents(t,degree,detune,ret['degree'],ret['detune_cents']);linked_dist.append(distance)
         elif variant.linkage=='unrelated':
-            degree=loc['expected_degree']+bridge['unrelated_degree_offsets'][i];detune=0.;link=0.0;distance=abs((degree-ret['degree'])*100.);linked_dist.append(distance)
+            degree=loc['expected_degree']+bridge['unrelated_degree_offsets'][i];detune=0.;link=0.0;distance=_distance_to_return_cents(t,degree,detune,ret['degree'],ret['detune_cents']);linked_dist.append(distance)
         else:
             degree=loc['expected_degree']+bridge['neutral_degree_offsets'][i];detune=0.;link=None;distance=None
         eid=f'linked-bridge-{i:02d}';events.append(note_event(eid,_rat(beat),bridge['duration_beats'],t.id,degree,detune_cents=detune,gain_db=bridge['gain_db'],source_id=source_id));trace.append({'event_id':eid,'phase':'bridge','beat':_rat(beat),'degree':degree,'detune_cents':detune,'gain_db':bridge['gain_db'],'link_progress':link,'distance_to_return_cents':distance,'expected_local_degree':loc['expected_degree'],'actual_local_violation':variant.violation,'source_family':d['source_family']})
     if variant.linkage=='linked' and any(b>=a-1e-7 for a,b in zip(linked_dist,linked_dist[1:])):raise LinkedEventError('linked bridge failed monotonic convergence invariant')
-    eid='linked-return';events.append(note_event(eid,ret['beat'],ret['duration_beats'],t.id,ret['degree'],detune_cents=ret['detune_cents'],gain_db=ret['gain_db'],source_id=source_id));trace.append({'event_id':eid,'phase':'return','beat':ret['beat'],'degree':ret['degree'],'detune_cents':ret['detune_cents'],'gain_db':ret['gain_db'],'link_progress':1.0 if variant.recovery else None,'distance_to_return_cents':0.0,'expected_local_degree':loc['expected_degree'],'actual_local_violation':variant.violation,'source_family':d['source_family']})
+    eid='linked-return';events.append(note_event(eid,ret['beat'],ret['duration_beats'],t.id,ret['degree'],detune_cents=ret['detune_cents'],gain_db=ret['gain_db'],source_id=source_id));trace.append({'event_id':eid,'phase':'return','beat':ret['beat'],'degree':ret['degree'],'detune_cents':ret['detune_cents'],'gain_db':ret['gain_db'],'link_progress':1.0 if variant.recovery else None,'distance_to_return_cents':_distance_to_return_cents(t,ret['degree'],ret['detune_cents'],ret['degree'],ret['detune_cents']),'expected_local_degree':loc['expected_degree'],'actual_local_violation':variant.violation,'source_family':d['source_family']})
     events.sort(key=lambda x:(fraction(x['beat']),x['id']))
     phrase=make_phrase_plan(t.id,events,end_beat=d['end_beat'],roles=_roles(d),seed='0',source_id=source_id)
     meter=MeterPlan(d['meter_plan']);anchors=tuple(generate_ticks(meter,d['stable_clock_id']))
