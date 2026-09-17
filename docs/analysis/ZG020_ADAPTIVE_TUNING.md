@@ -26,9 +26,15 @@ The result remains an engineering interaction value. It is not a perceptual-loud
 
 `IntervalGrid` defines an explicit bounded cents scan. `dissonance_curve()` shifts the second spectrum and evaluates the same versioned model at every grid point. `local_minima()` reports candidate minima with local prominence and confidence.
 
-`sensitivity_candidates()` repeats the scan across declared bandwidth scales and amplitude exponents. A base minimum is retained only when nearby minima recur in a configured fraction of sensitivity scenarios. The returned stability fraction and scenario counts describe robustness to these assumptions only.
+The grid endpoint policy is `zg-interval-grid-endpoint-v1`. The arithmetic progression begins at `start_cents`, and the exact requested `stop_cents` is represented once. If the final stepped value is at, above because of floating-point rounding, or within `1e-9` cents below the stop, that final value is canonicalised to the exact stop. Otherwise the stop is appended once. The realised sequence after this endpoint decision must contain 2 through 2401 points. Constructor validation, `IntervalGrid.point_count`, `values()` and serialized `grid.points` all use that same cardinality rule, and `values()` revalidates before allocation so a tampered or otherwise over-bound grid fails before curve work.
+
+This closes the historical case where the pre-append estimate could equal 2401 while endpoint inclusion produced 2402 evaluations. The repair does not increase the limit, alter the requested step, drop an endpoint, or silently coarsen a grid. Existing accepted grids retain their points except that a stepped endpoint already within the documented nanocent tolerance is now emitted as the exact requested stop rather than a nearly equal floating-point value.
+
+`sensitivity_candidates()` repeats the scan across declared bandwidth scales and amplitude exponents. A base minimum is retained only when nearby minima recur in a configured fraction of sensitivity scenarios. The returned stability fraction and scenario counts describe robustness to these assumptions only. Its cost diagnostics use the realised bounded cardinality: `grid_point_count` is the exact grid size, `scenario_point_evaluations` is that size times the number of sensitivity scenarios, and `total_point_evaluations` also includes the base curve. These are engineering work counts, not musical-quality measures.
 
 Synthetic fixtures deliberately demonstrate timbre dependence: an eight-partial harmonic spectrum has a stable fifth-region candidate near 702 cents, while a mildly stretched spectrum moves the corresponding candidate upward. These are candidate interval hypotheses, not automatically generated scale degrees.
+
+The roughness method remains version `1.0.0`: the endpoint/cardinality change is a fail-closed resource-bound correction to the existing grid contract, not a change to roughness, tuning, amplitude, confidence, candidate ordering or preference semantics. The additive sensitivity work-count diagnostics do not change numerical candidate evidence for previously valid grids.
 
 ## Adaptive tuning request
 
@@ -100,4 +106,4 @@ The report is synthetic engineering evidence. It does not establish that a candi
 
 ## Scheduler integration
 
-Dissonance-map searches run as bounded `JobClass.RESEARCH` tasks and adaptive proposals as `JobClass.ANALYSIS` tasks through the existing ZG-004 scheduler. Both preserve cooperative cancellation and return typed inspectable results rather than applying tuning changes automatically.
+Dissonance-map searches run as bounded `JobClass.RESEARCH` tasks and adaptive proposals as `JobClass.ANALYSIS` tasks through the existing ZG-004 scheduler. Both preserve cooperative cancellation and return typed inspectable results rather than applying tuning changes automatically. The scheduler's existing memory reservation remains separate from the exact sensitivity point-evaluation counts; any consumer budgeting CPU/search work must use the realised `IntervalGrid.point_count`, never the old pre-endpoint estimate.
