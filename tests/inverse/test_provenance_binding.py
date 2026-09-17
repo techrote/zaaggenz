@@ -76,7 +76,7 @@ class PersistedProvenanceBindingTests(unittest.TestCase):
             other = self.alternate_candidate.to_dict()['provenance']['search_binding']['request']['target_asset']
             # The alternate revision intentionally uses the same PCM; forge a different valid content identity instead.
             other = deepcopy(other)
-            other['pcm_sha256'] = '8' * 64
+            other['content_sha256'] = '8' * 64
             data['provenance']['search_binding']['request']['target_asset'] = other
             data['provenance']['search_binding_sha256'] = digest(data['provenance']['search_binding'])
         self.assert_tamper_rejected(target)
@@ -104,7 +104,7 @@ class PersistedProvenanceBindingTests(unittest.TestCase):
     def test_fitting_asset_identity_is_bound_and_window_shape_is_revalidated(self):
         def tamper(data):
             binding = data['provenance']['search_binding']
-            binding['fit_assets'][0]['pcm_sha256'] = 'a' * 64
+            binding['fit_assets'][0]['content_sha256'] = 'a' * 64
             data['provenance']['search_binding_sha256'] = digest(binding)
         self.assert_tamper_rejected(tamper)
 
