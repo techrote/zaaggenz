@@ -9,7 +9,7 @@ from zaaggenz_timeline.model import default_document
 from zaaggenz_timeline.service import TimelineService
 from zaaggenz_timeline.server import Handler as TimelineHandler
 from .model import ListeningError,ENDPOINTS,exact
-from .service import ListeningService
+from .service import ListeningService,MAX_ARCHIVE_JSON_BYTES
 
 ROOT=Path(__file__).resolve().parents[1];STATIC=ROOT/'web'/'listening'
 AUDIO=re.compile(r'/api/listening/audio/([0-9a-f]{64})\.wav\Z')
@@ -53,7 +53,8 @@ class Handler(TimelineHandler):
         elif not self._participant_ok():return self._error('participant listening capability required',403)
         try:
             if self.headers.get('Content-Type','').split(';')[0]!='application/json':raise ListeningError('application/json required')
-            d=loads(self._read_body(limit=2_000_000))
+            body_limit=MAX_ARCHIVE_JSON_BYTES if path=='/api/listening/reopen' else 2_000_000
+            d=loads(self._read_body(limit=body_limit))
             if path=='/api/listening/freeze':
                 exact(d,{'job_id','name','start_frame','end_frame'},'freeze request');return self._json(self.server.listening.freeze_job(d['job_id'],d['name'],d['start_frame'],d['end_frame']))
             if path=='/api/listening/match':
