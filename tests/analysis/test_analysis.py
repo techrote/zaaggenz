@@ -40,6 +40,8 @@ class ResourceBoundTests(unittest.TestCase):
                 for spec in specs.values():
                     self.assertLessEqual(spec.window_samples,MAX_STFT_WINDOW_SAMPLES)
                     self.assertLessEqual(spec.fft_samples,MAX_STFT_FFT_SAMPLES)
+                    estimate=validate_stft_resources(sr,2,spec)
+                    self.assertLessEqual(estimate.estimated_live_bytes,MAX_STFT_ESTIMATED_LIVE_BYTES)
         self.assertEqual(resolution_specs(192000)['long'].window_samples,MAX_STFT_WINDOW_SAMPLES)
 
     def test_exact_resource_bound_is_accepted(self):
@@ -64,6 +66,17 @@ class ResourceBoundTests(unittest.TestCase):
             with self.assertRaisesRegex(AnalysisError,'FFT size exceeds'):module.stft(np.zeros(128),48000,spec)
             pad.assert_not_called();rfft.assert_not_called()
 
+    def test_hop_driven_cost_explosion_is_rejected_before_expensive_allocation(self):
+        module=importlib.import_module('zaaggenz_analysis.stft')
+        spec=STFTSpec(MAX_STFT_WINDOW_SAMPLES,1,MAX_STFT_FFT_SAMPLES)
+        source=np.zeros((48000,2),dtype=np.float32)
+        estimate=estimate_stft_resources(len(source),2,spec)
+        self.assertGreater(estimate.estimated_live_bytes,50_000_000_000)
+        with mock.patch.object(module.np,'pad') as pad,mock.patch.object(module.np.fft,'rfft') as rfft:
+            with self.assertRaisesRegex(AnalysisError,r'estimated live storage .* exceeds .* resource bound'):
+                module.stft(source,48000,spec)
+            pad.assert_not_called();rfft.assert_not_called()
+
     def test_estimator_matches_execution_cardinality_and_channel_cost(self):
         spec=STFTSpec(256,64,512)
         mono=estimate_stft_resources(100,1,spec);stereo=estimate_stft_resources(100,2,spec)
@@ -73,6 +86,16 @@ class ResourceBoundTests(unittest.TestCase):
         self.assertEqual(stereo.spectra_bytes,mono.spectra_bytes*2)
         self.assertEqual(stereo.fft_point_count,mono.fft_point_count*2)
         result=stft(np.zeros(100),48000,spec);self.assertEqual(len(result.anchors),mono.frame_count)
+
+    def test_public_admission_can_apply_scheduler_specific_stricter_bound(self):
+        spec=STFTSpec(512,128,1024)
+        estimate=estimate_stft_resources(48000,2,spec)
+        accepted=validate_stft_resources(48000,2,spec,max_live_bytes=estimate.estimated_live_bytes)
+        self.assertEqual(accepted,estimate)
+        with self.assertRaisesRegex(AnalysisError,str(estimate.estimated_live_bytes)):
+            validate_stft_resources(48000,2,spec,max_live_bytes=estimate.estimated_live_bytes-1)
+        with self.assertRaisesRegex(AnalysisError,'admission bound'):
+            validate_stft_resources(1,1,STFTSpec(16,1,16),max_live_bytes=MAX_STFT_ESTIMATED_LIVE_BYTES+1)
 
     def test_estimator_handles_empty_and_short_sources_without_allocation(self):
         spec=STFTSpec(256,64,256)
