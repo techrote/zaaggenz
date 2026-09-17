@@ -56,3 +56,52 @@ jobs:
             zg024d-telemetry.json
           retention-days: 14
           compression-level: 9
+
+  portability:
+    needs: staged-research
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: zg024d-staged-research-*
+          path: portable
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Compare Ubuntu and Windows portable evidence under frozen tolerance policy
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import math
+          from pathlib import Path
+
+          ATOL, RTOL = 1e-7, 1e-5
+          roots = {
+              'ubuntu': Path('portable/zg024d-staged-research-ubuntu-latest/zg024d-portable.json'),
+              'windows': Path('portable/zg024d-staged-research-windows-latest/zg024d-portable.json'),
+          }
+          values = {name: json.loads(path.read_text(encoding='utf-8')) for name, path in roots.items()}
+
+          def compare(a, b, path='root'):
+              if type(a) is not type(b):
+                  raise AssertionError(f'{path}: type mismatch {type(a).__name__} != {type(b).__name__}')
+              if isinstance(a, dict):
+                  if set(a) != set(b):
+                      raise AssertionError(f'{path}: key mismatch')
+                  for key in sorted(a):
+                      compare(a[key], b[key], f'{path}.{key}')
+              elif isinstance(a, list):
+                  if len(a) != len(b):
+                      raise AssertionError(f'{path}: list length {len(a)} != {len(b)}')
+                  for index, (left, right) in enumerate(zip(a, b)):
+                      compare(left, right, f'{path}[{index}]')
+              elif isinstance(a, float):
+                  if not math.isclose(a, b, abs_tol=ATOL, rel_tol=RTOL):
+                      raise AssertionError(f'{path}: {a!r} != {b!r}')
+              elif a != b:
+                  raise AssertionError(f'{path}: {a!r} != {b!r}')
+
+          compare(values['ubuntu'], values['windows'])
+          print('ZG-024d portable evidence agrees across Ubuntu and Windows under abs=1e-7 rel=1e-5')
+          PY
