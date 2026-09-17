@@ -10,6 +10,7 @@ class AnalysisError(ValueError):pass
 STFT_RESOURCE_POLICY='zg-stft-resource-bounds-v1'
 MAX_STFT_WINDOW_SAMPLES=32768
 MAX_STFT_FFT_SAMPLES=32768
+MAX_STFT_ESTIMATED_LIVE_BYTES=256*1024*1024
 
 
 def _validate_stft_values(window_samples,hop_samples,fft_samples,window,padding,scaling,role):
@@ -87,6 +88,15 @@ def estimate_stft_resources(source_frames,channels,spec):
                                 result_metadata_bytes,estimated_live_bytes,frame_count*channels*fft)
 
 
+def validate_stft_resources(source_frames,channels,spec,*,max_live_bytes=MAX_STFT_ESTIMATED_LIVE_BYTES):
+    if type(max_live_bytes)is not int or not 1<=max_live_bytes<=MAX_STFT_ESTIMATED_LIVE_BYTES:
+        raise AnalysisError(f'STFT live-storage admission bound must be 1..{MAX_STFT_ESTIMATED_LIVE_BYTES} bytes')
+    estimate=estimate_stft_resources(source_frames,channels,spec)
+    if estimate.estimated_live_bytes>max_live_bytes:
+        raise AnalysisError(f'STFT estimated live storage {estimate.estimated_live_bytes} bytes exceeds {max_live_bytes}-byte resource bound')
+    return estimate
+
+
 @dataclass(frozen=True)
 class STFTResult:
     spec:STFTSpec
@@ -100,12 +110,15 @@ class STFTResult:
     def frequencies_hz(self):return np.fft.rfftfreq(self.spec.fft_samples,1/self.sample_rate_hz)
 
 
-def _audio(x):
+def _audio_view(x):
     a=np.asarray(x)
     if a.ndim==1:a=a[:,None]
     if a.ndim!=2 or a.shape[1] not in (1,2):raise AnalysisError('mono/stereo audio required')
     if not np.issubdtype(a.dtype,np.number) or not np.isfinite(a).all():raise AnalysisError('finite numeric audio required')
-    return np.asarray(a,dtype=np.float64)
+    return a
+
+
+def _audio(x):return np.asarray(_audio_view(x),dtype=np.float64)
 
 
 def _window(n):return signal.windows.hann(n,sym=False).astype(np.float64)
@@ -115,9 +128,10 @@ def stft(x,sample_rate_hz,spec):
     if not isinstance(spec,STFTSpec):raise AnalysisError('STFTSpec required')
     _validate_stft_values(spec.window_samples,spec.hop_samples,spec.fft_samples,spec.window,spec.padding,spec.scaling,spec.role)
     if type(sample_rate_hz)is not int or not 8000<=sample_rate_hz<=192000:raise AnalysisError('sample rate out of range')
-    a=_audio(x);n=spec.window_samples;hop=spec.hop_samples
-    # Exact cardinality/resource accounting happens before padding, window materialisation or FFT allocation.
-    estimate_stft_resources(len(a),a.shape[1],spec)
+    source=_audio_view(x);n=spec.window_samples;hop=spec.hop_samples
+    # Validate exact cardinality/live storage before float64 conversion, padding, frame materialisation or FFT allocation.
+    validate_stft_resources(len(source),source.shape[1],spec)
+    a=np.asarray(source,dtype=np.float64)
     padded=np.pad(a,((n//2,n//2),(0,0)))
     remaining=max(0,len(padded)-n);extra=(-remaining)%hop
     if extra:padded=np.pad(padded,((0,extra),(0,0)))
