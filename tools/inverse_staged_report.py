@@ -214,7 +214,10 @@ def build_report():
             "purpose": purpose,
             "unsafe_parameters": dict(data["parameters"]["values"]),
             "unsafe_probe_eligible": candidate.eligible,
-            "validation": data["validation"],
+            "validation": {
+                "state": data["validation_state"],
+                "windows": [row["validation"] for row in data["fit"]["windows"]],
+            },
             "fit_score": candidate.score,
         })
 
