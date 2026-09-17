@@ -62,6 +62,20 @@ An unregistered merge-head run before the final deterministic-snapshot refinemen
 
 As with the earlier transitions, this record neither rewrites the frozen evidence nor grants a wildcard compatibility exemption. Any source change that produces a different implementation digest, or any drift in fixture/state/objective/eligibility/ranking/holdout/numerical evidence, still fails CI.
 
+## Reviewed cumulative transition — issue #134
+
+ZG-024 issue #134 closes a persisted-evidence gap: Candidate 1.0.0 stored several provenance SHA fields that were syntactically validated but were not all recomputable from material retained in the candidate itself. Candidate 2.0.0 therefore carries a mandatory content-addressed `InverseSearchBinding` with the canonical `SearchRequest`, fitting `AudioAssetRef` identities, method roots and complete numerical environment manifest. Reopening recomputes the historical search ID, method identities, environment identity, binding digest, stage/parent lineage and Candidate v2 identity. Legacy Candidate 1.0.0 fails closed for replay/regeneration because its missing binding cannot be reconstructed safely.
+
+The reviewed cumulative identity is:
+
+- frozen predecessor: `ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4`
+- cumulative #134 candidate: `3e0920670fca37b5ac30447978125a3751dd6d1cee1ef7790aceb2e28b038178`
+- newly changed implementation paths in #134: `zaaggenz_inverse/laboratory.py`, `zaaggenz_inverse/results.py`
+
+Before registration, the complete ZG-024a workflow ran on Ubuntu and Windows. Both platforms passed all 93 inverse tests, including the new persisted-provenance adversarial suite, every inherited project/jobs/QC/analysis/components/descriptors/DSP/spectral/tuning suite, and browser transport. Both independently computed the exact identity above. The frozen calibration/independent-holdout comparison then failed closed with exactly one difference on each platform: the unreviewed `/implementation_sha256` transition. No portable fixture, state, recipe definition, objective, validation, eligibility, ranking, holdout or numerical evidence changed.
+
+The registry entry authorizes only this exact frozen-to-cumulative identity pair. It does not weaken candidate verification, grant resumability across implementation identities, rewrite the frozen baseline, or permit any portable calibration drift. The registered rerun must still pass on both platforms before #134 can merge.
+
 ## Authoring / verification
 
 Normal CI uses:

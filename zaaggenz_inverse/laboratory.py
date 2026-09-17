@@ -14,7 +14,8 @@ from .contracts import (SearchRequest, Window, WindowPlan, ParameterState, requi
 from .recipes import (apply_state, frozen_audio, render_trace, validate_base, validate_domain,
                       engine_identity, render_engine_identity, environment_manifest, RenderTrace)
 from .objectives import FeatureMeasurements, measure_losses, validation_measurements, aggregate, component
-from .results import Candidate, candidate_identity
+from .results import (Candidate, CANDIDATE_VERSION, candidate_identity, search_identity,
+                      validate_search_binding)
 
 
 def request_from_project(project, target, plan, domain, **kwargs):
@@ -59,8 +60,9 @@ class FitEvaluator:
     malicious code introspecting the enclosing orchestration process.
     """
     def __setattr__(self, name, value):
-        if name in ('request', '_fit', 'features', 'implementation_sha256', 'environment_sha256',
-                    'search_id', 'renderer', 'renderer_id', 'render_engine_sha256') and name in self.__dict__:
+        if name in ('request', '_fit', 'features', 'engine_sha256', 'implementation_sha256',
+                    'render_engine_base_sha256', 'environment_sha256', 'search_id', '_search_binding',
+                    'search_binding_sha256', 'renderer', 'renderer_id', 'render_engine_sha256') and name in self.__dict__:
             raise AttributeError('search identity is immutable; create a new evaluator')
         object.__setattr__(self, name, value)
 
@@ -80,14 +82,26 @@ class FitEvaluator:
         identifier(renderer_id, 'renderer_id')
         require(renderer is render_trace or renderer_id != 'zg.render-recipe.v1', 'custom renderer requires an explicit distinct method ID')
         self.renderer_id = renderer_id
-        self.implementation_sha256 = digest({'engine': engine_identity(), 'renderer_id': renderer_id})
-        self.render_engine_sha256 = digest({'engine': render_engine_identity(), 'renderer_id': renderer_id})
-        self.environment_sha256 = digest(environment_manifest())
-        self.search_id = digest({'domain': 'zaaggenz.inverse-search-v1', 'request': request.to_dict(),
-            'implementation_sha256': self.implementation_sha256,
-            'feature_method_sha256': self.features.method_sha256,
-            # Bind the fit slice bytes too: construction cannot forge a different fitting target.
-            'fit_assets': [pcm_asset(a, self.features.sr) for a in self._fit]})
+        self.engine_sha256 = engine_identity()
+        self.render_engine_base_sha256 = render_engine_identity()
+        self.implementation_sha256 = digest({'engine': self.engine_sha256, 'renderer_id': renderer_id})
+        self.render_engine_sha256 = digest({'engine': self.render_engine_base_sha256, 'renderer_id': renderer_id})
+        environment = environment_manifest()
+        self.environment_sha256 = digest(environment)
+        fit_assets = [pcm_asset(a, self.features.sr) for a in self._fit]
+        binding = {'kind': 'InverseSearchBinding', 'version': '1.0.0', 'request': request.to_dict(),
+                   'method': {'renderer_id': renderer_id, 'engine_sha256': self.engine_sha256,
+                              'render_engine_base_sha256': self.render_engine_base_sha256,
+                              'implementation_sha256': self.implementation_sha256,
+                              'render_engine_sha256': self.render_engine_sha256,
+                              'feature_method_sha256': self.features.method_sha256},
+                   'environment': environment, 'fit_assets': fit_assets}
+        _, derived_search_id, binding_sha256, derived_environment_sha256 = validate_search_binding(binding)
+        require(derived_environment_sha256 == self.environment_sha256, 'environment binding mismatch')
+        require(derived_search_id == search_identity(binding), 'search binding failed canonical identity check')
+        self.search_id = derived_search_id
+        self._search_binding = deepcopy(binding)
+        self.search_binding_sha256 = binding_sha256
         self.render_cache = render_cache if render_cache is not None else AnalysisCache(8)
         self.renderer = renderer
         self.render_calls = self.render_hits = 0
@@ -130,8 +144,9 @@ class FitEvaluator:
             structural_reasons.append('non_finite_render')
         if structural_reasons:
             validation_state = 'rejected'
-        data = {'kind': 'InverseCandidate', 'version': VERSION,
-                'candidate_id': candidate_identity(self.search_id, state, recipe), 'search_id': self.search_id,
+        data = {'kind': 'InverseCandidate', 'version': CANDIDATE_VERSION,
+                'candidate_id': candidate_identity(self.search_id, state, recipe, self.search_binding_sha256),
+                'search_id': self.search_id,
                 'ordinal': ordinal, 'parameters': state.to_dict(), 'recipe': recipe.to_dict(),
                 'provenance': {'implementation_sha256': self.implementation_sha256,
                     'environment_sha256': self.environment_sha256, 'source_revision_id': self.request.source_revision_id,
@@ -139,7 +154,9 @@ class FitEvaluator:
                     'render_sha256': first.sha256, 'feature_sha256': digest([w['measurements']['feature_pair_sha256'] for w in fit['windows']]),
                     'parents': list(self.request.stage.parent_candidate_ids), 'stage': self.request.stage.to_dict(),
                     'render_engine_sha256': self.render_engine_sha256, 'feature_method_sha256': self.features.method_sha256,
-                    'render_cache_key': key, 'claim': 'editable compatible recipe, never identification of an original production chain'},
+                    'render_cache_key': key,
+                    'search_binding': deepcopy(self._search_binding), 'search_binding_sha256': self.search_binding_sha256,
+                    'claim': 'editable compatible recipe, never identification of an original production chain'},
                 'reproducibility': reproducibility, 'validation_state': validation_state,
                 'eligible': reproducibility == 'repeat-verified' and validation_state != 'rejected' and fit['objectives']['comparable'],
                 'structural_rejections': structural_reasons, 'fit': fit, 'render': first.record}
