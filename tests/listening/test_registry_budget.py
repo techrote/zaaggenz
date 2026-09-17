@@ -297,14 +297,14 @@ class RegistryBudgetTests(unittest.TestCase):
         first = source.export_bundle(trial["id"])
 
         target, _ = _prepared_service()
-        target.reopen_bundle(first)
+        reopened = target.reopen_bundle(first)
         before = target.registry_accounting()
         source.submit(trial["id"], _payload(trial, note="two"))
         changed = source.export_bundle(trial["id"])
         with self.assertRaisesRegex(ListeningError, "existing evidence is unchanged"):
             target.reopen_bundle(changed)
         self.assertEqual(target.registry_accounting(), before)
-        self.assertEqual(target.export_bundle(trial["id"]), first)
+        self.assertEqual(target.export_bundle(reopened["trial"]["id"]), first)
 
     def test_concurrent_trusted_submissions_share_one_locked_limit(self):
         service, matched = _prepared_service(
@@ -316,7 +316,7 @@ class RegistryBudgetTests(unittest.TestCase):
         outcomes = queue.Queue()
 
         def worker():
-            barrier.wait(timeout=10)
+            barrier.wait()
             try:
                 service.submit(trial["id"], payload)
                 outcomes.put("ok")
