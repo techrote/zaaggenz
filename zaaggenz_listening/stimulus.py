@@ -11,6 +11,9 @@ from .model import Stimulus,ListeningError,VERSION
 
 def _db(x):return 20*math.log10(max(float(x),1e-30))
 def _linear(db):return 10**(float(db)/20)
+def _finite_dbfs(value,name):
+    if type(value) not in (int,float) or type(value) is bool or not math.isfinite(float(value)):raise ListeningError(f'{name} must be a finite numeric dBFS value')
+    return float(value)
 
 def freeze_artifact(name,artifact,*,start_frame=0,end_frame=None):
     if not isinstance(artifact,RenderArtifact):raise ListeningError('completed RenderArtifact required')
@@ -44,26 +47,44 @@ class ListeningAudioStore:
             return self._stimuli[sid]
     def match(self,stimulus_ids,*,target_rms_dbfs=None,peak_ceiling_dbfs=-3.0):
         if type(stimulus_ids)is not list or not 2<=len(stimulus_ids)<=8 or len(set(stimulus_ids))!=len(stimulus_ids):raise ListeningError('2..8 unique stimulus IDs required')
+        peak_ceiling_dbfs=_finite_dbfs(peak_ceiling_dbfs,'peak ceiling')
         if not -24<=peak_ceiling_dbfs<=-0.1:raise ListeningError('peak ceiling must be -24..-0.1 dBFS')
+        requested_target_dbfs=None if target_rms_dbfs is None else _finite_dbfs(target_rms_dbfs,'RMS target')
+        requested_target=None
+        if requested_target_dbfs is not None:
+            try:requested_target=_linear(requested_target_dbfs)
+            except OverflowError as e:raise ListeningError('RMS target must convert to a finite positive linear amplitude') from e
+            if not math.isfinite(requested_target) or requested_target<=0:raise ListeningError('RMS target must convert to a finite positive linear amplitude')
         rows=[];audio=[]
         with self._lock:
             for sid in stimulus_ids:
                 if sid not in self._stimuli or sid not in self._raw:raise ListeningError('stimulus audio is missing; exact material will not be silently regenerated')
-                s=self._stimuli[sid].to_dict();x=np.frombuffer(self._raw[sid],dtype='<f4').astype(np.float64);rms=float(np.sqrt(np.mean(x*x)));peak=float(np.max(np.abs(x),initial=0))
+                s=self._stimuli[sid].to_dict();x=np.frombuffer(self._raw[sid],dtype='<f4').astype(np.float64)
+                if not np.all(np.isfinite(x)):raise ListeningError('stimulus PCM must be finite for level matching')
+                rms=float(np.sqrt(np.mean(x*x)));peak=float(np.max(np.abs(x),initial=0))
+                if not math.isfinite(rms) or not math.isfinite(peak):raise ListeningError('stimulus level statistics must be finite for level matching')
                 if rms<=1e-9 or peak<=1e-9:raise ListeningError('silent/near-silent material cannot be level matched')
                 rows.append((sid,s,rms,peak));audio.append(x)
             ceiling=_linear(peak_ceiling_dbfs);max_targets=[rms*ceiling/peak for _,_,rms,peak in rows]
-            target=min([rms for _,_,rms,_ in rows]+max_targets) if target_rms_dbfs is None else _linear(target_rms_dbfs)
-            if target<=0:raise ListeningError('invalid RMS target')
+            target=min([rms for _,_,rms,_ in rows]+max_targets) if requested_target is None else requested_target
+            if not math.isfinite(target) or target<=0:raise ListeningError('invalid RMS target')
             if any(target>limit+1e-12 for limit in max_targets):raise ListeningError('requested RMS target violates common sample-peak ceiling')
-            matched=[]
+            matched=[];staged_playback={}
             for (sid,s,rms,peak),x in zip(rows,audio):
-                gain=target/rms;y=(x*gain).astype('<f4');m_rms=float(np.sqrt(np.mean(y.astype(np.float64)**2)));m_peak=float(np.max(np.abs(y),initial=0));pcm=y.tobytes();psha=hashlib.sha256(pcm).hexdigest()
+                gain=target/rms
+                if not math.isfinite(gain) or gain<=0:raise ListeningError('derived level-match gain must be finite and positive')
+                y=(x*gain).astype('<f4')
+                if not np.all(np.isfinite(y)):raise ListeningError('derived level-matched PCM must be finite')
+                yf64=y.astype(np.float64);m_rms=float(np.sqrt(np.mean(yf64*yf64)));m_peak=float(np.max(np.abs(y),initial=0))
+                if not math.isfinite(m_rms) or not math.isfinite(m_peak):raise ListeningError('derived level-match statistics must be finite')
+                pcm=y.tobytes();psha=hashlib.sha256(pcm).hexdigest()
                 manifest={'stimulus_id':sid,'playback_sha256':psha,'gain_db':_db(gain),'source_rms_dbfs':_db(rms),'source_sample_peak':peak,'target_rms_dbfs':_db(target),'matched_rms_dbfs':_db(m_rms),'matched_sample_peak':m_peak,'sample_peak_headroom_db':-_db(m_peak),'method':'whole-file-rms-common-target-v1','true_peak_measured':False}
-                self._playback[psha]=(pcm,s['sample_rate_hz'],s['channels']);matched.append(deepcopy(manifest))
-            if sum(len(v[0]) for v in self._playback.values())+sum(len(v) for v in self._raw.values())>self.max_bytes:
-                for m in matched:self._playback.pop(m['playback_sha256'],None)
-                raise ListeningError('matched playback store budget exceeded')
+                numeric=('gain_db','source_rms_dbfs','source_sample_peak','target_rms_dbfs','matched_rms_dbfs','matched_sample_peak','sample_peak_headroom_db')
+                if any(not math.isfinite(float(manifest[k])) for k in numeric):raise ListeningError('derived level-match metadata must be finite')
+                staged_playback.setdefault(psha,(pcm,s['sample_rate_hz'],s['channels']));matched.append(deepcopy(manifest))
+            projected=sum(len(v) for v in self._raw.values())+sum(len(v[0]) for v in self._playback.values())+sum(len(v[0]) for k,v in staged_playback.items() if k not in self._playback)
+            if projected>self.max_bytes:raise ListeningError('matched playback store budget exceeded')
+            for psha,payload in staged_playback.items():self._playback.setdefault(psha,payload)
             return matched
     def wav(self,playback_sha):
         with self._lock:
