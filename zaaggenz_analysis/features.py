@@ -69,13 +69,32 @@ def select_interval(timeline,start_sample,end_sample,mode='overlap'):
     if mode=='anchor':return tuple(f for f in timeline.frames if start_sample<=f.anchor_sample<end_sample)
     raise AnalysisError('interval mode must be overlap or anchor')
 
-def overlay_landmarks(timeline,annotation,asset_id,source_sample_rate):
+def overlay_landmarks(timeline,annotation,asset_id,source_sample_rate,source_frame_count=None):
+    """Project validated source-domain landmarks onto an analysis timeline.
+
+    ``source_frame_count`` should be supplied from the exact reference timing
+    catalogue when available.  The legacy four-argument form remains valid for
+    already-validated annotations and derives a defensive extent from the
+    analysis timeline rather than accepting unbounded source coordinates.
+    """
     if not isinstance(timeline,FeatureTimeline) or type(source_sample_rate)is not int or source_sample_rate<=0:raise AnalysisError('invalid landmark timing')
+    if source_frame_count is None:
+        source_frame_count=round(timeline.source_frames*source_sample_rate/timeline.sample_rate_hz)
+    elif type(source_frame_count)is not int or type(source_frame_count)is bool or source_frame_count<0:
+        raise AnalysisError('invalid landmark source extent')
+    projected_source_frames=round(source_frame_count*timeline.sample_rate_hz/source_sample_rate)
+    if abs(projected_source_frames-timeline.source_frames)>1:
+        raise AnalysisError('landmark timing metadata does not match analysis timeline')
     rows=[]
     scale=timeline.sample_rate_hz/source_sample_rate
     for segment in annotation.get('segments',[]):
         if segment.get('asset_id')!=asset_id:continue
-        start=round(segment['start_sample']*scale);end=round(segment['end_sample']*scale)
+        start_source=segment.get('start_sample');end_source=segment.get('end_sample')
+        if type(start_source)is not int or type(end_source)is not int or not (0<=start_source<end_source<=source_frame_count):
+            raise AnalysisError('landmark span outside source extent')
+        start=round(start_source*scale);end=round(end_source*scale)
+        if start<0 or end>timeline.source_frames or start>end:
+            raise AnalysisError('landmark resampling outside analysis extent')
         indices=[i for i,f in enumerate(timeline.frames) if f.support_start_sample<end and f.support_end_sample>start]
         rows.append({'segment_id':segment['id'],'start_sample':start,'end_sample':end,'frame_indices':indices,
                      'label':segment.get('label',''),'section_function':segment.get('section_function','unknown'),

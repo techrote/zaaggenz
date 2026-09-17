@@ -1,0 +1,12 @@
+{
+  "version":"1.0.0",
+  "coordinate_domain":"decoded-native-rate-pcm-v1",
+  "assets":[
+    {"id":"activation","source_sha256":"109f6889cf128113c107d38b091f79e369219826c7515de7e25599abe596f013","sample_rate_hz":48000,"channels":2,"frame_count":8440548},
+    {"id":"zaagtivation","source_sha256":"6bda47f6d5182acc676c9cb466fc6a36ce09844c49c848e0d11add06b4051d22","sample_rate_hz":48000,"channels":2,"frame_count":10781118},
+    {"id":"one_kick","source_sha256":"d239481cb7c5ca4465664bb13fcf193223ad67eecce25376fc9fe2e9ad2aa1bb","sample_rate_hz":48000,"channels":2,"frame_count":11136000},
+    {"id":"push_up","source_sha256":"13cc7ffd6c2c4447b4566915393bd908b4c6dfebe6be2b7814593c0a7f345255","sample_rate_hz":48000,"channels":2,"frame_count":6937008},
+    {"id":"con_calma","source_sha256":"448cd1252e68a17b9dbfaeb0f99db24f5d789007f5e66c7bfbd8bc1a0e7733d8","sample_rate_hz":48000,"channels":2,"frame_count":11418646},
+    {"id":"go_insane","source_sha256":"09cfd30433e08f1fbaa5835e9c6f0157e582c6431722d203bcddbc54065c53e3","sample_rate_hz":48000,"channels":2,"frame_count":10532572}
+  ]
+}
