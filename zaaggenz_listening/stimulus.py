@@ -60,6 +60,53 @@ class ListeningAudioStore:
         with self._lock:
             if sid not in self._stimuli:raise ListeningError('stimulus audio is missing; exact material will not be silently regenerated')
             return self._stimuli[sid]
+    def raw_pcm(self,sid):
+        """Return an immutable copy of one frozen source excerpt for trusted archival export."""
+        with self._lock:
+            if sid not in self._stimuli or sid not in self._raw:raise ListeningError('stimulus audio is missing; exact material will not be silently regenerated')
+            return bytes(self._raw[sid])
+    def playback_record(self,playback_sha):
+        """Return exact matched PCM plus its immutable shape metadata for trusted archival export."""
+        with self._lock:
+            if playback_sha not in self._playback:raise ListeningError('matched playback missing')
+            pcm,sr,ch=self._playback[playback_sha]
+            return bytes(pcm),sr,ch
+    def restore_archive(self,stimuli,raw_by_stimulus,playback_by_sha):
+        """Atomically admit already-verified archive bytes without rerendering or rematching."""
+        if type(stimuli)is not list or not stimuli or any(not isinstance(s,Stimulus) for s in stimuli):raise ListeningError('archive restore requires validated stimuli')
+        if type(raw_by_stimulus)is not dict or type(playback_by_sha)is not dict:raise ListeningError('archive restore requires exact audio maps')
+        docs=[s.to_dict() for s in stimuli];sids=[d['id'] for d in docs]
+        if len(set(sids))!=len(sids) or set(raw_by_stimulus)!=set(sids):raise ListeningError('archive raw audio coverage does not match stimuli')
+        staged_raw={};staged_playback={}
+        for stimulus,d in zip(stimuli,docs):
+            sid=d['id'];raw=raw_by_stimulus[sid]
+            if type(raw)is not bytes:raise ListeningError('archive raw PCM must be bytes')
+            expected=d['frame_count']*d['channels']*4
+            if len(raw)!=expected or hashlib.sha256(raw).hexdigest()!=d['raw_pcm_sha256']:raise ListeningError('archive raw PCM identity/shape mismatch')
+            staged_raw[sid]=(stimulus,raw)
+        for psha,payload in playback_by_sha.items():
+            if type(psha)is not str or len(psha)!=64 or any(c not in '0123456789abcdef' for c in psha):raise ListeningError('archive playback SHA-256 is invalid')
+            if type(payload)is not tuple or len(payload)!=3:raise ListeningError('archive playback record is invalid')
+            pcm,sr,ch=payload
+            if type(pcm)is not bytes or type(sr)is not int or type(ch)is not int or sr<=0 or ch<=0:raise ListeningError('archive playback record is invalid')
+            if hashlib.sha256(pcm).hexdigest()!=psha:raise ListeningError('archive playback PCM hash mismatch')
+            staged_playback[psha]=(pcm,sr,ch)
+        with self._lock:
+            additional=0
+            for sid,(stimulus,raw) in staged_raw.items():
+                existing_stimulus=self._stimuli.get(sid);existing_raw=self._raw.get(sid)
+                if existing_stimulus is not None and existing_stimulus.to_dict()!=stimulus.to_dict():raise ListeningError('stimulus identity collision with different archive provenance')
+                if existing_raw is not None and existing_raw!=raw:raise ListeningError('stimulus identity collision with different retained PCM')
+                if existing_raw is None:additional+=len(raw)
+            for psha,payload in staged_playback.items():
+                existing=self._playback.get(psha)
+                if existing is not None and existing!=payload:raise ListeningError('playback identity collision with different retained PCM metadata')
+                if existing is None:additional+=len(payload[0])
+            self._require_capacity_locked(additional,'listening audio store budget exceeded while reopening archive')
+            for sid,(stimulus,raw) in staged_raw.items():
+                self._stimuli.setdefault(sid,stimulus);self._raw.setdefault(sid,raw)
+            for psha,payload in staged_playback.items():self._playback.setdefault(psha,payload)
+        return self.accounting()
     def match(self,stimulus_ids,*,target_rms_dbfs=None,peak_ceiling_dbfs=-3.0):
         if type(stimulus_ids)is not list or not 2<=len(stimulus_ids)<=8 or len(set(stimulus_ids))!=len(stimulus_ids):raise ListeningError('2..8 unique stimulus IDs required')
         peak_ceiling_dbfs=_finite_dbfs(peak_ceiling_dbfs,'peak ceiling')
