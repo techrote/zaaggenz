@@ -27,3 +27,11 @@ Final acceptance is produced by `.github/workflows/zg015-listening.yml` plus the
 The result wire format remains `zaaggenz-listening-result/1.0.0`, but authoritative validation now binds A/B and multi choices to exact presented stimulus IDs, binds every annotation target to the trial, defines completed/aborted/missing observation policy, and validates annotation time against the exact frozen stimulus presentation clock whenever trusted stimulus metadata is available. Live service submission and trusted bundle reopen always supply that timing context. The canonical rules and compatibility policy are recorded in `RESULT_SEMANTICS.md`.
 
 This repair does not alter frozen stimulus bytes, level matching, ABX truth generation, participant/trusted capability separation, valid-result serialization/digests, Compose state, or any DSP/default behaviour.
+
+## Corrective level-match numeric integrity (#122)
+
+The matching method and listening wire formats remain unchanged. `ListeningAudioStore.match()` now validates external dBFS controls as finite numeric values before conversion, rejects non-standard JSON NaN/Infinity tokens at the existing strict HTTP contract boundary, and requires source PCM, derived gains, matched PCM, realised statistics and emitted numeric metadata to remain finite.
+
+Candidate playback bytes are staged and the existing retained-byte budget is preflighted before `_playback` is changed. This makes numeric failures transactionally clean and prevents an over-budget attempt from deleting a previously retained deduplicated playback hash. The broader unified raw/playback accounting and ownership work remains tracked by #115; durable archive work in #98 must preserve the finite-metadata invariant.
+
+The hostile/boundary suite for this correction covers NaN/+Inf/-Inf RMS targets and peak ceilings, strings/booleans, exact peak-ceiling boundaries and just-outside values, extreme finite target conversion, non-finite source PCM, strict JSON request rejection, finite PCM/metadata assertions, and preservation of pre-existing shared playback across a failed staged match. The normative policy is recorded in `LEVEL_MATCH_INTEGRITY.md`.
