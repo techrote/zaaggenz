@@ -22,6 +22,16 @@ Add `--analyse` to decode locally via FFmpeg, preserve **unclamped f32 stereo** 
 
 Verification reports are strict JSON: NaN and Infinity are not permitted evidence values. Descriptor construction also fails closed if any computed numeric evidence is non-finite.
 
+### Bounded analysis working set
+
+`analyse_file()` keeps the declared decode unchanged (`24 kHz`, stereo, `pcm_f32le`, unclamped), but decoded stdout is no longer captured as one Python `bytes` object. FFmpeg writes to a transaction-scoped temporary binary spool, and descriptor passes read at most one second of stereo f32 PCM at a time. The spool is removed on success or failure and is never added to the report or repository. The separate EBU R128 pass likewise writes FFmpeg diagnostics to a temporary spool and parses only the final **65,536-byte** tail containing the summary instead of retaining duration-proportional stderr in memory.
+
+At the 30-minute/default-24-kHz boundary the largest accepted decoded spool is **345,600,000 bytes** on local temporary storage. A descriptor read is at most **192,000 bytes f32**, and its f64 analysis conversion is at most **384,000 bytes**; STFT scratch remains one-window bounded. The descriptor timeline is capped by the same duration policy at 1,800 one-second rows. Before this repair, merely retaining the complete f32 decode plus `descriptor_pcm()`'s complete f64 conversion required at least **1,036,800,000 resident bytes**, before STFT/process overhead; the old loudness subprocess could additionally accumulate duration-proportional diagnostic text. `reference_analysis_resource_bound()` exposes the deterministic spool/chunk/timeline/loudness-tail cardinalities for future scheduler admission.
+
+The bounded implementation deliberately makes multiple passes over the local spool. The first pass computes the same complete one-second spectral rows plus whole-file peak, >=1.0 fraction, side/mid energy and channel scales. Later bounded passes reproduce the v1 channel-centering/correlation calculation without retaining full PCM. Energetic-window quantile selection stores only the declared one-row-per-complete-second timeline. A final partial second is still excluded from spectral/timeline rows while remaining part of whole-file peak, >=1.0 fraction, stereo/side-mid evidence and decoded duration, exactly as in v1.
+
+The metadata duration bound is still checked before decode. A non-zero decoder exit, non-frame-aligned output, an in-pass truncated spool, a decoded stream above the 30-minute frame bound, a missing/incomplete loudness summary, or less than the one-second descriptor minimum fails the analysis before any successful report is returned. No clipping, normalization, precision reduction, sample dropping or descriptor-definition change is used to obtain the bound.
+
 ### Stereo-correlation evidence
 
 `stereo_correlation` is ordinary Pearson correlation for stereo inputs only when both decoded channels have non-zero variance. Its normal finite range remains `[-1, 1]`, so existing non-degenerate reference measurements retain the same interpretation and tolerance.
@@ -37,6 +47,8 @@ The six supplied files were already recomputed during the 2026-09-12 preflight u
 The integrated method deliberately retains sample peaks above 1.0. The files are mastered observations, not synthetic ground truth, and LUFS/true peak do not imply calibrated playback SPL.
 
 The zero-variance correlation rule is a numeric-integrity clarification of `zg-reference-descriptor-v1`: previously the edge case had no declared value and NumPy could leak NaN. It does not revise any finite, defined v1 correlation, source identity, rights status, decoded-audio ownership, planning target, or private-reference provenance.
+
+The bounded-ingest repair is likewise an execution/resource correction under `zg-reference-descriptor-v1`, not a method revision. Complete-window definitions, energetic-window selection, level evidence, source identity, rights/local-locator separation and planning tolerances remain unchanged.
 
 ## Pair annotation
 
