@@ -225,6 +225,56 @@ def _portable_row(row):
         'gate_rejections', 'stop_reason')}
 
 
+def _budget_accounting_ok(row):
+    """Validate exact logical-budget accounting without defeating fail-closed gates.
+
+    Flat comparators must consume their entire declared budget. A staged run must
+    either consume its complete frozen allocation or stop at the first stage whose
+    eligible-parent set is empty, with every downstream evaluation left explicitly
+    unspent. Those early stops are the protocol-v2 safety semantics and rank as no
+    eligible candidate; they are not an integrity failure and must never be filled by
+    promoting a rejected parent merely to reach 24 evaluations.
+    """
+    declared = row['declared_budget']
+    consumed = row['consumed_evaluations']
+    if type(declared) is not int or type(consumed) is not int or declared != 24:
+        return False
+    if row['family'] == 'baseline':
+        return (row['method_id'] in BASELINES and consumed == declared and
+                row['stage_consumption'] is None and row['stop_reason'] is None)
+    if row['family'] != 'staged' or row['method_id'] not in METHODS:
+        return False
+
+    allocation = dict(zip(('A', 'B', 'C'), StagedSpec(row['method_id']).allocation))
+    stage = row['stage_consumption']
+    if not isinstance(stage, dict) or set(stage) != {'A', 'B', 'C'}:
+        return False
+    if any(type(value) is not int or value < 0 for value in stage.values()):
+        return False
+    if sum(stage.values()) != consumed or sum(allocation.values()) != declared:
+        return False
+
+    stop = row['stop_reason']
+    if stop is None:
+        expected = allocation
+        if row['final_retained_count'] is None or row['final_retained_count'] <= 0:
+            return False
+    elif stop == 'stage-A-no-eligible-parent':
+        expected = {'A': allocation['A'], 'B': 0, 'C': 0}
+    elif stop == 'stage-B-no-eligible-parent':
+        expected = {'A': allocation['A'], 'B': allocation['B'], 'C': 0}
+    elif stop == 'stage-C-no-eligible-final-alternative':
+        expected = allocation
+    else:
+        return False
+
+    if stage != expected or consumed != sum(expected.values()):
+        return False
+    if stop is not None and (row['best_fit_score'] is not None or row['final_retained_count'] != 0):
+        return False
+    return True
+
+
 def build_report():
     started = time.perf_counter(); development_rows = []; full = []
     all_methods = BASELINES + METHODS
@@ -258,7 +308,8 @@ def build_report():
     sentinel_rows, sentinel_details = _sentinels(selected); full.extend(sentinel_details)
     sentinel_integrity = all(row['promotion_ineligible_violations'] == 0 and row['gate_rejections']
                              for row in sentinel_rows)
-    exact_budget_integrity = all(row['consumed_evaluations'] == 24 for row in development_rows+confirmation_rows)
+    exact_budget_integrity = all(_budget_accounting_ok(row)
+                                 for row in development_rows+confirmation_rows)
     promotion_integrity = all(row['promotion_ineligible_violations'] == 0
                               for row in development_rows+confirmation_rows+sentinel_rows)
     confirmation_supported = (sum(case['beats_or_ties'] for case in confirm_cases) >= 6 and
@@ -289,7 +340,8 @@ def build_report():
         'production_candidate_supported': production_candidate_supported,
         'outcome': ('production-candidate-supported' if production_candidate_supported else
                     'mixed-or-no-go-no-production-promotion'),
-        'policy': 'frozen by ZG024_STAGED_PROTOCOL_V2.md; confirmation cannot select another staged method',
+        'policy': ('frozen by ZG024_STAGED_PROTOCOL_V2.md; confirmation cannot select another staged method; '
+                   'exact budget integrity includes explicitly accounted fail-closed safety stops'),
     }
 
     portable = {
