@@ -80,10 +80,12 @@ class TrialTests(unittest.TestCase):
         for design,rows in (('ab',self.match2),('multi',self.match3)):
             public=self.service.create_participant_trial(design.upper(),design,rows,'9',['liking'],None);safe=self.service.export_participant_bundle(public['id'])
             self.assertNotIn('seed',safe['trial']);self.assertIsNone(safe['trial']['abx_truth']);self.assertEqual(safe['results'],[])
-    def test_bundle_reopen_never_regenerates_missing_audio(self):
+    def test_bundle_reopen_restores_exact_audio_after_store_is_destroyed(self):
         public=self.service.create_trial('AB','ab',self.match2,'5',['liking'],None);tid=public['id'];self.service.submit(tid,{'status':'completed','choice':public['presentation_order'][0],'ratings':{'liking':55},'confidence':60,'effort':20,'comfortable_level':50,'replay_counts':{x:1 for x in public['presentation_order']},'x_replay_count':0,'annotations':[],'note':''})
         bundle=self.service.export_bundle(tid);self.assertEqual(self.service.reopen_bundle(bundle)['results'][0]['ratings']['liking'],55)
-        with self.assertRaisesRegex(ListeningError,'regeneration is forbidden'):ListeningService(self.timeline).reopen_bundle(bundle)
+        expected={row['playback_sha256']:self.service.audio.playback_pcm(row['playback_sha256']) for row in self.match2};fresh=ListeningService(self.timeline);reopened=fresh.reopen_bundle(bundle)
+        self.assertEqual(reopened['results'][0]['ratings']['liking'],55)
+        for psha,pcm in expected.items():self.assertEqual(fresh.audio.playback_pcm(psha),pcm)
     def test_manifest_roundtrip_detects_tampering(self):
         t=make_trial('AB','ab',self.match2,seed='9');self.assertEqual(TrialManifest.from_json(t._json).sha256,t.sha256);d=t.to_dict();d['seed']='10'
         with self.assertRaisesRegex(ListeningError,'trial id'):TrialManifest(d)
