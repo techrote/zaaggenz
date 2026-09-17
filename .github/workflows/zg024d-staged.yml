@@ -6,6 +6,7 @@ on:
       - 'tests/inverse_research/**'
       - 'tools/inverse_staged_report.py'
       - 'docs/inverse/**'
+      - 'examples/zg024d_*'
       - '.github/workflows/zg024d-staged.yml'
   workflow_dispatch:
 permissions:
@@ -17,7 +18,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     env:
       PYTHONUTF8: '1'
       PYTHONHASHSEED: '0'
@@ -34,14 +35,16 @@ jobs:
         run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
       - name: ZG-024b and ZG-024d research acceptance tests
         run: python -m unittest discover -s tests/inverse_research -v
-      - name: Frozen inverse laboratory regressions
+      - name: Frozen inverse laboratory regressions including transient-v4
         run: python -m unittest discover -s tests/inverse -v
-      - name: Run preregistered calibration and independent audits
+      - name: Run frozen v2 development then sealed confirmation programme
         run: >-
           python tools/inverse_staged_report.py
           --out zg024d-evidence.json
           --full-out zg024d-full.json
+          --portable-out zg024d-portable.json
           --telemetry-out zg024d-telemetry.json
+          --require-integrity
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -49,6 +52,7 @@ jobs:
           path: |
             zg024d-evidence.json
             zg024d-full.json
+            zg024d-portable.json
             zg024d-telemetry.json
-          retention-days: 7
+          retention-days: 14
           compression-level: 9
