@@ -169,7 +169,7 @@ class TransientGateTests(unittest.TestCase):
         self.assertLess(measured, 1.)
 
         at_boundary = ValidationPolicy(min_transient_ratio=measured)
-        just_above = ValidationPolicy(min_transient_ratio=np.nextafter(measured, np.inf))
+        just_above = ValidationPolicy(min_transient_ratio=math.nextafter(measured, math.inf))
         self.assertNotIn('transient_loss', reasons(validation_measurements(self.target, candidate, SR, at_boundary)))
         rejected = validation_measurements(self.target, candidate, SR, just_above)
         self.assertIn('transient_loss', reasons(rejected))
