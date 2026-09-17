@@ -19,9 +19,11 @@ ZG-029 integration uses one canonical layer vocabulary:
 | `aux` | `aux` | complementary group | layer generator | harmony-layer owner | AUX persistent layer state | AUX automation, then the one final master |
 | `sub` | `sub` | pedal or moving-root foundation | layer generator | `PhrasePlan.bass_role` | SUB persistent layer state | SUB automation, then the one final master |
 
+Every canonical role owns a distinct same-named pre-master stem. The policy declares independent stem audition, role-scoped mute ownership and a no-retune/no-reweight identity path for every role. In particular, muting or deriving the exciter never satisfies or removes the SYNTHLINE stem obligation.
+
 `BODY low` and `BODY upper` are not new frozen RenderRecipe-v1 wire roles. When a legacy/current implementation exposes them separately they are subcomponents of canonical `body`; ZG-029 may add an explicitly versioned independently-addressable layer section later, but current code must not forge new `PhrasePlan.layer_role` values.
 
-Persistent BODY/AUX/SUB phase is continuous-integrated across ordinary note/phrase boundaries. A section reset is an explicit state transition, not an alternate implicit default. Until ZG-029 serialises such layer instances, a consumer that needs an independently reset persistent layer must fail/abstain rather than infer reset from call boundaries.
+Persistent BODY/AUX/SUB phase is continuous-integrated across ordinary note/phrase boundaries. A section reset is an explicit state transition, not an alternate implicit default. A consumer that cannot preserve the declared persistent state must fail/abstain rather than infer reset from call boundaries.
 
 ## Why a policy adapter, not a frozen ZG-002 schema rewrite
 
@@ -61,6 +63,19 @@ Consequences:
 
 Upper BODY/AUX transforms do not move SUB by implication. This distinction is deterministic and survives serialisation because `bass_role` is already frozen PhrasePlan data.
 
+## Section-boundary state rule
+
+`section_transition_manifest()` is the explicit persisted boundary record for ownership policy `1.0.0`. It is content-addressed to the exact `LayerOwnershipManifest` and a canonical boundary id.
+
+For BODY/AUX/SUB, the only legal section actions are:
+
+- `continue`: preserve tail state and continue integrated phase/state;
+- `reset`: reset to the declared layer origin and reset the layer-owned tail state.
+
+A reset must name the persistent role explicitly. SYNTHLINE and exciter cannot be smuggled into this reset list because their reset lifetime is owned by the authored event/RenderRecipe note policy instead. Duplicate, unknown and non-persistent reset requests fail with structured diagnostics.
+
+The section record is strict JSON with its own digest. `validate_section_transition()` verifies the digest and, when the bound ownership manifest is supplied, reconstructs the authoritative transition and rejects a re-hashed semantic mutation. JSON save/reload therefore preserves the declared continue/reset/tail decision exactly. The policy does not fabricate oscillator samples or phase accumulators before the persistent renderer exists; ZG-029 runtime must checkpoint any concrete state required to realise the already-declared transition.
+
 ## Source and transient protection
 
 SYNTHLINE remains the full first-class protected source stem. Harmony/layer coordination may request pitch intent, but it does not grant permission to replace a source-derived hit with a re-synthesised one. Target-note synthesis remains an explicit named melody-render mode, not a harmony side effect.
@@ -96,11 +111,13 @@ Where recovered v1.2.1 concepts need names in the new model, the projection is e
 
 This is semantic mapping only. It does not rewrite recovered parameter records, move legacy processing onto another stem, or claim that legacy rendering had independently-addressable stems where it did not.
 
-## Consumer rule and structured diagnostics
+## Consumer rule, inspection and structured diagnostics
 
 A renderer/compiler declares the canonical roles it owns. `require_renderer_roles()` compares authored PhrasePlan roles against that declaration and returns the same versioned manifest on success. Any non-owned authored role raises structured diagnostic code `role-not-owned-by-renderer`; consumers must not silently render it into a convenient stem.
 
-Current ZG-008 remains SYNTHLINE-only. Its accepted exciter output is generated from SYNTHLINE roll/retrigger intent, not authored `layer_role=exciter` input. Persistent BODY/AUX/SUB execution remains ZG-029 work; this ADR prevents that work from inventing ownership locally.
+`transform_inspection()` provides the stable inspection envelope required by later ZG-041 UI and provenance. It records layer, retune/reweight quantity, exclusive owner, stage, requested target, realised target when applied, and one of `requested`, `applied` or `abstained`. Applied records require a realised target. Abstentions require a reason. Targets are bounded strict JSON and malformed/non-finite evidence fails closed. The record is content-addressed; it does not choose a target or turn a metric into artistic priority.
+
+Current ZG-008 remains SYNTHLINE-only. Its accepted exciter output is generated from SYNTHLINE roll/retrigger intent, not authored `layer_role=exciter` input. Persistent BODY/AUX/SUB audio execution remains ZG-029 work; this ADR prevents that work from inventing ownership locally.
 
 ## Compatibility and protected semantics
 
@@ -113,18 +130,18 @@ This decision intentionally does **not**:
 - alter #138 protected-topology preservation;
 - alter partial/transient/residual provenance or ownership.
 
-The policy manifest has its own digest and can be bound as evidence without changing frozen recipe identity.
+The policy manifest, section-transition record and transform-inspection record have their own digests and can be bound as evidence without changing frozen recipe identity.
 
 ## Required integration behaviour downstream
 
 ZG-029/ZG-030 implementations must:
 
 1. bind a policy manifest (or a future versioned successor) to each integrated persistent-layer render;
-2. serialise any output-affecting persistent-layer phase/reset/tail state rather than relying on section-call boundaries;
-3. keep SYNTHLINE and exciter independently auditionable;
+2. realise the saved `LayerSectionTransition` exactly and checkpoint any concrete persistent state needed to continue it across process save/reload;
+3. keep every canonical same-named pre-master stem independently auditionable with role-scoped mute/null checks;
 4. preserve `bass_role` fixed/moving independence;
 5. route retune/reweight claims through the explicit conflict rule;
-6. expose requested target, realised target, owner/stage, and conflict/abstention in inspection traces;
+6. emit `LayerTransformInspection` evidence for requested/realised target, owner/stage, and conflict/abstention;
 7. preserve one final `RenderRecipe.output` stage and no hidden post-pocket normalisation.
 
 A future requirement that cannot be represented by policy `1.0.0` requires an explicit policy-version change; it must not be smuggled into the meaning of an existing field.
