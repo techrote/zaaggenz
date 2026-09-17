@@ -53,6 +53,16 @@ def validate_matched(row):
     if row['method']!='whole-file-rms-common-target-v1':raise ListeningError('unsupported matching method')
     if type(row['true_peak_measured']) is not bool or row['true_peak_measured']:raise ListeningError('this matcher declares sample peak, not true peak')
 
+def validate_stimulus_metadata(metadata,expected):
+    """Validate trusted timing metadata supplied outside the frozen 1.0 trial wire format."""
+    if type(metadata)is not dict or set(metadata)!=set(expected):raise ListeningError('exact stimulus timing metadata required for every presented stimulus')
+    out={}
+    for sid,row in metadata.items():
+        sha(sid,'stimulus timing id');exact(row,{'sample_rate_hz','frame_count'},'stimulus timing metadata')
+        sr=integer(row['sample_rate_hz'],8000,384000,'stimulus timing sample_rate_hz');frames=integer(row['frame_count'],1,384000*600,'stimulus timing frame_count')
+        out[sid]=(sr,frames)
+    return out
+
 @dataclass(frozen=True,init=False)
 class Stimulus:
     _json:str
@@ -106,7 +116,7 @@ class TrialManifest:
 @dataclass(frozen=True,init=False)
 class TrialResult:
     _json:str
-    def __init__(self,d,manifest=None):
+    def __init__(self,d,manifest=None,stimulus_metadata=None):
         try:check_json(d)
         except (ValueError,TypeError) as e:raise ListeningError(str(e)) from e
         exact(d,{'format','version','trial_id','status','presentation_order','choice','abx_correct','ratings','confidence','effort','comfortable_level','replay_counts','x_replay_count','annotations','note'},'trial result')
@@ -138,13 +148,25 @@ class TrialResult:
             expected=set(m['presentation_order'])
             if set(counts)!=expected:raise ListeningError('replay counts must cover every presented stimulus')
             if set(ratings)-set(m['endpoints']):raise ListeningError('result rates undeclared endpoint')
+            if any(a['stimulus_id'] not in expected for a in ann):raise ListeningError('annotation stimulus must be presented by this trial')
+            if m['design']=='abx':
+                if d['choice'] is not None and d['choice'] not in ('A','B'):raise ListeningError('ABX choice must be A, B or null')
+            elif d['choice'] is not None and d['choice'] not in expected:raise ListeningError('comparison choice must identify a presented stimulus')
             if m['design']!='abx' and d['x_replay_count']!=0:raise ListeningError('X replay count belongs only to ABX')
+            if ann and stimulus_metadata is not None:
+                timing=validate_stimulus_metadata(stimulus_metadata,expected)
+                for a in ann:
+                    sr,frames=timing[a['stimulus_id']];duration=frames/sr
+                    if float(a['time_seconds'])>duration:raise ListeningError('annotation time exceeds referenced stimulus duration')
             if d['status']=='completed':
                 if m['design']=='abx':
                     if d['choice'] not in ('A','B'):raise ListeningError('completed ABX requires A/B choice')
                     if d['abx_correct']!=(d['choice']==m['abx_truth']):raise ListeningError('ABX accuracy field is inconsistent')
                 elif d['abx_correct'] is not None:raise ListeningError('ABX accuracy must stay separate/null outside ABX')
             elif d['abx_correct'] is not None:raise ListeningError('aborted/missing trial cannot claim ABX accuracy')
+            if d['status']=='missing':
+                if d['choice'] is not None or ratings or d['confidence'] is not None or d['effort'] is not None or d['comfortable_level'] is not None or any(counts.values()) or d['x_replay_count'] or ann:
+                    raise ListeningError('missing result cannot contain substantive response observations')
         object.__setattr__(self,'_json',json.dumps(d,sort_keys=True,separators=(',',':'),allow_nan=False))
     def to_dict(self):return loads(self._json)
     @property

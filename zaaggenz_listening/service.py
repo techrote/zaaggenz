@@ -18,6 +18,15 @@ class ListeningService:
         stimulus=self.audio.add_artifact(name,artifact,start_frame=start_frame,end_frame=end_frame)
         return stimulus.to_dict()
     def match(self,stimulus_ids,target_rms_dbfs=None,peak_ceiling_dbfs=-3.):return self.audio.match(stimulus_ids,target_rms_dbfs=target_rms_dbfs,peak_ceiling_dbfs=peak_ceiling_dbfs)
+    @staticmethod
+    def _stimulus_metadata(stimuli):
+        rows={}
+        for stimulus in stimuli:
+            if not isinstance(stimulus,Stimulus):raise ListeningError('Stimulus required for result timing validation')
+            d=stimulus.to_dict();rows[d['id']]={'sample_rate_hz':d['sample_rate_hz'],'frame_count':d['frame_count']}
+        return rows
+    def _trial_stimulus_metadata(self,trial):
+        td=trial.to_dict();return self._stimulus_metadata([self.audio.stimulus(row['stimulus_id']) for row in td['matched_stimuli']])
     def _register_trial(self,trial,participant_id=None):
         if not isinstance(trial,TrialManifest):raise ListeningError('TrialManifest required')
         tid=trial.to_dict()['id'];self.trials[tid]=trial
@@ -45,12 +54,12 @@ class ListeningService:
     def manifest(self,trial_id):
         return self.trials[self._trusted_id(trial_id)]
     def submit(self,trial_id,payload):
-        tid=self._trusted_id(trial_id);trial=self.trials[tid];result=make_result(trial,**payload);self.results.setdefault(tid,[]).append(result);return {'result':result.to_dict(),'result_sha256':result.sha256}
+        tid=self._trusted_id(trial_id);trial=self.trials[tid];result=make_result(trial,stimulus_metadata=self._trial_stimulus_metadata(trial),**payload);self.results.setdefault(tid,[]).append(result);return {'result':result.to_dict(),'result_sha256':result.sha256}
     def submit_participant(self,participant_id,payload):
         """One terminal participant response per public trial; retakes require a new trial."""
         tid=self._trusted_id(participant_id,participant_only=True);trial=self.trials[tid]
         if self.results.get(tid):raise ListeningError('participant trial already has a terminal result; create a new trial for a retake')
-        result=make_result(trial,**payload);self.results.setdefault(tid,[]).append(result);view=public_result(result,participant_id)
+        result=make_result(trial,stimulus_metadata=self._trial_stimulus_metadata(trial),**payload);self.results.setdefault(tid,[]).append(result);view=public_result(result,participant_id)
         return {'result':view,'result_sha256':digest({'domain':'zaaggenz.listening-participant-result-v1','result':view})}
     def export_bundle(self,trial_id):
         """Trusted archival export. Never expose this through participant capability."""
@@ -67,6 +76,6 @@ class ListeningService:
         if {s.to_dict()['id'] for s in stimuli}!={r['stimulus_id'] for r in trial.to_dict()['matched_stimuli']}:raise ListeningError('bundle stimulus provenance does not match trial')
         for row in trial.to_dict()['matched_stimuli']:
             if not self.audio.has_playback(row['playback_sha256']):raise ListeningError('bundle playback bytes are missing; silent regeneration is forbidden')
-        results=[TrialResult(r,trial) for r in bundle['results']];tid=trial.to_dict()['id'];public=self._register_trial(trial);self.results[tid]=results;return {'trial':public,'results':[r.to_dict() for r in results]}
+        metadata=self._stimulus_metadata(stimuli);results=[TrialResult(r,trial,stimulus_metadata=metadata) for r in bundle['results']];tid=trial.to_dict()['id'];public=self._register_trial(trial);self.results[tid]=results;return {'trial':public,'results':[r.to_dict() for r in results]}
     @property
     def templates(self):return deepcopy(INSTRUCTIONS)
