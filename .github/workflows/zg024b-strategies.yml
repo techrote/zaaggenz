@@ -5,8 +5,10 @@ on:
       - 'research/zg024b/**'
       - 'research/__init__.py'
       - 'tests/inverse_research/**'
+      - 'tests/inverse/**'
       - 'tools/inverse_strategy_report.py'
       - 'examples/zg024b_strategy_calibration.json'
+      - 'examples/zg024b_strategy_calibration_transient_v4.json'
       - 'docs/inverse/**'
       - '.github/workflows/zg024b-strategies.yml'
   workflow_dispatch:
@@ -38,13 +40,13 @@ jobs:
         run: python -m unittest discover -s tests/inverse_research -v
       - name: Frozen ZG-024a laboratory regressions
         run: python -m unittest discover -s tests/inverse -v
-      - name: Reproduce frozen strategy calibration and independent audits
+      - name: Reproduce versioned transient-v4 strategy calibration and independent audits
         run: >-
           python tools/inverse_strategy_report.py
           --out zg024b-evidence.json
           --full-out zg024b-full.json
           --telemetry-out zg024b-telemetry.json
-          --check examples/zg024b_strategy_calibration.json
+          --check examples/zg024b_strategy_calibration_transient_v4.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
