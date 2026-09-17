@@ -1,0 +1,107 @@
+name: ZG-024d staged deterministic strategy research
+on:
+  pull_request:
+    paths:
+      - 'research/zg024d/**'
+      - 'tests/inverse_research/**'
+      - 'tools/inverse_staged_report.py'
+      - 'docs/inverse/**'
+      - 'examples/zg024d_*'
+      - '.github/workflows/zg024d-staged.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  staged-research:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      PYTHONUTF8: '1'
+      PYTHONHASHSEED: '0'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Materialize authenticated unmodified baseline
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install declared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: ZG-024b and ZG-024d research acceptance tests
+        run: python -m unittest discover -s tests/inverse_research -v
+      - name: Frozen inverse laboratory regressions including transient-v4
+        run: python -m unittest discover -s tests/inverse -v
+      - name: Run frozen v2 development then sealed confirmation programme
+        run: >-
+          python tools/inverse_staged_report.py
+          --out zg024d-evidence.json
+          --full-out zg024d-full.json
+          --portable-out zg024d-portable.json
+          --telemetry-out zg024d-telemetry.json
+          --require-integrity
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg024d-staged-research-${{ matrix.os }}
+          path: |
+            zg024d-evidence.json
+            zg024d-full.json
+            zg024d-portable.json
+            zg024d-telemetry.json
+          retention-days: 14
+          compression-level: 9
+
+  portability:
+    needs: staged-research
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: zg024d-staged-research-*
+          path: portable
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Compare Ubuntu and Windows portable evidence under frozen tolerance policy
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import math
+          from pathlib import Path
+
+          ATOL, RTOL = 1e-7, 1e-5
+          roots = {
+              'ubuntu': Path('portable/zg024d-staged-research-ubuntu-latest/zg024d-portable.json'),
+              'windows': Path('portable/zg024d-staged-research-windows-latest/zg024d-portable.json'),
+          }
+          values = {name: json.loads(path.read_text(encoding='utf-8')) for name, path in roots.items()}
+
+          def compare(a, b, path='root'):
+              if type(a) is not type(b):
+                  raise AssertionError(f'{path}: type mismatch {type(a).__name__} != {type(b).__name__}')
+              if isinstance(a, dict):
+                  if set(a) != set(b):
+                      raise AssertionError(f'{path}: key mismatch')
+                  for key in sorted(a):
+                      compare(a[key], b[key], f'{path}.{key}')
+              elif isinstance(a, list):
+                  if len(a) != len(b):
+                      raise AssertionError(f'{path}: list length {len(a)} != {len(b)}')
+                  for index, (left, right) in enumerate(zip(a, b)):
+                      compare(left, right, f'{path}[{index}]')
+              elif isinstance(a, float):
+                  if not math.isclose(a, b, abs_tol=ATOL, rel_tol=RTOL):
+                      raise AssertionError(f'{path}: {a!r} != {b!r}')
+              elif a != b:
+                  raise AssertionError(f'{path}: {a!r} != {b!r}')
+
+          compare(values['ubuntu'], values['windows'])
+          print('ZG-024d portable evidence agrees across Ubuntu and Windows under abs=1e-7 rel=1e-5')
+          PY

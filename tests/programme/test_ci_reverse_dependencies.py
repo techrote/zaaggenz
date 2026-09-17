@@ -20,11 +20,12 @@ class ReverseDependencyCI(unittest.TestCase):
 
     def test_complete_current_workflow_audit(self) -> None:
         _, _, audits = ci.build_audit(ROOT)
-        self.assertEqual(31, len(audits))
+        self.assertEqual(32, len(audits))
         self.assertIn("zg001-recovery.yml", audits)
         self.assertTrue(audits["zg002-contracts.yml"].always_native)
         self.assertIn("zg024a-lab.yml", audits)
         self.assertIn("zg024b-strategies.yml", audits)
+        self.assertIn("zg024d-staged.yml", audits)
         self.assertIn("zg032-vocal.yml", audits)
 
     def test_tuning_change_selects_spectral_and_inspector_consumers(self) -> None:

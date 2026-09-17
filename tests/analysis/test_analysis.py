@@ -1,5 +1,6 @@
-import hashlib,json,math,tempfile,unittest
+import hashlib,importlib,json,math,tempfile,unittest
 from dataclasses import replace
+from unittest import mock
 import numpy as np
 
 from zaaggenz_analysis import *
@@ -30,6 +31,89 @@ class STFTTests(unittest.TestCase):
         r=stft(np.ones(10),48000,resolution_specs(48000)['short']);self.assertLess(r.supports[0,0],0);self.assertLess(r.valid_fraction[0],1);self.assertEqual(r.anchors[0],0)
     def test_periodic_hann_and_raw_units_are_frozen(self):
         s=resolution_specs(48000)['medium'];self.assertEqual(s.window,'hann-periodic-v1');self.assertEqual(s.scaling,'raw-rfft-v1');self.assertEqual(s.hop_samples,s.window_samples//4)
+
+class ResourceBoundTests(unittest.TestCase):
+    def test_supported_default_resolutions_remain_inside_resource_policy(self):
+        for sr in (8000,12000,48000,192000):
+            with self.subTest(sample_rate_hz=sr):
+                specs=resolution_specs(sr);self.assertEqual(set(specs),{'short','medium','long'})
+                for spec in specs.values():
+                    self.assertLessEqual(spec.window_samples,MAX_STFT_WINDOW_SAMPLES)
+                    self.assertLessEqual(spec.fft_samples,MAX_STFT_FFT_SAMPLES)
+                    estimate=validate_stft_resources(sr,2,spec)
+                    self.assertLessEqual(estimate.estimated_live_bytes,MAX_STFT_ESTIMATED_LIVE_BYTES)
+        self.assertEqual(resolution_specs(192000)['long'].window_samples,MAX_STFT_WINDOW_SAMPLES)
+
+    def test_exact_resource_bound_is_accepted(self):
+        spec=STFTSpec(MAX_STFT_WINDOW_SAMPLES,MAX_STFT_WINDOW_SAMPLES//2,MAX_STFT_FFT_SAMPLES)
+        self.assertEqual(spec.window_samples,32768);self.assertEqual(spec.fft_samples,32768)
+
+    def test_window_and_fft_limit_plus_one_even_value_are_rejected(self):
+        with self.assertRaisesRegex(AnalysisError,'window exceeds'):
+            STFTSpec(MAX_STFT_WINDOW_SAMPLES+2,1,MAX_STFT_WINDOW_SAMPLES+2)
+        with self.assertRaisesRegex(AnalysisError,'FFT size exceeds'):
+            STFTSpec(1024,256,MAX_STFT_FFT_SAMPLES+2)
+
+    def test_pathological_custom_dimensions_fail_during_spec_admission(self):
+        with self.assertRaises(AnalysisError):STFTSpec(2**20,1,2**20)
+        with self.assertRaises(AnalysisError):STFTSpec(1024,1,2**30)
+
+    def test_rejected_tampered_spec_reaches_no_padding_or_fft_allocation(self):
+        module=importlib.import_module('zaaggenz_analysis.stft')
+        spec=STFTSpec(256,64,256)
+        object.__setattr__(spec,'fft_samples',MAX_STFT_FFT_SAMPLES+2)
+        with mock.patch.object(module.np,'pad') as pad,mock.patch.object(module.np.fft,'rfft') as rfft:
+            with self.assertRaisesRegex(AnalysisError,'FFT size exceeds'):module.stft(np.zeros(128),48000,spec)
+            pad.assert_not_called();rfft.assert_not_called()
+
+    def test_hop_driven_cost_explosion_is_rejected_before_expensive_allocation(self):
+        module=importlib.import_module('zaaggenz_analysis.stft')
+        spec=STFTSpec(MAX_STFT_WINDOW_SAMPLES,1,MAX_STFT_FFT_SAMPLES)
+        source=np.zeros((48000,2),dtype=np.float32)
+        estimate=estimate_stft_resources(len(source),2,spec)
+        self.assertGreater(estimate.estimated_live_bytes,50_000_000_000)
+        with mock.patch.object(module.np,'pad') as pad,mock.patch.object(module.np.fft,'rfft') as rfft:
+            with self.assertRaisesRegex(AnalysisError,r'estimated live storage .* exceeds .* resource bound'):
+                module.stft(source,48000,spec)
+            pad.assert_not_called();rfft.assert_not_called()
+
+    def test_estimator_matches_execution_cardinality_and_channel_cost(self):
+        spec=STFTSpec(256,64,512)
+        mono=estimate_stft_resources(100,1,spec);stereo=estimate_stft_resources(100,2,spec)
+        self.assertEqual(mono.policy,STFT_RESOURCE_POLICY)
+        self.assertEqual((mono.frame_count,mono.padded_frames,mono.padding_extra_frames),(3,384,28))
+        self.assertEqual(stereo.weighted_bytes,mono.weighted_bytes*2)
+        self.assertEqual(stereo.spectra_bytes,mono.spectra_bytes*2)
+        self.assertEqual(stereo.fft_point_count,mono.fft_point_count*2)
+        result=stft(np.zeros(100),48000,spec);self.assertEqual(len(result.anchors),mono.frame_count)
+
+    def test_public_admission_can_apply_scheduler_specific_stricter_bound(self):
+        spec=STFTSpec(512,128,1024)
+        estimate=estimate_stft_resources(48000,2,spec)
+        accepted=validate_stft_resources(48000,2,spec,max_live_bytes=estimate.estimated_live_bytes)
+        self.assertEqual(accepted,estimate)
+        with self.assertRaisesRegex(AnalysisError,str(estimate.estimated_live_bytes)):
+            validate_stft_resources(48000,2,spec,max_live_bytes=estimate.estimated_live_bytes-1)
+        with self.assertRaisesRegex(AnalysisError,'admission bound'):
+            validate_stft_resources(1,1,STFTSpec(16,1,16),max_live_bytes=MAX_STFT_ESTIMATED_LIVE_BYTES+1)
+
+    def test_estimator_handles_empty_and_short_sources_without_allocation(self):
+        spec=STFTSpec(256,64,256)
+        empty=estimate_stft_resources(0,1,spec);short=estimate_stft_resources(1,2,spec)
+        self.assertEqual((empty.frame_count,empty.padded_frames),(1,256))
+        self.assertEqual(short.frame_count,2);self.assertGreater(short.estimated_live_bytes,0)
+        with self.assertRaises(AnalysisError):estimate_stft_resources(-1,1,spec)
+        with self.assertRaises(AnalysisError):estimate_stft_resources(1,3,spec)
+
+    def test_within_bound_custom_zero_padding_executes_without_mutation(self):
+        spec=STFTSpec(256,64,512,role='observation');r=stft(np.arange(100,dtype=np.float64),48000,spec)
+        self.assertEqual(r.spec,spec);self.assertEqual(r.spectra.shape[-1],257)
+
+    def test_resource_policy_is_identity_neutral_for_existing_spec_metadata(self):
+        spec=resolution_specs(48000)['medium']
+        self.assertEqual(spec.metadata(),{'window_samples':2048,'hop_samples':512,'fft_samples':2048,
+            'window':'hann-periodic-v1','padding':'half-window-zero-v1','scaling':'raw-rfft-v1','role':'canonical-resynthesis'})
+        self.assertNotIn('resource_policy',spec.metadata())
 
 class ResolutionTests(unittest.TestCase):
     def test_two_low_tones_need_long_support(self):

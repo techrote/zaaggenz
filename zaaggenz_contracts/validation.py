@@ -219,7 +219,7 @@ def _trial(d):
     order = d['presentation_order']
     require(len(order) == len(ids) and set(order) == ids, 'trial order must contain each stimulus exactly once')
     for s in d['stimuli']:
-        require(s['start_sample'] < s['end_sample'] <= s['asset']['frame_count'], 'trial excerpt outside audio asset')
+        require(0 <= s['start_sample'] < s['end_sample'] <= s['asset']['frame_count'], 'trial excerpt outside audio asset')
     if d['mode'] == 'confirmatory':
         require(d['preregistration_sha256'] is not None, 'confirmatory trial requires frozen preregistration identity')
 

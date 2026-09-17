@@ -1,0 +1,49 @@
+{
+  "acceptance": {
+    "classification": "exact",
+    "damaged_max_ratio_exclusive": 0.4,
+    "portable_abs_tolerance": 1e-07,
+    "portable_rel_tolerance": 1e-05,
+    "preserved_min_ratio": 0.4
+  },
+  "base": {
+    "amplitudes": [
+      1.0,
+      0.28,
+      0.17,
+      0.08
+    ],
+    "attack_ms": 5.0,
+    "decay_ms": 240.0,
+    "harmonics": [
+      1,
+      2,
+      4,
+      6
+    ],
+    "root_hz": 196.0
+  },
+  "cases": [
+    {"class": "preserved", "id": "confirm_identity", "transform": "identity"},
+    {"class": "preserved", "id": "confirm_gain", "transform": "gain 0.47"},
+    {"class": "preserved", "id": "confirm_phase", "transform": "phases [1.1,2.2,0.4,2.9]"},
+    {"class": "preserved", "id": "confirm_root", "transform": "root 196 -> 311.13 Hz, same envelope/amplitude ratios"},
+    {"class": "preserved", "id": "confirm_timbre", "transform": "harmonic amplitudes [1.0,0.08,0.42,0.19], same envelope/root"},
+    {"class": "damaged", "id": "confirm_attack_removed", "transform": "zero first 28 ms, 3 ms recovery crossfade, whole-fixture RMS match"},
+    {"class": "damaged", "id": "confirm_attack_smoothed", "transform": "replace 5 ms attack with 42 ms raised-cosine attack, whole-fixture RMS match"},
+    {"class": "damaged", "id": "confirm_attack_attenuated", "transform": "first 20 ms multiplied by 0.15, 5 ms recovery, whole-fixture RMS match"},
+    {"class": "damaged", "id": "confirm_onset_lowpass", "transform": "first 20 ms moving-average low-pass with 2.5 ms kernel, 5 ms recovery, whole-fixture RMS match"},
+    {"class": "damaged", "id": "confirm_flattened", "transform": "first 20 ms hard-limited at 0.18 of target peak, whole-fixture RMS match"},
+    {"class": "damaged", "id": "confirm_second_onset_removed", "transform": "add deterministic second onset at 80 ms to target; remove only that second onset in candidate"},
+    {"class": "damaged", "id": "confirm_stereo_right_damage", "transform": "stereo duplicate target; right channel first 20 ms attenuated to 0.10 with 5 ms recovery"},
+    {"class": "edge", "id": "confirm_short_boundary", "transform": "32 finite samples"},
+    {"class": "edge", "id": "confirm_silence", "transform": "digital silence"},
+    {"class": "edge", "id": "confirm_near_silence", "transform": "target * 1e-10"}
+  ],
+  "frames": 16384,
+  "issue": 87,
+  "kind": "ZG024TransientGateConfirmationMatrix",
+  "method_protocol_sha256": "ca6e4361ecd34aea9f7f92fd6bd1052dd70c0c33f113da0862e96bfd62bf815f",
+  "sample_rate_hz": 48000,
+  "version": "1.0.0"
+}

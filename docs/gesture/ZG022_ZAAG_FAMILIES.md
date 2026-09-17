@@ -62,6 +62,20 @@ This repair does not alter `locked_bloom`, any registered family values, source 
 
 The arranger renders each family source **once per arrangement**, caches each required pitch ratio and reuses that source for every event. It does not re-synthesise the source topology per note. Harmonic intervals in the long example are explicit manifest degrees; no chord vocabulary is inferred.
 
+### Arrangement execution envelope
+
+`ArrangementManifest` is an executable artifact, so its `1.0.0` domain is finite and is validated before source generation or arrangement allocation. The envelope is intentionally larger than the current examples while remaining proportional to the declared 1–64-bar timeline:
+
+- at most **16 events per declared bar** (1,024 events at 64 bars), equivalent to a sustained 16th-note event grid in 4/4;
+- at most **8 explicit integer degrees per event**, allowing substantially wider stacks than the current single notes/triads; the resulting worst-case admitted work is 8,192 note voices at 64 bars;
+- event `beat`, `duration_beats`, and `gain_db` are finite native numbers rather than bool/string/coercible values; `0 <= beat < bars * 4`, positive duration must end within `bars * 4`, and event gain is bounded to **-120..+24 dB** so the executable linear-gain conversion is finite;
+- degrees are checked against the selected family's declared pitch-ratio range by logarithmic integer-degree bounds **before** `2 ** (degree / 12)` is evaluated. There is no overflow-prone trial exponentiation and no pitch clamping;
+- a one-beat family source remains duration-preserving through static transposition. Preflight reserves a conservative maximum source-tail envelope of **3 seconds**, derived from the frozen legacy synth import minimum of 20 BPM. At the largest supported arrangement (64 bars, 60 BPM, 48 kHz) the absolute output envelope is therefore **12,432,000 samples**. The normal output remains the nominal arrangement length unless a real preserved source tail crosses it.
+
+`arrangement_work_estimate()` exposes the model-owned event, note-voice, nominal-output and conservative maximum-output cardinalities for future shared-scheduler admission. The renderer repeats admission against the manifest immediately before allocating output or synthesising a source, so mutation of nested event data cannot turn a previously accepted object into unbounded work.
+
+These are fail-closed execution bounds, not musical transforms. No accepted event is dropped, coalesced, normalized, truncated, moved, or silently clamped. Preserve-tail ownership is unchanged: an event must start and have its authored duration inside the declared arrangement timeline, while its source-derived audio tail may extend beyond the nominal final beat only within the validated source-tail envelope. The one-shot, four-bar, and sixteen-bar example manifests remain inside this domain without any event, source, pitch, gain, topology, or DSP change.
+
 ## Owner audition gate
 
 `build_owner_audition_pack()` produces a deterministic level-matched pack containing all six candidates and all three contrasts. Matching is whole-item RMS with peak-safe gain reduction only: no compression, clipping or hidden normalization is used to make conditions look similar.

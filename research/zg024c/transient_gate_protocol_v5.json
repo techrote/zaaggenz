@@ -1,0 +1,34 @@
+{
+  "candidate_method": {
+    "aggregate": "minimum channel_score across physical channels",
+    "attack_components": "unchanged from protocol v4: target onset contrast, early/tail amplitude, attack-local high-band contrast",
+    "channel_activity_component": "For each target-active channel, (candidate_channel_rms/target_channel_rms)/(candidate_global_rms/target_global_rms). Global positive gain therefore maps to 1.0; loss of one physical channel maps toward 0. If candidate global RMS is at/below RMS_FLOOR while target is active, component is 0.",
+    "channel_score": "minimum of target-onset anchor score (neutral 1 if no qualifying onset) and channel_activity_component",
+    "id": "zg.inverse.transient-onset-contrast.v4",
+    "threshold": 0.4
+  },
+  "decision_rule": "No attack-window, anchor, spectral, or 0.4 threshold changes. Existing confirmation-v2 preserved/damaged classifications must remain identical, and inherited physical-channel/silence regressions must pass.",
+  "frozen_compatibility_controls": [
+    {
+      "expected": "channel activity component 1.0; independent level/normalisation gates may reject but transient gate does not call unchanged attack loss",
+      "id": "global_gain_0p10"
+    },
+    {
+      "expected": "transient ratio 0.0 and rejection",
+      "id": "stereo_drop_one_channel"
+    },
+    {
+      "expected": "transient ratio 0.0 when target is active",
+      "id": "candidate_silence"
+    },
+    {
+      "expected": "neutral ratio 1.0",
+      "id": "target_silence_identity"
+    }
+  ],
+  "issue": 87,
+  "kind": "ZG024TransientGateAblationProtocol",
+  "reason": "The first integrated CI run of the research-confirmed v3 candidate exposed an inherited physical-channel safety regression: a stereo candidate could erase one target channel while the aggregate level/band gates remained within bounds. The final method adds a gain-normalized per-channel activity safeguard. This is a compatibility/safety repair, not post-hoc tuning of the attack confirmation endpoints.",
+  "supersedes_sha256": "23cb2e5167038dd4dc43ec268c3257f171809561f9c4bb94c774a5c86156540e",
+  "version": "5.0.0"
+}

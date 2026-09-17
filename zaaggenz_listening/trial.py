@@ -70,9 +70,9 @@ def public_result(result,participant_id):
     d=result.to_dict();d['trial_id']=participant_id;d['abx_correct']=None
     return d
 
-def make_result(manifest,*,status='completed',choice=None,ratings=None,confidence=None,effort=None,comfortable_level=None,replay_counts=None,x_replay_count=0,annotations=None,note=''):
+def make_result(manifest,*,status='completed',choice=None,ratings=None,confidence=None,effort=None,comfortable_level=None,replay_counts=None,x_replay_count=0,annotations=None,note='',stimulus_metadata=None):
     if not isinstance(manifest,TrialManifest):raise ListeningError('TrialManifest required')
     m=manifest.to_dict();counts={sid:0 for sid in m['presentation_order']} if replay_counts is None else replay_counts
     correct=(choice==m['abx_truth']) if status=='completed' and m['design']=='abx' else None
     doc={'format':'zaaggenz-listening-result','version':VERSION,'trial_id':m['id'],'status':status,'presentation_order':m['presentation_order'],'choice':choice,'abx_correct':correct,'ratings':{} if ratings is None else ratings,'confidence':confidence,'effort':effort,'comfortable_level':comfortable_level,'replay_counts':counts,'x_replay_count':x_replay_count,'annotations':[] if annotations is None else annotations,'note':note}
-    return TrialResult(doc,manifest)
+    return TrialResult(doc,manifest,stimulus_metadata=stimulus_metadata)

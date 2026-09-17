@@ -62,6 +62,34 @@ An unregistered merge-head run before the final deterministic-snapshot refinemen
 
 As with the earlier transitions, this record neither rewrites the frozen evidence nor grants a wildcard compatibility exemption. Any source change that produces a different implementation digest, or any drift in fixture/state/objective/eligibility/ranking/holdout/numerical evidence, still fails CI.
 
+## Reviewed cumulative transition — issue #134
+
+ZG-024 issue #134 closes a persisted-evidence gap: Candidate 1.0.0 stored several provenance SHA fields that were syntactically validated but were not all recomputable from material retained in the candidate itself. Candidate 2.0.0 therefore carries a mandatory content-addressed `InverseSearchBinding` with the canonical `SearchRequest`, fitting `AudioAssetRef` identities, method roots and complete numerical environment manifest. Reopening recomputes the historical search ID, method identities, environment identity, binding digest, stage/parent lineage and Candidate v2 identity. Legacy Candidate 1.0.0 fails closed for replay/regeneration because its missing binding cannot be reconstructed safely.
+
+After rebasing the repair onto the accepted campaign tip through issue #116, the reviewed cumulative identity is:
+
+- frozen predecessor: `ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4`
+- cumulative #134 candidate: `4cc5b18e97736e8163a64f08b24f289475e86d4acc958bab9066354d80a6ac42`
+- newly changed implementation paths in #134: `zaaggenz_inverse/laboratory.py`, `zaaggenz_inverse/results.py`
+
+Before registration, the complete rebased ZG-024a workflow ran on Ubuntu and Windows. Both platforms passed all 94 inverse tests, including the persisted-provenance adversarial suite, every inherited project/jobs/QC/analysis/components/descriptors/DSP/spectral/tuning suite, and browser transport. Both independently computed the exact identity above. The frozen calibration/independent-holdout comparison then failed closed with exactly one difference on each platform: the unreviewed `/implementation_sha256` transition. No portable fixture, state, recipe definition, objective, validation, eligibility, ranking, holdout or numerical evidence changed.
+
+The registry entry authorizes only this exact frozen-to-cumulative identity pair. It does not weaken candidate verification, grant resumability across implementation identities, rewrite the frozen baseline, or permit any portable calibration drift. The registered rerun must still pass on both platforms before #134 can merge.
+
+## Reviewed cumulative transition — issue #87
+
+ZG-024 issue #87 replaces the derivative-anchor `transient_loss` diagnostic after preregistered deterministic ablation showed that the old diagnostic was carrier/level sensitive and could both reject preserved attacks and miss deliberate onset damage. The accepted production method, `zg.inverse.transient-onset-contrast.v4`, uses target-only onset anchors with onset-contrast, attack/tail amplitude and attack-local high-band preservation, plus a gain-normalized target-active physical-channel safeguard. `ValidationPolicy.min_transient_ratio` remains `0.4`; hard eligibility remains separate from fit, and rejected candidates continue to retain raw objective and diagnostic evidence.
+
+After applying the repair on top of accepted issue #134, the reviewed cumulative identity is:
+
+- frozen predecessor: `ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4`
+- cumulative #87 candidate: `6c5753173c1758beb91f3511a909bec978c77baf025004d7f3fc9e608e1f4d86`
+- newly changed implementation paths in #87: `zaaggenz_inverse/objectives.py`, `zaaggenz_inverse/transient.py`
+
+Before registration, the complete ZG-024a workflow ran on Ubuntu and Windows at PR head `43c1e0d1b42803cb1fb3299132b5898329645d60`. Both platforms passed all 94 inverse tests, inherited project/jobs/QC/analysis/components/descriptors/DSP/spectral/tuning suites, and browser transport before the frozen-calibration step failed closed solely on the unreviewed implementation identity. Both independently produced the exact cumulative identity above. No portable calibration or independent-holdout field other than `implementation_sha256` drifted.
+
+The registry authorizes only this exact frozen-to-cumulative pair. It does not retune the transient threshold, rewrite the frozen ZG-024a baseline, grant checkpoint resumability across implementation identities, or permit any other calibration drift. The registered rerun must still pass on Ubuntu and Windows before #87 can merge.
+
 ## Authoring / verification
 
 Normal CI uses:

@@ -1,0 +1,122 @@
+{
+  "base_fixture": {
+    "attack_seconds": 0.006,
+    "carrier_hz": 220.0,
+    "decay_seconds": 0.2,
+    "harmonic_amplitudes": [
+      1.0,
+      0.35,
+      0.2,
+      0.1
+    ],
+    "harmonics": [
+      1,
+      2,
+      3,
+      5
+    ],
+    "normalization": "fixture peak only; paired transformations may be RMS-matched where declared"
+  },
+  "cases": [
+    {
+      "class": "preserved",
+      "id": "preserve_identity",
+      "transform": "identity"
+    },
+    {
+      "class": "preserved",
+      "id": "preserve_gain",
+      "transform": "constant gain 0.63"
+    },
+    {
+      "class": "preserved",
+      "id": "preserve_phase",
+      "transform": "same envelope/harmonics; carrier phases rotated deterministically"
+    },
+    {
+      "class": "preserved",
+      "id": "preserve_root",
+      "transform": "same envelope/harmonic amplitudes; root 220 Hz -> 330 Hz"
+    },
+    {
+      "class": "preserved",
+      "id": "preserve_timbre",
+      "transform": "same envelope/root; harmonic amplitudes changed deterministically"
+    },
+    {
+      "class": "damaged",
+      "id": "damage_attack_removed",
+      "transform": "replace first 24 ms by steady-state continuation with 2 ms boundary crossfade; RMS-match whole fixture"
+    },
+    {
+      "class": "damaged",
+      "id": "damage_attack_smoothed",
+      "transform": "replace 6 ms attack with 36 ms raised-cosine attack; RMS-match whole fixture"
+    },
+    {
+      "class": "damaged",
+      "id": "damage_transient_attenuated",
+      "transform": "multiply first 18 ms by 0.2 with 4 ms recovery; RMS-match whole fixture"
+    },
+    {
+      "class": "damaged",
+      "id": "damage_lowpass_onset",
+      "transform": "moving-average only first 18 ms over 2 ms kernel, crossfade to untouched tail; RMS-match whole fixture"
+    },
+    {
+      "class": "damaged",
+      "id": "damage_flattened_attack",
+      "transform": "hard-limit first 18 ms at 0.20 of target peak then RMS-match whole fixture"
+    },
+    {
+      "class": "edge",
+      "id": "edge_short",
+      "transform": "32-sample minimum-length finite signal"
+    },
+    {
+      "class": "edge",
+      "id": "edge_silence",
+      "transform": "digital silence"
+    },
+    {
+      "class": "edge",
+      "id": "edge_near_silence",
+      "transform": "base fixture scaled to 1e-10"
+    }
+  ],
+  "decision_rule": {
+    "compatibility": "If v2 is promoted, retain the ValidationPolicy field and threshold but version the transient method in diagnostics/method identity; old persisted evidence keeps its historical implementation identity and is not reinterpreted.",
+    "edge_policy": "Short/silent/near-silent cases must remain finite and deterministic; silence/activity handling may abstain through existing non-transient gates rather than fabricate transient evidence.",
+    "primary": "Prefer v2 only if all preserved non-edge controls are accepted at threshold 0.4 and every deliberately damaged non-edge case is rejected by transient_loss or another unchanged hard engineering gate.",
+    "secondary": "Record baseline and candidate raw values for every case; do not tune the threshold after inspecting this matrix."
+  },
+  "fixture_frames": 12288,
+  "issue": 87,
+  "kind": "ZG024TransientGateAblationProtocol",
+  "methods": [
+    {
+      "description": "Existing target raw-derivative anchors; candidate/target derivative-RMS ratio.",
+      "id": "zg.inverse.transient-derivative-anchor.v1",
+      "status": "accepted_baseline",
+      "threshold": 0.4
+    },
+    {
+      "anchor_separation_ms": 8.0,
+      "description": "Target anchors from positive rise of a 2 ms RMS envelope. At each anchor, compute normalized RMS-envelope attack rise over 1/2/4 ms smoothing; candidate-to-target ratio uses the strongest surviving scale, and gate aggregation takes the minimum across target anchors and physical channels.",
+      "envelope_windows_ms": [
+        1.0,
+        2.0,
+        4.0
+      ],
+      "id": "zg.inverse.transient-envelope-rise.v2",
+      "max_anchors_per_channel": 8,
+      "post_window_ms": 8.0,
+      "pre_window_ms": 4.0,
+      "status": "candidate_frozen_before_outcomes",
+      "threshold": 0.4
+    }
+  ],
+  "purpose": "Pre-registered engineering validation of inverse-search transient-preservation gating; not a perceptual or preference metric.",
+  "sample_rate_hz": 48000,
+  "version": "1.0.0"
+}
