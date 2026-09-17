@@ -5,8 +5,10 @@ on:
       - 'zaaggenz_*/**'
       - 'tests/inverse/**'
       - 'tools/inverse_foundation_report.py'
+      - 'tools/inverse_validation_transition.py'
       - 'examples/zg024a_inverse_calibration.json.gz'
       - 'examples/zg024a_implementation_transitions.json'
+      - 'examples/zg024a_validation_transitions.json'
       - 'docs/inverse/**'
       - 'docs/zaaggenz/RAG_INDEX.md'
       - 'baseline/recovered_source/**'
@@ -47,7 +49,7 @@ jobs:
           [subprocess.run([sys.executable,'-m','unittest','discover','-s','tests/'+s,'-v'],check=True) for s in suites]"
       - name: Browser job transport regression
         run: node tests/jobs/browser_transport.mjs
-      - name: Reproduce frozen calibration and independent holdouts
+      - name: Reproduce frozen calibration and reviewed eligibility migration
         run: >-
           python tools/inverse_foundation_report.py
           --out inverse-evidence.json
@@ -55,6 +57,7 @@ jobs:
           --telemetry-out inverse-timing.json
           --check examples/zg024a_inverse_calibration.json.gz
           --implementation-transitions examples/zg024a_implementation_transitions.json
+          --validation-transitions examples/zg024a_validation_transitions.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

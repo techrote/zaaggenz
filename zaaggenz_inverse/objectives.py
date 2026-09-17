@@ -12,11 +12,11 @@ from zaaggenz_descriptors import (pcm_asset, periodicity_observations, occupancy
 from zaaggenz_qc.metrics import diagnose, source_preservation
 from zaaggenz_spectral.chordness_descriptors import evaluate_union
 from zaaggenz_spectral.chordness_templates import harmonic_comb
-from zaaggenz_spectral.placement_metrics import transient_metrics
 from zaaggenz_tuning import (DissonanceError, DissonanceModelSpec, harmonic_spectrum,
     spectrum_from_partial_bundle, interaction_roughness)
 from .contracts import LOSS_UNITS, ObjectivePolicy, ValidationPolicy, require
 from .recipes import frozen_audio, feature_engine_identity
+from .transient import transient_preservation
 
 RMS_FLOOR = 1e-8
 STFT = STFTSpec(256, 64, 512)
@@ -237,36 +237,14 @@ def validation_measurements(target, candidate, sr, policy=ValidationPolicy(), *,
     band_min = min((v for v in band_ratios if v is not None), default=1.)
     finding('energy_collapse', active and band_min < policy.min_band_energy_ratio,
             band_min, policy.min_band_energy_ratio, 'minimum_active_band_energy_ratio')
-    # Target-derived attack anchor per physical channel. No candidate can move the
-    # anchor to a convenient surviving transient; all channels are protected.
-    transient_ratios, anchor_samples, transient_details = [], [], []
-    for channel in range(_matrix(r).shape[1]):
-        a, b = _matrix(r)[:, channel], _matrix(c)[:, channel]
-        derivative = np.abs(np.diff(a, prepend=0.))
-        radius = max(4, round(sr*.002))
-        anchors = []
-        threshold = max(float(np.max(derivative))*.15, RMS_FLOOR)
-        for index in np.argsort(-derivative, kind='stable'):
-            index = int(index)
-            if derivative[index] < threshold:
-                break
-            if all(abs(index-other) >= 2*radius+1 for other in anchors):
-                anchors.append(index)
-            if len(anchors) == 8:
-                break
-        ratios, details = [], []
-        for index in anchors:
-            am, bm = transient_metrics(a, index, radius), transient_metrics(b, index, radius)
-            ar, br = am['derivative_rms'], bm['derivative_rms']
-            ratios.append(br/max(ar, RMS_FLOOR) if ar > RMS_FLOOR else 1.)
-            details.append({'target': am, 'candidate': bm})
-        anchor_samples.append(anchors)
-        transient_details.append(details)
-        # Accepted ZG-019 measurements, per physical channel (no mono cancellation).
-        transient_ratios.append(min(ratios, default=1.))
-    transient_ratio = min(transient_ratios)
+
+    # ZG-024 issue #87: protect target onsets without treating raw carrier derivative
+    # differences as attack loss.  The candidate never selects or moves anchors.
+    transient = transient_preservation(r, c, sr)
+    transient_ratio = transient['ratio']
     finding('transient_loss', active and transient_ratio < policy.min_transient_ratio,
-            transient_ratio, policy.min_transient_ratio, 'anchored_derivative_rms_ratio')
+            transient_ratio, policy.min_transient_ratio, 'target_anchored_onset_preservation_ratio')
+
     alignment = source_preservation(r, c)  # diagnostic only, never used in acoustic score
     suspicious = alignment['gain_aligned_relative_rms'] < .03 and abs(level_delta) > policy.max_level_delta_db
     finding('normalisation_suspect', suspicious, {'gain_fit': alignment['gain_fit'], 'signed_level_delta_db': level_delta},
@@ -288,8 +266,10 @@ def validation_measurements(target, candidate, sr, policy=ValidationPolicy(), *,
                           'output': cd, 'gain_linear': master_gain, 'clipping': clipping, 'normalisation': 'none'}
     return _validation_result(findings, {'target': rd, 'candidate': cd, 'band_energy_ratios': band_ratios,
         'target_rms_frequency_hz': rw, 'candidate_rms_frequency_hz': cw,
-        'transient_anchor_samples': anchor_samples, 'transient_channel_ratios': transient_ratios,
-        'transient_measurements': transient_details, 'transient_method': 'ZG-019 transient_metrics per physical channel',
+        'transient_anchor_samples': transient['anchor_samples'],
+        'transient_channel_ratios': transient['channel_ratios'],
+        'transient_measurements': transient['channels'], 'transient_method': transient['method'],
+        'transient_method_parameters': transient['parameters'],
         'gain_fit_diagnostic_only': alignment, 'final_gain_provenance': provenance})
 
 

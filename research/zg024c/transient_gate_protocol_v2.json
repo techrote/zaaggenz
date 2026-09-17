@@ -1,0 +1,53 @@
+{
+  "anchor": {
+    "candidate_cannot_move_anchors": true,
+    "max_per_channel": 8,
+    "method": "target-only 4 ms pre/post RMS contrast",
+    "min_contrast": 0.05,
+    "relative_peak_fraction": 0.25,
+    "separation_ms": 12.0
+  },
+  "candidate_method": {
+    "aggregate": "minimum anchor score over all target anchors and physical channels",
+    "amplitude_component": "(candidate early_rms/late_rms)/(target early_rms/late_rms)",
+    "anchor_score": "minimum of amplitude_component and spectral_component, each lower-bounded at zero; values above one are retained as diagnostics",
+    "early_ms": 6.0,
+    "id": "zg.inverse.transient-onset-contrast.v2",
+    "late_end_ms": 24.0,
+    "rationale": "Both components compare attack to that signal's own local post-attack tail. This suppresses global gain/root/timbre dependence while retaining sensitivity to envelope rounding/attenuation and onset-only low-pass damage.",
+    "spectral_component": "((candidate early derivative_rms/early_rms)/(candidate late derivative_rms/late_rms))/((target early derivative_rms/early_rms)/(target late derivative_rms/late_rms))",
+    "threshold": 0.4
+  },
+  "cases": [
+    {"class": "preserved", "id": "preserve_identity"},
+    {"class": "preserved", "id": "preserve_gain"},
+    {"class": "preserved", "id": "preserve_phase"},
+    {"class": "preserved", "id": "preserve_root"},
+    {"class": "preserved", "id": "preserve_timbre"},
+    {"class": "damaged", "id": "damage_attack_removed"},
+    {"class": "damaged", "id": "damage_attack_smoothed"},
+    {"class": "damaged", "id": "damage_transient_attenuated"},
+    {"class": "damaged", "id": "damage_lowpass_onset"},
+    {"class": "damaged", "id": "damage_flattened_attack"},
+    {"class": "edge", "id": "edge_short"},
+    {"class": "edge", "id": "edge_silence"},
+    {"class": "edge", "id": "edge_near_silence"},
+    {"class": "damaged", "description": "two-onset target; strongest onset survives while second target onset is removed", "id": "adversarial_second_attack_removed"},
+    {"class": "damaged", "description": "two-channel target; one physical channel preserves attack and the other loses it", "id": "adversarial_stereo_one_channel_damage"}
+  ],
+  "decision_rule": {
+    "cross_platform": "portable raw ratios absolute 1e-7 / relative 1e-5; classification exact",
+    "damaged": "all damage/adversarial controls must have transient score < 0.4 or be rejected by an unchanged independent hard gate whose measurement directly demonstrates the declared damage",
+    "edge": "finite deterministic output; inactive target may report neutral ratio 1.0 and rely on existing activity gates",
+    "preserved": "all five preserved controls must have transient score >= 0.4 and no new hard-gate rejection caused by transient method",
+    "raw_evidence": "retain anchors, per-anchor amplitude/spectral components, aggregate ratio, and baseline v1 ratio",
+    "threshold": "0.4 is frozen from ValidationPolicy; do not tune after outcomes"
+  },
+  "fixture_frames": 12288,
+  "issue": 87,
+  "kind": "ZG024TransientGateAblationProtocol",
+  "reason_for_revision": "The frozen envelope-rise candidate is rejected before production because gain-normalized smoothing/attenuation can preserve local normalized rise. This revision adds within-signal onset-versus-tail normalization and attack-specific spectral contrast without changing the 0.4 eligibility threshold or fixture labels.",
+  "sample_rate_hz": 48000,
+  "supersedes_sha256": "08597a63a728bd1ced5808a31ab22f4cc542405127a3443d101da8b7d75a1380",
+  "version": "2.0.0"
+}

@@ -5,13 +5,15 @@ import unittest
 from research.zg024b import METHODS, CORE_NAMES, SEARCH_SEEDS
 
 ROOT = Path(__file__).resolve().parents[2]
-CAL = ROOT / 'examples' / 'zg024b_strategy_calibration.json'
+CAL = ROOT / 'examples' / 'zg024b_strategy_calibration_transient_v4.json'
+LEGACY_CAL = ROOT / 'examples' / 'zg024b_strategy_calibration.json'
 
 
 class EvidenceCalibrationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.data = json.loads(CAL.read_text(encoding='utf-8'))
+        cls.legacy = json.loads(LEGACY_CAL.read_text(encoding='utf-8'))
 
     def test_design_is_the_preregistered_matrix(self):
         d = self.data['design']
@@ -46,11 +48,23 @@ class EvidenceCalibrationTests(unittest.TestCase):
         self.assertIn('full per-component candidate/lineage evidence remains in ci artifacts',
                       self.data['note'].lower())
 
-    def test_gate_confounded_missing_results_are_not_filled_with_fake_scores(self):
+    def test_grid_envelope_missing_results_remain_explicit_not_fake_scores(self):
         grid_envelope = next(x for x in self.data['fixture_results']
                              if x['fixture'] == 'offgrid-envelope' and x['method_id'] == 'zg024b.grid-prefix.v1')
         self.assertEqual(grid_envelope['best_fit_by_seed'], [None, None, None])
         self.assertEqual(grid_envelope['eligible_by_seed'], [0, 0, 0])
+
+    def test_transient_v4_strategy_calibration_is_versioned_not_rewritten(self):
+        self.assertNotEqual(self.data, self.legacy)
+        legacy_coordinate = next(x for x in self.legacy['fixture_results']
+                                 if x['fixture'] == 'offgrid-envelope'
+                                 and x['method_id'] == 'zg024b.coordinate-refine.v1')
+        current_coordinate = next(x for x in self.data['fixture_results']
+                                  if x['fixture'] == 'offgrid-envelope'
+                                  and x['method_id'] == 'zg024b.coordinate-refine.v1')
+        self.assertEqual(legacy_coordinate['eligible_by_seed'], [0, 5, 1])
+        self.assertEqual(current_coordinate['eligible_by_seed'], [3, 0, 0])
+        self.assertEqual(self.legacy['design'], self.data['design'])
 
 
 if __name__ == '__main__':

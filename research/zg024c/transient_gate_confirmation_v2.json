@@ -1,0 +1,50 @@
+{
+  "acceptance": {
+    "classification": "exact",
+    "damaged_max_ratio_exclusive": 0.4,
+    "portable_abs_tolerance": 1e-07,
+    "portable_rel_tolerance": 1e-05,
+    "preserved_min_ratio": 0.4
+  },
+  "base": {
+    "amplitudes": [
+      1.0,
+      0.31,
+      0.14,
+      0.06
+    ],
+    "attack_ms": 7.0,
+    "decay_ms": 270.0,
+    "harmonics": [
+      1,
+      3,
+      4,
+      7
+    ],
+    "root_hz": 247.0
+  },
+  "cases": [
+    {"class": "preserved", "id": "v2_identity", "transform": "identity"},
+    {"class": "preserved", "id": "v2_gain", "transform": "gain 0.58"},
+    {"class": "preserved", "id": "v2_phase", "transform": "phases [0.3,1.7,2.6,0.9]"},
+    {"class": "preserved", "id": "v2_root", "transform": "root 247 -> 369.99 Hz; same envelope/harmonic ratios"},
+    {"class": "preserved", "id": "v2_timbre", "transform": "harmonic amplitudes [1.0,0.11,0.38,0.16]"},
+    {"class": "damaged", "id": "v2_attack_removed", "transform": "zero first 30 ms then 4 ms recovery; RMS match"},
+    {"class": "damaged", "id": "v2_attack_smoothed", "transform": "7 ms attack -> 48 ms raised-cosine attack; RMS match"},
+    {"class": "damaged", "id": "v2_attack_attenuated", "transform": "first 22 ms *0.12 then 6 ms recovery; RMS match"},
+    {"class": "damaged", "id": "v2_onset_lowpass", "transform": "first 22 ms 3 ms moving-average then 6 ms recovery; RMS match"},
+    {"class": "damaged", "id": "v2_flattened", "transform": "first 22 ms hard limit 0.16 target peak; RMS match"},
+    {"class": "damaged", "id": "v2_second_onset_removed", "transform": "target adds 1.0-strength 16 ms onset at 96 ms; candidate omits it"},
+    {"class": "damaged", "id": "v2_third_onset_attenuated", "transform": "target adds onsets at 72 and 144 ms; candidate preserves first and attenuates second added onset to 0.1"},
+    {"class": "damaged", "id": "v2_stereo_left_damage", "transform": "stereo duplicate; left first 22 ms *0.08 then 6 ms recovery"},
+    {"class": "edge", "id": "v2_minimum_32", "transform": "32 finite samples"},
+    {"class": "edge", "id": "v2_silence", "transform": "digital silence"},
+    {"class": "edge", "id": "v2_near_silence", "transform": "target * 1e-10"}
+  ],
+  "frames": 18432,
+  "issue": 87,
+  "kind": "ZG024TransientGateConfirmationMatrix",
+  "method_protocol_sha256": "23cb2e5167038dd4dc43ec268c3257f171809561f9c4bb94c774a5c86156540e",
+  "sample_rate_hz": 48000,
+  "version": "2.0.0"
+}
