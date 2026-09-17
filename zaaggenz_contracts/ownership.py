@@ -9,6 +9,7 @@ from copy import deepcopy
 import re
 
 from .model import digest
+from .validation import validate
 
 POLICY_ID = "zaaggenz.layer-ownership"
 POLICY_VERSION = "1.0.0"
@@ -216,10 +217,19 @@ def ownership_manifest(phrase, *, phase_policy="source-derived", transform_claim
     if bass_role not in _BASS_ROLES:
         _conflict("unknown-bass-role", f"unknown bass role: {bass_role!r}")
 
-    authored = sorted({event.get("layer_role") for event in data.get("events", [])})
-    for role in authored:
+    events = data.get("events", [])
+    if not isinstance(events, list):
+        _conflict("invalid-phrase", "PhrasePlan events must be a list")
+    authored_set = {event.get("layer_role") if isinstance(event, dict) else None for event in events}
+    for role in authored_set:
         if role not in _BASE:
             _conflict("unknown-layer-role", f"unknown authored layer role: {role!r}", layer=role)
+    try:
+        validate(data, "PhrasePlan")
+    except Exception as exc:
+        _conflict("invalid-phrase", "PhrasePlan ownership requires a semantically valid PhrasePlan",
+                  error=str(exc))
+    authored = sorted(authored_set)
 
     roles = [role_policy(role, phase_policy=phase_policy, bass_role=bass_role)
              for role in CANONICAL_LAYER_ROLES]
