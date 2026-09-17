@@ -34,12 +34,27 @@ class FrozenPlayback:
     pcm:bytes
 
 class ListeningAudioStore:
-    def __init__(self,max_bytes=256*1024*1024):self.max_bytes=max_bytes;self._stimuli={};self._raw={};self._playback={};self._lock=threading.Lock()
+    def __init__(self,max_bytes=256*1024*1024):
+        if type(max_bytes)is not int or max_bytes<=0:raise ListeningError('listening audio store max_bytes must be a positive integer')
+        self.max_bytes=max_bytes;self._stimuli={};self._raw={};self._playback={};self._lock=threading.Lock()
+    def _accounting_locked(self):
+        raw_bytes=sum(len(v) for v in self._raw.values());playback_bytes=sum(len(v[0]) for v in self._playback.values())
+        return {'method':'retained-pcm-physical-bytes-v1','raw_entries':len(self._raw),'playback_entries':len(self._playback),'raw_pcm_bytes':raw_bytes,'playback_pcm_bytes':playback_bytes,'total_pcm_bytes':raw_bytes+playback_bytes,'max_bytes':self.max_bytes}
+    def accounting(self):
+        """Return physical retained-PCM accounting; playback hashes are counted once."""
+        with self._lock:return dict(self._accounting_locked())
+    def _require_capacity_locked(self,additional_bytes,message):
+        if type(additional_bytes)is not int or additional_bytes<0:raise ListeningError('invalid listening audio store budget projection')
+        projected=self._accounting_locked()['total_pcm_bytes']+additional_bytes
+        if projected>self.max_bytes:raise ListeningError(message)
+        return projected
     def add_artifact(self,name,artifact,*,start_frame=0,end_frame=None):
-        stimulus,raw=freeze_artifact(name,artifact,start_frame=start_frame,end_frame=end_frame)
+        stimulus,raw=freeze_artifact(name,artifact,start_frame=start_frame,end_frame=end_frame);sid=stimulus.to_dict()['id']
         with self._lock:
-            if sum(len(v) for v in self._raw.values())+len(raw)>self.max_bytes:raise ListeningError('listening audio store budget exceeded')
-            self._stimuli[stimulus.to_dict()['id']]=stimulus;self._raw[stimulus.to_dict()['id']]=raw
+            existing=self._raw.get(sid)
+            if existing is not None and existing!=raw:raise ListeningError('stimulus identity collision with different retained PCM')
+            self._require_capacity_locked(0 if existing is not None else len(raw),'listening audio store budget exceeded')
+            self._stimuli[sid]=stimulus;self._raw[sid]=raw
         return stimulus
     def stimulus(self,sid):
         with self._lock:
@@ -81,9 +96,11 @@ class ListeningAudioStore:
                 manifest={'stimulus_id':sid,'playback_sha256':psha,'gain_db':_db(gain),'source_rms_dbfs':_db(rms),'source_sample_peak':peak,'target_rms_dbfs':_db(target),'matched_rms_dbfs':_db(m_rms),'matched_sample_peak':m_peak,'sample_peak_headroom_db':-_db(m_peak),'method':'whole-file-rms-common-target-v1','true_peak_measured':False}
                 numeric=('gain_db','source_rms_dbfs','source_sample_peak','target_rms_dbfs','matched_rms_dbfs','matched_sample_peak','sample_peak_headroom_db')
                 if any(not math.isfinite(float(manifest[k])) for k in numeric):raise ListeningError('derived level-match metadata must be finite')
-                staged_playback.setdefault(psha,(pcm,s['sample_rate_hz'],s['channels']));matched.append(deepcopy(manifest))
-            projected=sum(len(v) for v in self._raw.values())+sum(len(v[0]) for v in self._playback.values())+sum(len(v[0]) for k,v in staged_playback.items() if k not in self._playback)
-            if projected>self.max_bytes:raise ListeningError('matched playback store budget exceeded')
+                payload=(pcm,s['sample_rate_hz'],s['channels']);existing=self._playback.get(psha)
+                if existing is not None and existing!=payload:raise ListeningError('playback identity collision with different retained PCM metadata')
+                staged_playback.setdefault(psha,payload);matched.append(deepcopy(manifest))
+            additional=sum(len(v[0]) for k,v in staged_playback.items() if k not in self._playback)
+            self._require_capacity_locked(additional,'matched playback store budget exceeded')
             for psha,payload in staged_playback.items():self._playback.setdefault(psha,payload)
             return matched
     def wav(self,playback_sha):
