@@ -10,6 +10,8 @@ For every FeatureBundle/PartialTrackBundle observation on a non-empty asset, `an
 
 `RenderRecipe` stores source intent, time/tuning/phrase state, a bounded typed DSP DAG, phase/reset/tail semantics, deterministic named random streams and one final output policy. The initial DSP registry is data-only and does not execute arbitrary recipe code.
 
+ZG-029 layer/stem integration is governed by the separate versioned compatibility adapter `zaaggenz.layer-ownership` rather than widening frozen `RenderRecipe`/`PhrasePlan` v1. `zaaggenz_contracts.ownership` maps the existing serialized `layer_role`, `bass_role`, phase and final-output intent to one deterministic ownership manifest, rejects ambiguous retune/reweight ownership unless a total order is explicit, and preserves the single final `RenderRecipe.output` owner. See `docs/zaaggenz/ZG029_LAYER_OWNERSHIP_ADR.md`. This adapter does not change v1 recipe identity or add an audible layer.
+
 The legacy adapter is strict: only exact projections of recovered v1.2.1 behaviour can be thawed into the legacy engine. New tuning, tempo-map, phrase or DSP intent is rejected rather than silently ignored.
 
 Contract identity uses the project-specific `zg-c14n-v1` tagged representation; it is not RFC 8785/JCS. Python and Node implementations are checked against committed vectors. 64-bit random roots are decimal strings and named streams derive independent seeds with SHA-256.
