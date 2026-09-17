@@ -14,6 +14,20 @@ A `zaaggenz-meter-plan` stores exact rational `period_beats` and `phase_beats`, 
 
 `active_windows` are half-open. `reset_on_entry=true` resets phase at re-entry. Explicit `reset_beats` start a new phase segment. Thus a long arrangement can stop a nested hierarchy, re-enter it later and reproduce the exact same phase rather than inheriting hidden oscillator state.
 
+## Executable resource bounds
+
+Exact rational syntax is not itself a practical work bound. Before a `MeterPlan` becomes executable, ZG-026 now computes the exact number of ticks implied by every active window/reset segment and the exact binding-expanded control-row count. Admission fails before iteration when any of these limits is exceeded:
+
+- 65,536 ticks per clock;
+- 131,072 ticks across the plan;
+- 262,144 expanded control-schedule rows.
+
+The per-clock limit still permits a continuous 64th-note clock (`1/16` quarter-note beat) over the maximum 4,096-beat plan. Shorter plans can use finer exact clocks. No accepted clock is rounded, coarsened or silently truncated to fit the budget.
+
+`work_estimate(plan)` returns the accepted exact per-clock, total and control-row counts without materialising ticks. The count uses the same half-open window, reset and re-entry phase semantics as expansion, so segmentation cannot evade admission. Cardinality arithmetic uses exact `Fraction` values plus arbitrary-precision integer counts and is platform-independent.
+
+This is a corrective executable-domain restriction within meter-plan `1.0.0`: safely executable plans keep identical tick/sample/control semantics, while documents whose only prior outcome was pathological expansion now fail explicitly. See [`RESOURCE_BOUNDS.md`](RESOURCE_BOUNDS.md) for the formula, rationale and compatibility policy.
+
 ## Tempo maps and sample positions
 
 Clocks stay in exact beat coordinates. `generate_ticks(..., time_map=...)` delegates beat→seconds integration and sample rounding to the frozen ZG-002 TimeMap contract. Tempo changes therefore alter sample spacing without changing metrical phase. Each tick records exact rational sample position, rounded sample and rounding error; rounding remains the declared nearest-ties-even, performed once after exact step-tempo integration.
