@@ -1,0 +1,31 @@
+{
+  "candidate_method": {
+    "aggregate": "minimum anchor score across target anchors and physical channels; no candidate re-anchoring",
+    "amplitude_component": "(candidate early_rms/late_rms)/(target early_rms/late_rms)",
+    "anchor": "target-only 4 ms pre/post RMS contrast; >= max(0.05, 0.25*target peak contrast); <=8 anchors/channel; >=12 ms separation",
+    "anchor_score": "min(max(amplitude_component,0), max(spectral_component,0))",
+    "early_ms": 6.0,
+    "high_band_cutoff_hz": "min(1000.0, 0.20 * sample_rate_hz)",
+    "high_band_floor": 0.0001,
+    "id": "zg.inverse.transient-onset-contrast.v2",
+    "inactive_target": "if no qualifying target anchors, neutral transient ratio 1.0; existing silence/activity gates remain authoritative",
+    "late_end_ms": 24.0,
+    "spectral_component": "If target early and late high-band power fractions are both >= floor: ((candidate early_hf_fraction/candidate late_hf_fraction)/(target early_hf_fraction/target late_hf_fraction)); otherwise neutral 1.0.",
+    "threshold": 0.4
+  },
+  "compatibility": {
+    "evidence": "InverseValidation remains 1.0.0 but exposes exact versioned transient_method and raw component records. implementation/feature identity changes, so persisted Candidate 2.0 evidence is not reinterpreted silently.",
+    "legacy": "Old evidence retains its implementation identity and historical derivative-anchor meaning.",
+    "validation_policy": "Existing min_transient_ratio field and default 0.4 remain unchanged; only the method that produces the ratio changes."
+  },
+  "decision_rule": {
+    "confirmation": "All preserved confirmation cases transient ratio >=0.4. Every damaged confirmation case ratio <0.4, except an unchanged independent hard gate may satisfy the case only if its raw measurement directly demonstrates the declared damage.",
+    "no_retuning": "No threshold, window, cutoff, anchor rule or fixture label may change after confirmation outcomes are inspected.",
+    "raw_evidence": "Retain baseline derivative-anchor ratio and v2 onset-contrast ratio in research evidence; production record retains all v2 anchors/components."
+  },
+  "design_history": "The v2 onset-contrast design matrix showed that normalized first-derivative spectral contrast can remain too high after onset-only low-pass damage. That design matrix is now consumed. The production candidate below replaces derivative contrast with attack-local high-band energy contrast; acceptance is decided only on the separately frozen confirmation matrix.",
+  "issue": 87,
+  "kind": "ZG024TransientGateAblationProtocol",
+  "supersedes_sha256": "ebc00c57b6ba5651b1328041d79f60a911bfa8cb2f7f543d6df5996952f41992",
+  "version": "3.0.0"
+}
