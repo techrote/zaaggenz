@@ -1,37 +1,44 @@
 # ZG-015 verification record
 
-Branch: `zg-015/listening-trials`. Base: accepted ZG-032 main `492e614524bc27ab2f6f1ae05eb6541c61d13e2f`.
+ZG-015 is verified by `.github/workflows/zg015-listening.yml` on Ubuntu and Windows plus the dependency-aware repository gates selected by ZG-000. The workflow materialises the authenticated recovered source, installs pinned numerical/browser dependencies, runs the complete listening suite and accepted project/jobs/timeline/QC regressions, generates full-rate 48 kHz listening evidence, and executes a real Chromium workflow.
 
-Local pre-publication checks on Python 3.13 / NumPy 2.3.5 / SciPy 1.17.0:
-
-- ZG-015 listening suite: **13 passed**;
-- accepted project suite: **16 passed**;
-- accepted jobs suite: **23 passed**;
-- accepted timeline suite: **24 passed**;
-- accepted QC suite: **14 passed**;
-- existing browser stale-result transport checks: passed;
-- deterministic 48 kHz three-stimulus matching/trial report: passed.
-
-The local full-rate report freezes three source-derived four-beat stimuli, matches them to one common whole-file RMS target and creates deterministic A/B, ABX and multi-example manifests. Matched RMS is approximately **-32.49 dBFS** in the local environment. Matching gains are approximately `0.00`, `-3.22` and `-1.01` dB; matched sample-peak headroom exceeds 18 dB in this fixture. These are sample-peak/RMS engineering quantities, not a perceptual loudness or true-peak claim.
-
-Every stimulus records immutable project revision, RenderRecipe hash, render cache key, source asset identity, excerpt frames, raw excerpt PCM hash and alignment metadata. Every matched playback has its own PCM SHA-256. Tests edit/render projects after freeze and verify the frozen stimulus is unchanged; reopening a bundle in a store without exact playback bytes fails instead of regenerating from project state.
-
-Trial tests distinguish A/B choice, hidden ABX accuracy, task ratings, confidence, effort, comfortable level, per-stimulus/X replay counts, time-local annotations and completed/aborted/missing status. No field is relabelled as preference, acoustic quality or biochemical response when it is not that endpoint.
-
-Local Playwright acceptance was not claimed because a managed Chromium binary was not present in the local environment. The final PR workflow installs Chromium on Windows and Ubuntu and runs the real browser workflow against the actual loopback numerical server.
-
-Final acceptance is produced by `.github/workflows/zg015-listening.yml` plus the independent ZG-002 contracts/legacy workflow. The PR/issue completion comment records final head SHA, workflow IDs, artifact IDs and remote evidence inspection.
+The accepted listening contracts preserve immutable RenderArtifact-derived source identity, explicit whole-file RMS matching, participant/trusted capability separation, semantic result validation, transactional retained-audio accounting and bounded in-memory evidence metadata.
 
 ## Corrective semantic validation (#105)
 
-The result wire format remains `zaaggenz-listening-result/1.0.0`, but authoritative validation now binds A/B and multi choices to exact presented stimulus IDs, binds every annotation target to the trial, defines completed/aborted/missing observation policy, and validates annotation time against the exact frozen stimulus presentation clock whenever trusted stimulus metadata is available. Live service submission and trusted bundle reopen always supply that timing context. The canonical rules and compatibility policy are recorded in `RESULT_SEMANTICS.md`.
-
-This repair does not alter frozen stimulus bytes, level matching, ABX truth generation, participant/trusted capability separation, valid-result serialization/digests, Compose state, or any DSP/default behaviour.
+The result wire format remains `zaaggenz-listening-result/1.0.0`, but authoritative validation binds A/B and multi choices to exact presented stimulus IDs, binds annotations to the trial, defines completed/aborted/missing observation policy, and validates annotation time against the frozen presentation clock whenever trusted stimulus metadata is available. Live submission and trusted reopen supply that timing context.
 
 ## Corrective level-match numeric integrity (#122)
 
-The matching method and listening wire formats remain unchanged. `ListeningAudioStore.match()` now validates external dBFS controls as finite numeric values before conversion, rejects non-standard JSON NaN/Infinity tokens at the existing strict HTTP contract boundary, and requires source PCM, derived gains, matched PCM, realised statistics and emitted numeric metadata to remain finite.
+`ListeningAudioStore.match()` validates external dBFS controls before conversion, rejects non-finite source/derived PCM and metadata, stages candidate playback, and preflights retained-byte budget before publication. Numeric or budget failure cannot remove pre-existing deduplicated playback.
 
-Candidate playback bytes are staged and the existing retained-byte budget is preflighted before `_playback` is changed. This makes numeric failures transactionally clean and prevents an over-budget attempt from deleting a previously retained deduplicated playback hash. The broader unified raw/playback accounting and ownership work remains tracked by #115; durable archive work in #98 must preserve the finite-metadata invariant.
+## Corrective physical audio accounting (#115)
 
-The hostile/boundary suite for this correction covers NaN/+Inf/-Inf RMS targets and peak ceilings, strings/booleans, exact peak-ceiling boundaries and just-outside values, extreme finite target conversion, non-finite source PCM, strict JSON request rejection, finite PCM/metadata assertions, and preservation of pre-existing shared playback across a failed staged match. The normative policy is recorded in `LEVEL_MATCH_INTEGRITY.md`.
+`retained-pcm-physical-bytes-v1` is the single audio-store accounting contract. Raw PCM plus unique retained playback PCM must fit the configured store budget before mutation. Failed operations leave prior material intact and playback content is deduplicated safely by SHA-256.
+
+## Corrective registry/export bounds (#132)
+
+`retained-listening-metadata-json-v1` bounds active trials, results and canonical metadata/export work. Admission is transactional. Trusted repeated observations remain distinct rather than being silently deduplicated, and reopen/import cannot bypass the same effective limits.
+
+## Durable exact-playback archives (#98)
+
+`zaaggenz-listening-archive/1.0.0` adds a bounded self-contained binary transport while leaving all existing listening `1.0.0` record formats untouched. It embeds either the trusted or participant-safe existing bundle and exact content-addressed raw/matched PCM. The custom framing has no filenames or extraction paths.
+
+Archive verification checks magic/framing, canonical manifest bounds, manifest digest, material/stimulus shape, exact SHA-sorted blob index, restored `retained-pcm-physical-bytes-v1` accounting, every audio SHA-256 and the absence of trailing data before bytes are exposed to the listening store. Import then reuses ordinary store and registry admission. Missing/corrupt/truncated/oversized material fails without render or rematch fallback.
+
+The corrective regression suite proves:
+
+- trusted export followed by destruction of the original service and fresh-service reopen is bit-exact;
+- matched playback SHA-256 and bytes remain identical;
+- mono and stereo shape/provenance survive;
+- completed, aborted and missing results retain order/semantics;
+- identical raw/playback bytes deduplicate in transport while reopening reconstructs #115 physical accounting;
+- one-byte corruption and truncation fail before retained state is installed;
+- blob-count and total archive bounds reject before import;
+- hostile stimulus names remain inert metadata because the archive has no path namespace;
+- participant archives remain blind and cannot be reopened as trusted evidence;
+- trusted HTTP archive/reopen routes require the trusted capability;
+- cancellation during atomic publication preserves an existing destination and leaves no partial file;
+- legacy metadata-only bundle reopen still fails closed in a fresh runtime rather than manufacturing missing audio.
+
+The archive follows only already-frozen RenderArtifact excerpt bytes and matched derivatives. It does not chase source locators or private-reference paths. Source/audio topology, match mathematics, ABX truth generation/scoring, result identity, Compose state and audible/DSP defaults are unchanged.
