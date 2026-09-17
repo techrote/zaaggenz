@@ -5,6 +5,7 @@ import unittest
 
 from zaaggenz_contracts import digest
 from zaaggenz_inverse import Candidate, InverseError
+from zaaggenz_inverse.contracts import SearchStage
 from zaaggenz_inverse.fixtures import synthetic_fixture
 from zaaggenz_inverse.laboratory import prepare_experiment
 from zaaggenz_inverse.results import candidate_identity, search_identity
@@ -100,6 +101,21 @@ class PersistedProvenanceBindingTests(unittest.TestCase):
     def test_stage_and_parent_provenance_are_bound_to_search_request(self):
         self.assert_tamper_rejected(lambda d: d['provenance']['stage'].__setitem__('id', 'forged-stage'))
         self.assert_tamper_rejected(lambda d: d['provenance']['parents'].append('9' * 64))
+
+    def test_valid_staged_descendant_binds_parent_lineage_and_roundtrips(self):
+        parent = self.candidate.to_dict()
+        stage = SearchStage(id='confirmation', parent_search_sha256=parent['search_id'],
+                            parent_candidate_ids=(self.candidate.id,))
+        request = replace(self.fixture.request, stage=stage)
+        fit, _ = prepare_experiment(request, self.fixture.target, self.fixture.plan)
+        child = fit.evaluate(self.fixture.ground_truth_state)
+        data = child.to_dict()
+        self.assertEqual(data['provenance']['stage'], stage.to_dict())
+        self.assertEqual(data['provenance']['parents'], [self.candidate.id])
+        self.assertEqual(data['provenance']['search_binding']['request']['stage'], stage.to_dict())
+        self.assertNotEqual(child.id, self.candidate.id)
+        self.assertNotEqual(data['search_id'], parent['search_id'])
+        self.assertEqual(Candidate.from_dict(data).sha256, child.sha256)
 
     def test_fitting_asset_identity_is_bound_and_window_shape_is_revalidated(self):
         def tamper(data):
