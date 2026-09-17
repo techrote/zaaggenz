@@ -114,3 +114,106 @@ class ListeningAudioStore:
             return bytes(self._playback[playback_sha][0])
     def has_playback(self,playback_sha):
         with self._lock:return playback_sha in self._playback
+
+    def archive_material(self, stimuli, matched_rows):
+        """Snapshot exact raw/matched bytes for a single immutable trial archive."""
+        if type(stimuli) is not list or type(matched_rows) is not list:
+            raise ListeningError('archive material requires stimulus and match lists')
+        docs=[]
+        for stimulus in stimuli:
+            if not isinstance(stimulus,Stimulus):raise ListeningError('archive material requires Stimulus objects')
+            docs.append(stimulus.to_dict())
+        by_id={d['id']:d for d in docs}
+        if len(by_id)!=len(docs) or len(matched_rows)!=len(docs) or set(by_id)!={r.get('stimulus_id') for r in matched_rows if type(r)is dict}:
+            raise ListeningError('archive material does not exactly match trial stimuli')
+        raw_rows=[];playback_rows=[];blobs={}
+        with self._lock:
+            for sid in sorted(by_id):
+                d=by_id[sid]
+                existing=self._stimuli.get(sid)
+                if existing is None or existing.to_dict()!=d or sid not in self._raw:
+                    raise ListeningError('archive raw stimulus bytes are missing')
+                raw=self._raw[sid];rsha=hashlib.sha256(raw).hexdigest()
+                if rsha!=d['raw_pcm_sha256']:raise ListeningError('archive raw stimulus hash mismatch')
+                expected=d['frame_count']*d['channels']*4
+                if len(raw)!=expected:raise ListeningError('archive raw stimulus shape mismatch')
+                prior=blobs.get(rsha)
+                if prior is not None and prior!=raw:raise ListeningError('archive SHA collision with different raw bytes')
+                blobs.setdefault(rsha,raw)
+                raw_rows.append({'stimulus_id':sid,'sha256':rsha,'byte_length':len(raw),'sample_rate_hz':d['sample_rate_hz'],'channels':d['channels'],'frame_count':d['frame_count']})
+            for row in sorted(matched_rows,key=lambda r:r['stimulus_id']):
+                sid=row['stimulus_id'];psha=row['playback_sha256'];d=by_id[sid]
+                if psha not in self._playback:raise ListeningError('archive matched playback bytes are missing')
+                pcm,sr,ch=self._playback[psha]
+                if (sr,ch)!=(d['sample_rate_hz'],d['channels']) or len(pcm)!=d['frame_count']*ch*4:
+                    raise ListeningError('archive playback shape mismatch')
+                if hashlib.sha256(pcm).hexdigest()!=psha:raise ListeningError('archive playback hash mismatch')
+                prior=blobs.get(psha)
+                if prior is not None and prior!=pcm:raise ListeningError('archive SHA collision with different playback bytes')
+                blobs.setdefault(psha,pcm)
+                playback_rows.append({'stimulus_id':sid,'sha256':psha,'byte_length':len(pcm),'sample_rate_hz':sr,'channels':ch,'frame_count':d['frame_count']})
+        return {'raw_material':raw_rows,'playback_material':playback_rows,'blobs':blobs}
+
+    def install_archive_material(self, stimuli, matched_rows, raw_material, playback_material, blobs):
+        """Validate and atomically install exact archive PCM; return rollback receipt."""
+        if type(stimuli) is not list or not all(isinstance(s,Stimulus) for s in stimuli):
+            raise ListeningError('archive install requires Stimulus objects')
+        if type(matched_rows) is not list or type(raw_material) is not list or type(playback_material) is not list or type(blobs) is not dict:
+            raise ListeningError('invalid archive material indexes')
+        docs={s.to_dict()['id']:s.to_dict() for s in stimuli}
+        if len(docs)!=len(stimuli):raise ListeningError('archive contains duplicate stimulus identities')
+        matches={r['stimulus_id']:r for r in matched_rows}
+        if len(matches)!=len(matched_rows) or set(matches)!=set(docs):raise ListeningError('archive matched rows do not cover exact stimulus set')
+        raw_by={r['stimulus_id']:r for r in raw_material}
+        playback_by={r['stimulus_id']:r for r in playback_material}
+        if len(raw_by)!=len(raw_material) or len(playback_by)!=len(playback_material) or set(raw_by)!=set(docs) or set(playback_by)!=set(docs):
+            raise ListeningError('archive material indexes do not cover exact stimulus set')
+        staged_raw={};staged_playback={}
+        for sid,d in docs.items():
+            rr=raw_by[sid];rsha=rr['sha256'];raw=blobs.get(rsha)
+            if raw is None or hashlib.sha256(raw).hexdigest()!=rsha or rsha!=d['raw_pcm_sha256']:
+                raise ListeningError('archive raw bytes do not match stimulus provenance')
+            shape=(d['sample_rate_hz'],d['channels'],d['frame_count'])
+            if (rr['sample_rate_hz'],rr['channels'],rr['frame_count'])!=shape or len(raw)!=d['frame_count']*d['channels']*4:
+                raise ListeningError('archive raw bytes do not match stimulus shape')
+            if not np.all(np.isfinite(np.frombuffer(raw,dtype='<f4'))):raise ListeningError('archive raw PCM must be finite')
+            staged_raw[sid]=raw
+            pr=playback_by[sid];expected_sha=matches[sid]['playback_sha256'];psha=pr['sha256'];pcm=blobs.get(psha)
+            if pcm is None or psha!=expected_sha or hashlib.sha256(pcm).hexdigest()!=psha:
+                raise ListeningError('archive playback bytes do not match trial provenance')
+            if (pr['sample_rate_hz'],pr['channels'],pr['frame_count'])!=shape or len(pcm)!=d['frame_count']*d['channels']*4:
+                raise ListeningError('archive playback bytes do not match stimulus shape')
+            if not np.all(np.isfinite(np.frombuffer(pcm,dtype='<f4'))):raise ListeningError('archive playback PCM must be finite')
+            payload=(pcm,d['sample_rate_hz'],d['channels'])
+            prior=staged_playback.get(psha)
+            if prior is not None and prior!=payload:raise ListeningError('archive deduplicated playback metadata conflict')
+            staged_playback[psha]=payload
+        receipt={'stimuli':set(),'raw':set(),'playback':set()}
+        with self._lock:
+            additional=0
+            for stimulus in stimuli:
+                sid=stimulus.to_dict()['id'];existing=self._stimuli.get(sid)
+                if existing is not None and existing.to_dict()!=stimulus.to_dict():raise ListeningError('archive stimulus identity collision')
+                current=self._raw.get(sid)
+                if current is not None and current!=staged_raw[sid]:raise ListeningError('archive raw stimulus collision')
+                if current is None:additional+=len(staged_raw[sid])
+            for psha,payload in staged_playback.items():
+                current=self._playback.get(psha)
+                if current is not None and current!=payload:raise ListeningError('archive playback identity collision')
+                if current is None:additional+=len(payload[0])
+            self._require_capacity_locked(additional,'listening audio store budget exceeded by archive')
+            for stimulus in stimuli:
+                sid=stimulus.to_dict()['id']
+                if sid not in self._stimuli:self._stimuli[sid]=stimulus;receipt['stimuli'].add(sid)
+                if sid not in self._raw:self._raw[sid]=staged_raw[sid];receipt['raw'].add(sid)
+            for psha,payload in staged_playback.items():
+                if psha not in self._playback:self._playback[psha]=payload;receipt['playback'].add(psha)
+        return receipt
+
+    def rollback_archive_material(self, receipt):
+        """Remove only material inserted by one failed archive transaction."""
+        if type(receipt) is not dict:return
+        with self._lock:
+            for psha in receipt.get('playback',()):self._playback.pop(psha,None)
+            for sid in receipt.get('raw',()):self._raw.pop(sid,None)
+            for sid in receipt.get('stimuli',()):self._stimuli.pop(sid,None)
