@@ -6,6 +6,8 @@ import math,re
 METHOD_ID='zg.timbre_interaction_roughness.v1'
 METHOD_VERSION='1.0.0'
 ID=re.compile(r'^[a-z][a-z0-9_.-]{0,63}$')
+INTERVAL_GRID_MAX_POINTS=2401
+INTERVAL_GRID_ENDPOINT_TOLERANCE_CENTS=1e-9
 
 class DissonanceError(ValueError):pass
 
@@ -22,6 +24,30 @@ def _unit(v,name):
     v=_finite(v,name)
     if not 0<=v<=1:raise DissonanceError(f'{name} must be in [0,1]')
     return v
+
+def _interval_grid_layout(start,stop,step):
+    """Return stepped count, endpoint-replacement flag, and realised point count.
+
+    The endpoint policy is intentionally shared by validation and materialisation:
+    a final stepped point within one nanocent below the requested stop (or one
+    rounded just above it) represents that endpoint and is canonicalised to the
+    exact stop.  Otherwise the exact stop is appended once.
+    """
+    span=stop-start
+    if not math.isfinite(span):raise DissonanceError('interval grid span must be finite')
+    quotient=span/step
+    if not math.isfinite(quotient):raise DissonanceError('interval grid span/step must be finite')
+    stepped_points=math.floor(quotient)+1
+    last_stepped=start+(stepped_points-1)*step
+    endpoint_replaces_last=last_stepped>=stop-INTERVAL_GRID_ENDPOINT_TOLERANCE_CENTS
+    points=stepped_points if endpoint_replaces_last else stepped_points+1
+    return stepped_points,endpoint_replaces_last,points
+
+def _validated_interval_grid_layout(start,stop,step):
+    layout=_interval_grid_layout(start,stop,step)
+    if not 2<=layout[2]<=INTERVAL_GRID_MAX_POINTS:
+        raise DissonanceError(f'interval grid requires 2..{INTERVAL_GRID_MAX_POINTS} points')
+    return layout
 
 @dataclass(frozen=True)
 class TimbreSpectrum:
@@ -81,12 +107,15 @@ class IntervalGrid:
     def __post_init__(self):
         start=_finite(self.start_cents,'start_cents');stop=_finite(self.stop_cents,'stop_cents');step=_positive(self.step_cents,'step_cents')
         if start>=stop:raise DissonanceError('interval grid must increase')
-        points=math.floor((stop-start)/step)+1
-        if not 2<=points<=2401:raise DissonanceError('interval grid requires 2..2401 points')
+        _validated_interval_grid_layout(start,stop,step)
         object.__setattr__(self,'start_cents',start);object.__setattr__(self,'stop_cents',stop);object.__setattr__(self,'step_cents',step)
+    @property
+    def point_count(self):
+        return _validated_interval_grid_layout(self.start_cents,self.stop_cents,self.step_cents)[2]
     def values(self):
-        n=math.floor((self.stop_cents-self.start_cents)/self.step_cents)+1
+        n,endpoint_replaces_last,_=_validated_interval_grid_layout(self.start_cents,self.stop_cents,self.step_cents)
         values=[self.start_cents+i*self.step_cents for i in range(n)]
-        if values[-1]<self.stop_cents-1e-9:values.append(self.stop_cents)
+        if endpoint_replaces_last:values[-1]=self.stop_cents
+        else:values.append(self.stop_cents)
         return tuple(values)
-    def to_dict(self):return {'start_cents':self.start_cents,'stop_cents':self.stop_cents,'step_cents':self.step_cents,'points':len(self.values())}
+    def to_dict(self):return {'start_cents':self.start_cents,'stop_cents':self.stop_cents,'step_cents':self.step_cents,'points':self.point_count}
