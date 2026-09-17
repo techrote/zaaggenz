@@ -38,7 +38,7 @@ class DissonanceCurve:
     model:DissonanceModelSpec
     points:tuple[InteractionObservation,...]
     def __post_init__(self):
-        if len(self.points)!=len(self.grid.values()):raise DissonanceError('curve/grid length mismatch')
+        if len(self.points)!=self.grid.point_count:raise DissonanceError('curve/grid length mismatch')
     def to_dict(self):return {'kind':'TimbreDissonanceCurve','version':METHOD_VERSION,'method_id':METHOD_ID,
         'spectrum_a_id':self.spectrum_a_id,'spectrum_b_id':self.spectrum_b_id,'grid':self.grid.to_dict(),
         'model':self.model.to_dict(),'points':[x.to_dict() for x in self.points]}
@@ -69,8 +69,8 @@ def interaction_roughness(a,b,interval_cents,model=None):
     return InteractionObservation(cents,float(value),float(confidence),len(rows_a),len(rows_b),cov_a,cov_b,'valid')
 
 def dissonance_curve(a,b,grid=None,model=None):
-    grid=grid or IntervalGrid();model=model or DissonanceModelSpec()
-    return DissonanceCurve(a.id,b.id,grid,model,tuple(interaction_roughness(a,b,c,model) for c in grid.values()))
+    grid=grid or IntervalGrid();model=model or DissonanceModelSpec();values=grid.values()
+    return DissonanceCurve(a.id,b.id,grid,model,tuple(interaction_roughness(a,b,c,model) for c in values))
 
 def _valid_max(values):
     found=[float(x) for x in values if x is not None]
@@ -93,7 +93,8 @@ def local_minima(curve,*,window_cents=40.):
     return tuple(out)
 
 def sensitivity_candidates(a,b,grid=None,model=None,*,bandwidth_scales=(.9,1.,1.1),amplitude_exponents=(.85,1.,1.15),match_tolerance_cents=12.,min_stability=.6):
-    grid=grid or IntervalGrid();model=model or DissonanceModelSpec();base=dissonance_curve(a,b,grid,model);base_min=local_minima(base)
+    grid=grid or IntervalGrid();model=model or DissonanceModelSpec();grid_points=grid.point_count
+    base=dissonance_curve(a,b,grid,model);base_min=local_minima(base)
     scenarios=[]
     for bs in bandwidth_scales:
         for ae in amplitude_exponents:
@@ -106,4 +107,5 @@ def sensitivity_candidates(a,b,grid=None,model=None,*,bandwidth_scales=(.9,1.,1.
     candidates.sort(key=lambda x:(-x.stability_fraction,x.value,-x.prominence,x.cents))
     return base,tuple(candidates),{'bandwidth_scales':list(map(float,bandwidth_scales)),'amplitude_exponents':list(map(float,amplitude_exponents)),
         'match_tolerance_cents':float(match_tolerance_cents),'min_stability':float(min_stability),'scenario_count':count,
+        'grid_point_count':grid_points,'scenario_point_evaluations':grid_points*count,'total_point_evaluations':grid_points*(count+1),
         'interpretation':'sensitivity agreement supports candidate stability only; it does not establish a preferred scale'}
