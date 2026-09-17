@@ -16,6 +16,13 @@ CONTROLS = ('accent_db', 'density_per_beat', 'pitch_cents', 'brightness_hz',
 LAYERS = ('synthline', 'exciter', 'body', 'aux', 'sub')
 _ID = re.compile(r'[a-z][a-z0-9_.-]{0,63}\Z')
 
+# Executable-work limits. 65,536 ticks permits a continuous 64th-note clock
+# (1/16 quarter-note beat) over the maximum 4,096-beat plan, while preventing
+# compact rational authoring from expanding into unbounded practical work.
+MAX_TICKS_PER_CLOCK = 65_536
+MAX_TOTAL_TICKS = 131_072
+MAX_CONTROL_ROWS = 262_144
+
 
 class MeterError(ValueError):
     """Invalid metrical authoring state or infeasible clock relation."""
@@ -65,6 +72,68 @@ def _power_of_two(value):
 
 def _binary_ratio(value):
     return _power_of_two(value.numerator) and _power_of_two(value.denominator)
+
+
+def _ceil_fraction(value):
+    return -((-value.numerator) // value.denominator)
+
+
+def _clock_tick_count(clock):
+    """Return the exact rows generate_ticks() would emit, without iteration."""
+    period, phase = fraction(clock['period_beats']), fraction(clock['phase_beats'])
+    resets = [fraction(x) for x in clock['reset_beats']]
+    count = 0
+    for window in clock['active_windows']:
+        start, stop = fraction(window['start_beat']), fraction(window['end_beat'])
+        interior = [r for r in resets if start < r < stop]
+        boundaries = [start, *interior, stop]
+        for part in range(len(boundaries) - 1):
+            lo, hi = boundaries[part], boundaries[part + 1]
+            if part > 0:
+                origin = lo
+            elif window['reset_on_entry']:
+                origin = start
+            else:
+                earlier = [r for r in resets if r <= start]
+                origin = earlier[-1] if earlier else Fraction(0)
+            first = origin + phase
+            k = max(0, _ceil_fraction((lo - first) / period))
+            beat = first + k * period
+            if beat < hi:
+                count += _ceil_fraction((hi - beat) / period)
+    return count
+
+
+def _work_estimate_data(data, *, enforce=True):
+    counts = {}
+    total = 0
+    for clock in data['clocks']:
+        count = _clock_tick_count(clock)
+        counts[clock['id']] = count
+        if enforce and count > MAX_TICKS_PER_CLOCK:
+            raise MeterError(
+                f'clock {clock["id"]}: implied tick count {count} exceeds executable limit '
+                f'{MAX_TICKS_PER_CLOCK}')
+        total += count
+    if enforce and total > MAX_TOTAL_TICKS:
+        raise MeterError(
+            f'plan implied tick count {total} exceeds executable limit {MAX_TOTAL_TICKS}')
+
+    schedule_rows = sum(counts[binding['clock_id']] for binding in data['bindings'])
+    if enforce and schedule_rows > MAX_CONTROL_ROWS:
+        raise MeterError(
+            f'control schedule row count {schedule_rows} exceeds executable limit '
+            f'{MAX_CONTROL_ROWS}')
+    return {
+        'clock_tick_counts': counts,
+        'total_ticks': total,
+        'control_schedule_rows': schedule_rows,
+        'limits': {
+            'ticks_per_clock': MAX_TICKS_PER_CLOCK,
+            'total_ticks': MAX_TOTAL_TICKS,
+            'control_schedule_rows': MAX_CONTROL_ROWS,
+        },
+    }
 
 
 def _validate_windows(clock, end):
@@ -229,6 +298,17 @@ def validate_plan(data):
             number(value, lo, hi, f'binding {binding["id"]}.value')
     if bindings and anchor_count == 0:
         raise MeterError('plans with bindings require at least one explicit stable anchor binding')
+
+    # Exact arithmetic at the authoring boundary prevents tiny valid rationals,
+    # reset segmentation or binding fan-out from becoming unbounded execution.
+    _work_estimate_data(data, enforce=True)
+
+
+def work_estimate(plan):
+    """Return exact bounded execution cardinalities for scheduler/integration use."""
+    if not isinstance(plan, MeterPlan):
+        raise MeterError('MeterPlan required')
+    return _work_estimate_data(plan.to_dict(), enforce=True)
 
 
 @dataclass(frozen=True, init=False)
