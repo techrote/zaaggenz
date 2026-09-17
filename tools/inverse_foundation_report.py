@@ -19,13 +19,13 @@ from zaaggenz_inverse import run_grid
 from zaaggenz_inverse.fixtures import NAMES, synthetic_fixture
 from zaaggenz_inverse.legacy import provenance, run_recovered_benchmark
 from zaaggenz_inverse.recipes import environment_manifest, implementation_manifest
+from tools.inverse_validation_transition import apply_validation_transition, validate_validation_transitions
 
 BASE_COMMIT = '6e0153d824608d6a9899c5ea8e8c0b9a29688c98'
 # Frozen before cross-platform CI. These are engineering tolerances, not permission
 # to substitute hashes or claim resumability across numerical environments.
 ATOL, RTOL = 1e-7, 1e-5
 SHA256_RE = re.compile(r'^[0-9a-f]{64}$')
-
 
 def summarize_evaluation(evaluation):
     windows = []
@@ -171,8 +171,8 @@ def validate_implementation_transitions(document):
     return out
 
 
-def compare_reports(actual, expected, *, implementation_transitions=()):
-    """Return path-specific differences; an implementation transition must be exact and reviewed."""
+def compare_reports(actual, expected, *, implementation_transitions=(), validation_transitions=()):
+    """Return path-specific differences; every reviewed transition is exact and fail-closed."""
     failures = []
     def walk(a, e, path):
         if isinstance(e, bool) or e is None or isinstance(e, str):
@@ -192,16 +192,21 @@ def compare_reports(actual, expected, *, implementation_transitions=()):
         if digest(payload) != report.get('evidence_sha256'): failures.append(label+': evidence identity mismatch')
     actual_projection=portable_projection(actual);expected_projection=portable_projection(expected)
     actual_impl=actual_projection['implementation_sha256'];expected_impl=expected_projection['implementation_sha256']
+    implementation_transition=None
     if actual_impl!=expected_impl:
-        allowed=any(row['from_implementation_sha256']==expected_impl and row['to_implementation_sha256']==actual_impl for row in implementation_transitions)
-        if allowed:
+        implementation_transition=next((row for row in implementation_transitions
+            if row['from_implementation_sha256']==expected_impl and row['to_implementation_sha256']==actual_impl),None)
+        if implementation_transition is not None:
             # Preserve both exact identities in their evidence envelopes; align only
-            # the comparison copy so every other discrete/numeric field must still
-            # reproduce the frozen calibration.
+            # the comparison copy so every other undeclared field must reproduce.
             actual_projection=dict(actual_projection);actual_projection['implementation_sha256']=expected_impl
         else:
             failures.append(f'/implementation_sha256: unreviewed transition {expected_impl}->{actual_impl}')
             actual_projection=dict(actual_projection);actual_projection['implementation_sha256']=expected_impl
+    actual_projection, transition_failures, _ = apply_validation_transition(
+        actual_projection, expected_projection, expected_impl=expected_impl, actual_impl=actual_impl,
+        transitions=validation_transitions, implementation_transition_reviewed=implementation_transition is not None)
+    failures.extend(transition_failures)
     walk(actual_projection,expected_projection,'')
     return failures
 
@@ -229,6 +234,7 @@ def main():
     p.add_argument('--telemetry-out', type=Path)
     p.add_argument('--check', type=Path, help='compare against checked-in compact calibration')
     p.add_argument('--implementation-transitions', type=Path, help='reviewed exact implementation-identity transitions; never wildcarded or automatic')
+    p.add_argument('--validation-transitions', type=Path, help='reviewed exact portable validation migrations tied to implementation identities')
     p.add_argument('--reference-out', type=Path, help='explicitly write a new compact calibration; never update automatically in CI')
     args = p.parse_args()
     controller = numeric_thread_limit(1)
@@ -241,16 +247,22 @@ def main():
     expected = read_json(args.check) if args.check else None
     transition_document=read_json(args.implementation_transitions) if args.implementation_transitions else None
     transitions=validate_implementation_transitions(transition_document)
-    failures = compare_reports(reference, expected, implementation_transitions=transitions) if expected is not None else []
+    validation_document=read_json(args.validation_transitions) if args.validation_transitions else None
+    validation_transitions=validate_validation_transitions(validation_document)
+    failures = compare_reports(reference, expected, implementation_transitions=transitions,
+                               validation_transitions=validation_transitions) if expected is not None else []
     expected_impl=None if expected is None else expected.get('implementation_sha256')
     implementation_transition_accepted=bool(expected is not None and reference['implementation_sha256']!=expected_impl and
         any(row['from_implementation_sha256']==expected_impl and row['to_implementation_sha256']==reference['implementation_sha256'] for row in transitions))
+    validation_transition=next((row for row in validation_transitions if expected is not None and
+        row['from_implementation_sha256']==expected_impl and row['to_implementation_sha256']==reference['implementation_sha256']),None)
     print(json.dumps({'evidence_sha256': report['evidence_sha256'], 'fixtures': len(report['fixtures']),
         'candidates': sum(len(f['candidates']) for f in report['fixtures']),
         'seconds': telemetry['total_seconds'],
         'implementation_sha256': reference['implementation_sha256'],
         'expected_implementation_sha256': expected_impl,
         'implementation_transition_accepted': implementation_transition_accepted,
+        'reviewed_validation_changes': 0 if validation_transition is None else len(validation_transition['changes']),
         'comparison_failures': failures}, indent=2))
     if failures: raise SystemExit('ZG-024a evidence comparison failed')
 
