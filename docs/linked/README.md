@@ -14,6 +14,10 @@ All five use the same protected source, phrase duration, event onset/duration/ga
 
 A linked bridge is more than an unrelated sound before the final note. Its pitch path is interpolated in log-frequency space from the event currently in force toward the declared return. Every bridge event records `link_progress` and cents-distance to the return, and compilation requires that distance to decrease strictly until the landing. `both-unrelated` deliberately uses a non-monotonic distance sequence while preserving the comparison invariants.
 
+`distance_to_return_cents` is a physical, directionless cents distance derived from the active `TuningSpec`: the compiler resolves the emitted bridge degree plus detune and the declared return degree plus detune to frequencies, then measures the frequency ratio in cents. Degree coordinates and cents distances are therefore distinct. No path assumes one degree equals 100 cents unless the active tuning actually has that spacing; unequal-step octave scales and non-octave periods use the same definition. Neutral bridge rows continue to report no distance because they do not claim a recovery-distance diagnostic, while the return reports exactly zero.
+
+This is a corrective clarification within linked-return format `1.0.0`, not a trace-version change: the field was already documented as cents distance to the return, and the previous `100 × degree difference` calculation for unrelated bridges was an incorrect implementation of that declared meaning. Event degree selection, detune, source, timing, gain, return destination and rendered audio are unchanged. Downstream ZG-035/ZG-044 evidence must consume the corrected tuning-derived value and must not reconstruct cents distance from degree numbers.
+
 The return is constrained by an explicit ZG-010 `SonoritySpec`; the starter return is the root of a declared root/third/fifth sonority. This is an authored harmony target, not chord inference from audio.
 
 ## Slower anchor
