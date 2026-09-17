@@ -53,15 +53,7 @@ def _validate_timing_shape(data):
     return rows
 
 
-def load_annotation_timing(path, registry):
-    """Load exact, portable annotation timing and bind it to registry content identity.
-
-    Annotation coordinates are half-open frame intervals in decoded PCM at the
-    asset's native sample rate. The timing catalogue deliberately contains no
-    local locator/path; each timing row is bound to the registry's content SHA.
-    """
-
-    data = loads(Path(path).read_bytes())
+def _bind_timing_to_registry(data, registry):
     rows = _validate_timing_shape(data)
     _r(type(registry) is dict and type(registry.get("assets")) is list, "invalid reference registry for annotation timing")
     registry_rows = {row.get("id"): row for row in registry["assets"] if type(row) is dict}
@@ -79,17 +71,34 @@ def load_annotation_timing(path, registry):
         _r(type(duration) in (int, float) and type(duration) is not bool and math.isfinite(float(duration)) and duration > 0, f"annotation timing duration evidence invalid: {asset_id}")
         expected_frames = float(duration) * timing["sample_rate_hz"]
         _r(abs(expected_frames - timing["frame_count"]) <= 1e-6, f"annotation timing frame-count mismatch: {asset_id}")
+    return rows
+
+
+def load_annotation_timing(path, registry):
+    """Load exact, portable annotation timing and bind it to registry content identity.
+
+    Annotation coordinates are half-open frame intervals in decoded PCM at the
+    asset's native sample rate. The timing catalogue deliberately contains no
+    local locator/path; each timing row is bound to the registry's content SHA.
+    """
+
+    data = loads(Path(path).read_bytes())
+    _bind_timing_to_registry(data, registry)
     return data
+
+
+def _canonical_registry():
+    from .registry import load_registry
+
+    return load_registry(DEFAULT_REGISTRY_PATH)
 
 
 def _canonical_timing_for_ids(asset_ids):
     # Backwards-compatible shorthand for the original ``set`` call surface.
     # It is no longer an ID-only validation path: IDs are resolved through the
     # checked-in exact content/timing catalogue before any annotation is accepted.
-    from .registry import load_registry
-
     _r(type(asset_ids) in (set, frozenset), "annotation asset timing metadata required")
-    registry = load_registry(DEFAULT_REGISTRY_PATH)
+    registry = _canonical_registry()
     timing = load_annotation_timing(DEFAULT_ANNOTATION_TIMING_PATH, registry)
     rows = _validate_timing_shape(timing)
     _r(asset_ids <= set(rows), "unknown annotated asset")
@@ -99,7 +108,10 @@ def _canonical_timing_for_ids(asset_ids):
 def _timing_context(assets):
     if type(assets) in (set, frozenset):
         return _canonical_timing_for_ids(assets)
-    rows = _validate_timing_shape(assets)
+    # A caller-supplied catalogue is not trusted merely because its shape is
+    # valid: authenticate its source identities and extents against the canonical
+    # portable registry before using it as validation evidence.
+    rows = _bind_timing_to_registry(assets, _canonical_registry())
     return rows, set(rows)
 
 
