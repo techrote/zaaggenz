@@ -8,10 +8,12 @@ from zaaggenz_contracts import validate
 from zaaggenz_melody import render_phrase
 from zaaggenz_project import Project
 from zaaggenz_timeline import TimelineDocument
+from zaaggenz_tuning import fixture_pack,tuning_to_spec,ratio_to_cents
 from zaaggenz_linked import *
 NAMES=('baseline','violation-only','recovery-only','both-linked','both-unrelated')
 def event_signature(exp):return [(e['beat'],e['duration_beats'],e['gain_db'],e['source_id']) for e in exp.phrase.to_dict()['events']]
 def bridge_dist(exp):return [r['distance_to_return_cents'] for r in exp.trace if r['phase']=='bridge']
+def physical_distance(tuning,row,ret):return abs(ratio_to_cents(tuning.frequency(row['degree'],row['detune_cents'])/tuning.frequency(ret['degree'],ret['detune_cents'])))
 class ValidationTests(unittest.TestCase):
  def setUp(self):self.plan=linked_fakeout_return()
  def bad(self,edit):
@@ -47,6 +49,30 @@ class ExpansionTests(unittest.TestCase):
    d=bridge_dist(self.bundles[name].expansion);self.assertTrue(all(b<a for a,b in zip(d,d[1:])),d);rows=[r for r in self.bundles[name].expansion.trace if r['phase']=='bridge'];self.assertEqual([round(r['link_progress'],6) for r in rows],[round((i+1)/6,6) for i in range(5)])
  def test_unrelated_recovery_is_not_hidden_linked_convergence(self):
   d=bridge_dist(self.bundles['both-unrelated'].expansion);self.assertFalse(all(b<a for a,b in zip(d,d[1:])));self.assertEqual([r['link_progress'] for r in self.bundles['both-unrelated'].expansion.trace if r['phase']=='bridge'],[0.0]*5)
+ def test_bridge_distance_uses_active_tuning_for_linked_and_unrelated(self):
+  ret=self.plan.to_dict()['return_destination']
+  for fixture_name in ('synthetic-ratio-7','synthetic-13ed3'):
+   tuning=fixture_pack()[fixture_name];spec=tuning_to_spec(tuning)
+   with self.subTest(tuning=fixture_name):
+    for variant in ('both-linked','both-unrelated'):
+     exp=expand_linked(self.plan,variant,spec);events={e['id']:e for e in exp.phrase.to_dict()['events']}
+     for row in (r for r in exp.trace if r['phase']=='bridge'):
+      self.assertAlmostEqual(row['distance_to_return_cents'],physical_distance(tuning,row,ret),9)
+      self.assertEqual(events[row['event_id']]['pitch']['degree'],row['degree']);self.assertAlmostEqual(events[row['event_id']]['pitch']['detune_cents'],row['detune_cents'],12)
+    unrelated=[r for r in expand_linked(self.plan,'both-unrelated',spec).trace if r['phase']=='bridge']
+    self.assertTrue(any(abs(r['distance_to_return_cents']-abs((r['degree']-ret['degree'])*100.0))>1e-4 for r in unrelated))
+ def test_12tet_distance_control_matches_100_cents_per_integer_degree(self):
+  tuning=fixture_pack()['12tet-a440'];ret=self.plan.to_dict()['return_destination'];exp=expand_linked(self.plan,'both-unrelated',tuning_to_spec(tuning))
+  for row in (r for r in exp.trace if r['phase']=='bridge'):
+   self.assertAlmostEqual(row['distance_to_return_cents'],abs((row['degree']-ret['degree'])*100.0),9)
+   self.assertAlmostEqual(row['distance_to_return_cents'],physical_distance(tuning,row,ret),9)
+ def test_tuning_distance_handles_negative_and_positive_bridge_degrees(self):
+  d=self.plan.to_dict();d['bridge']['unrelated_degree_offsets']=[-8,-5,-7,-4,-6];plan=LinkedEventPlan(d);tuning=fixture_pack()['synthetic-ratio-7'];ret=d['return_destination'];exp=expand_linked(plan,'both-unrelated',tuning_to_spec(tuning));rows=[r for r in exp.trace if r['phase']=='bridge']
+  self.assertLess(min(r['degree'] for r in rows),0);self.assertGreater(max(r['degree'] for r in rows),0)
+  for row in rows:self.assertAlmostEqual(row['distance_to_return_cents'],physical_distance(tuning,row,ret),9)
+ def test_return_distance_is_exactly_zero_under_active_tuning(self):
+  for tuning in fixture_pack().values():
+   exp=expand_linked(self.plan,'both-linked',tuning_to_spec(tuning));row=next(r for r in exp.trace if r['phase']=='return');self.assertEqual(row['distance_to_return_cents'],0.0)
  def test_slower_sway_anchor_is_identical_through_all_conditions(self):
   anchors=[b.expansion.anchor_trace for b in self.bundles.values()];self.assertTrue(all(a==anchors[0] for a in anchors[1:]));self.assertEqual([r['beat'] for r in anchors[0]],['0/1','2/1','4/1','6/1','8/1','10/1','12/1','14/1'])
  def test_transform_activation_distinguishes_violation_and_recovery(self):
