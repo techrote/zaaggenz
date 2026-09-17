@@ -4,7 +4,9 @@ This directory is the frozen research record for the inverse-search `transient_l
 
 ## Preregistration chronology
 
-The design was deliberately frozen in public commits before each outcome set was inspected. The initial envelope-only proposal was inadequate after RMS normalization. A second relative derivative-contrast proposal was also inadequate for onset-only low-pass damage. Protocol v3 introduced attack-local high-band contrast, then independent confirmation v1 exposed a structural false negative: removing a secondary target onset still scored `0.8310780175536643`. Protocol v4 therefore added a direct target-anchored onset-contrast component without changing the existing `0.4` threshold, anchor windows, amplitude window, or high-band rule. A fresh confirmation-v2 matrix was frozen before that final candidate was evaluated.
+The design was deliberately frozen in public commits before each outcome set was inspected. The initial envelope-only proposal was inadequate after RMS normalization. A second relative derivative-contrast proposal was also inadequate for onset-only low-pass damage. Protocol v3 introduced attack-local high-band contrast, then independent confirmation v1 exposed a structural false negative: removing a secondary target onset still scored `0.8310780175536643`. Protocol v4 therefore added a direct target-anchored onset-contrast component without changing the existing `0.4` threshold, anchor windows, amplitude window, or high-band rule. A fresh confirmation-v2 matrix was frozen before that attack-focused candidate was evaluated.
+
+The v3 candidate passed that confirmation matrix, but its first integrated foundation run then exposed a different inherited safety regression: a stereo candidate could erase one target channel while aggregate level/band checks remained plausible and the attack-specific method had no qualifying anchor. Protocol v5 froze a gain-normalized physical-channel activity safeguard before it was implemented. The final production method is therefore `zg.inverse.transient-onset-contrast.v4`: the confirmation-v2 attack method plus the v5 physical-channel compatibility safeguard. This was not threshold retuning.
 
 Canonical UTF-8 JSON SHA-256 values used during the research pass:
 
@@ -14,6 +16,7 @@ Canonical UTF-8 JSON SHA-256 values used during the research pass:
 - confirmation v1: `455bdaa8ee48e4427e4c50cbb65119fe617bb53bc18edaa4fd7b56ca6fd0ccf7`
 - `transient_gate_protocol_v4.json`: `23cb2e5167038dd4dc43ec268c3257f171809561f9c4bb94c774a5c86156540e`
 - confirmation v2: `5bb936e49b67db13da4e8aabdfd6cf13c0c12d789d196b3e7f69165785aa2f6c`
+- `transient_gate_protocol_v5.json`: `72ea2fcc7c7cf9d650d04799832c8eae358004a100675849c52c433b2a158d98`
 
 The superseded protocols are retained rather than rewritten so unsuccessful diagnostic ideas remain auditable.
 
@@ -25,7 +28,7 @@ The old gate is additionally scale-sensitive by construction. For an otherwise i
 
 ## Fresh confirmation-v2 result
 
-No parameters or labels were changed after `transient_gate_confirmation_v2.json` was frozen. The final `zg.inverse.transient-onset-contrast.v3` ratios from the deterministic 48 kHz matrix were:
+No parameters or labels were changed after `transient_gate_confirmation_v2.json` was frozen. The attack-focused `zg.inverse.transient-onset-contrast.v3` ratios from the deterministic 48 kHz matrix were:
 
 | Case | Label | Ratio |
 |---|---|---:|
@@ -41,10 +44,14 @@ No parameters or labels were changed after `transient_gate_confirmation_v2.json`
 | flattened attack | damaged | 0.2661670812 |
 | secondary onset removed | damaged | 0.0000000000 |
 | later onset attenuated | damaged | 0.0539035196 |
-| one stereo channel damaged | damaged | 0.2232594585 |
+| one stereo channel attack-damaged | damaged | 0.2232594585 |
 
-All preserved controls are above the frozen `0.4` threshold; all deliberately damaged/adversarial controls are below it. CI tests regenerate these signal families and additionally cover the 32-sample boundary, silence, near-silence, low sample rate, exact threshold semantics, multiple target onsets, candidate-side decoy onsets, and physical-channel aggregation.
+All preserved controls are above the frozen `0.4` threshold; all deliberately attack-damaged/adversarial controls are below it. Protocol v5 does not alter any attack anchor/window/spectral calculation, so these attack ratios remain the same unless the added channel-activity component is stricter.
+
+The v5 compatibility controls require: a uniform `0.10` global gain has channel-activity ratio `1.0` and is not mislabeled as transient loss; candidate silence against an active target has ratio `0.0`; complete loss of one target-active stereo channel has that channel's activity ratio `0.0`; and target-silence identity remains neutral. The existing independent level/silence/normalisation gates remain visible rather than being folded into the attack score.
+
+CI tests regenerate the signal families and additionally cover the 32-sample boundary, silence, near-silence, low sample rate, exact threshold semantics, multiple target onsets, candidate-side decoy onsets, attack damage in one physical channel, complete physical-channel loss, and gain normalization.
 
 ## Interpretation boundary
 
-This evidence supports `zg.inverse.transient-onset-contrast.v3` as a bounded safety diagnostic for preservation of target attack/onset structure. It does **not** establish a universal perceptual transient metric, does not rank optimizers, does not measure musical preference, and does not justify changing product defaults. Search remains fit-only; this validation result is a separate eligibility record. Raw diagnostic records are retained even when a candidate is rejected.
+This evidence supports `zg.inverse.transient-onset-contrast.v4` as a bounded safety diagnostic for preservation of target attack/onset structure and target-active physical-channel presence. It does **not** establish a universal perceptual transient metric, does not rank optimizers, does not measure musical preference, and does not justify changing product defaults. Search remains fit-only; this validation result is a separate eligibility record. Raw diagnostic records are retained even when a candidate is rejected.
