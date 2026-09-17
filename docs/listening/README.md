@@ -16,27 +16,19 @@ The server binds only `127.0.0.1`. `/listen` links back to Compose and the full 
 
 ## Immutable listening material
 
-A listening stimulus is created **only from a completed `RenderArtifact`**. Freezing stores:
+A listening stimulus is created **only from a completed `RenderArtifact`**. Freezing stores immutable project revision, exact RenderRecipe SHA-256, product/cache identity, source audio identity and shape, exact excerpt frames, SHA-256 of the excerpt float32 PCM, and inherited region/offset alignment metadata.
 
-- immutable project revision ID;
-- exact RenderRecipe SHA-256;
-- product and render cache key;
-- source audio content SHA-256, sample rate, channel count and frame count;
-- exact excerpt start/end frames;
-- SHA-256 of the excerpt float32 PCM;
-- inherited region/offset alignment metadata.
+The exact excerpt bytes are copied into the bounded listening audio store. Later project edits and renders cannot change them. Missing bytes are never regenerated from current project state.
 
-The corresponding excerpt bytes are copied into a bounded local listening store. Later edits/renders do not modify them. If the exact bytes are missing on trusted bundle reopen, the system fails explicitly; it does **not** rerender the current project and pretend the stimulus is unchanged. Durable fresh-process archive transport is tracked separately by corrective issue #98.
-
-This distinction is important for owner audition and controlled studies: a label such as “A” refers to frozen audio identity, not mutable UI state.
+The audio-store accounting contract is `retained-pcm-physical-bytes-v1`: raw frozen PCM is retained by stimulus identity, matched playback is content-addressed by SHA-256, deduplicated playback is counted once physically, and admission is transactional. Failed operations leave older study material unchanged.
 
 ## Playback-only level matching
 
 `ListeningAudioStore.match()` operates on 2–8 frozen stimuli. It measures whole-excerpt RMS and sample peak, chooses one common RMS target that respects a declared sample-peak ceiling, then applies one fixed gain per immutable stimulus.
 
-Each matched row records source RMS dBFS/sample peak, matching gain, target and realised matched RMS, matched sample peak/headroom, resulting playback PCM SHA-256, method `whole-file-rms-common-target-v1`, and `true_peak_measured=false`.
+Each matched row records source RMS/sample peak, matching gain, target and realised RMS, matched sample peak/headroom, resulting playback PCM SHA-256, method `whole-file-rms-common-target-v1`, and `true_peak_measured=false`.
 
-Silent/near-silent material is rejected instead of being boosted. A requested target that violates the common peak ceiling fails rather than being silently limited. This is **whole-file RMS playback matching**, not perceptual-loudness matching or true-peak certification.
+Silent/near-silent material is rejected instead of boosted. Non-finite controls or PCM are rejected before retained state changes. A requested target that violates the common peak ceiling fails rather than being silently limited. This is **whole-file RMS playback matching**, not perceptual-loudness matching or true-peak certification.
 
 ## Trial designs and blinding
 
@@ -46,56 +38,67 @@ Three closed trial types are supported:
 - **ABX** — exactly two matched stimuli plus hidden X identity;
 - **multi** — 2–8 matched stimuli.
 
-Trusted/offline `make_trial()` remains deterministic from its explicit seed for fixture and evidence reproduction. The HTTP participant workflow deliberately has a stronger boundary: the visible seed may determine presentation ordering, but **ABX truth is selected from server-held cryptographic randomness and is never derivable from that participant-visible seed**. The authoritative trusted manifest stores the exact truth and seed and is content-addressed as before.
+Trusted/offline `make_trial()` remains deterministic from its explicit seed for fixture and evidence reproduction. The HTTP participant workflow uses a stronger boundary: visible presentation ordering may use the supplied seed, but ABX truth is selected from server-held cryptographic randomness and is not derivable from participant-visible state.
 
-The participant projection is a distinct `zaaggenz-listening-participant-trial/1.0.0` view. It contains the material required to conduct the task, but omits the seed and trusted manifest ID, sets `abx_truth` to null, and uses a fresh opaque 256-bit participant trial ID. The opaque ID is not a digest of hidden truth. This closes both the direct truth field leak and the two-candidate hash/origin-seed inference paths.
-
-X audio is served only through the opaque participant-trial route and does not disclose a playback SHA header. A/B playback necessarily remains available to the browser so a listener can hear it; the capability boundary prevents protocol/metadata oracles, not a malicious participant performing arbitrary signal analysis on audio they are entitled to hear.
-
-Neutral instruction templates are included for A/B, ABX and multi-example tasks. They avoid implying a preferred answer or telling the listener what acoustic property should be liked.
+The participant projection is `zaaggenz-listening-participant-trial/1.0.0`. It omits the trusted manifest ID and seed, sets `abx_truth` to null, and uses a fresh opaque 256-bit participant trial ID. X audio is served through the opaque participant-trial route without a playback-SHA response header.
 
 ## Participant and trusted capabilities
 
-The loopback HTTP service now has two explicit capabilities:
+The loopback service has two explicit capabilities:
 
-- `zaaggenz-listening-capability/1.0.0`, role **participant** — the token returned by `/api/listening/bootstrap`. It permits the visible freeze/match/create/play/submit workflow and **participant-safe export only**.
-- **trusted/researcher** capability — a separate server-generated token that is never returned by participant bootstrap or static browser assets. It is required for `/api/listening/trusted-export` and `/api/listening/reopen`.
+- `zaaggenz-listening-capability/1.0.0`, role **participant** — returned by `/api/listening/bootstrap`; permits the visible freeze/match/create/play/submit workflow, participant-safe metadata export, and participant-safe archive export.
+- **trusted/researcher** capability — a separate server-generated token never returned by participant bootstrap/static assets; required for trusted metadata export, trusted archive export, metadata reopen and durable archive reopen.
 
-Loopback Host/Origin checks and CSP remain defence in depth; they do not substitute for role separation. Supplying the participant token to a trusted route, omitting the trusted token, or forging it fails with HTTP 403.
+Loopback Host/Origin checks and CSP remain defence in depth; they do not replace role separation. Participant-created ABX trials keep truth server-side. Participant submission is terminal; a retake requires a new trial. Participant receipts and exports redact `abx_correct` and never carry the trusted trial ID or a digest that acts as a scoring oracle.
 
-Participant-created ABX trials use server-held truth and expose only the opaque participant trial ID. Participant submission is terminal: once a response (completed, aborted or missing) is accepted, the same public trial cannot be submitted again. A retake requires a newly created trial. This makes the response boundary irreversible rather than allowing an answer to be edited after scoring.
+## Response semantics and registry bounds
 
-The participant submission receipt deliberately withholds `abx_correct`, the trusted trial ID and any digest over the trusted result. Its `result_sha256` is the digest of the participant-safe receipt itself, so it cannot be used as a one-bit correctness oracle.
+A trusted result stores comparison choice, ABX correctness where applicable, declared 0–100 task endpoints, confidence, effort, comfortable level, replay counts, time-local annotations, free note and status `completed`, `aborted` or `missing`. Choices and annotations are bound to actual trial stimuli, annotation time is checked against the frozen playback clock, and missing records cannot fabricate substantive observations.
 
-## Response fields remain separate
+The in-memory metadata registry is explicitly bounded by `retained-listening-metadata-json-v1`: default limits are 512 trials, 4,096 results per trial, 16,384 total results, 64 MiB canonical retained metadata, 16 MiB result metadata per trial and 20 MiB per JSON export. These are process-safety limits, not scientific sample-size guidance. No evidence is silently evicted or truncated.
 
-A trusted result stores independent fields rather than collapsing them into one score: comparison choice; ABX correctness (ABX only); named 0–100 task endpoints; confidence; effort; comfortable playback level; per-stimulus replay counts plus X replay count; time-local annotations; free note; and status `completed`, `aborted` or `missing`.
+## Metadata bundles versus durable archives
 
-ABX correctness is validated from the hidden trusted manifest and is never inserted into ratings. Ratings are accepted only for endpoints declared before the trial. An aborted/missing result cannot claim ABX accuracy. Participant receipts/exports retain the submitted response but redact `abx_correct` to null.
+The existing JSON formats remain unchanged:
 
-These fields are observations, not audio descriptors. Liking/excitement/urge-to-move are not biochemical measurements.
+- participant-safe `zaaggenz-listening-participant-bundle/1.0.0`;
+- trusted `zaaggenz-listening-bundle/1.0.0`.
 
-## Export and reopen
+Those **1.0.0 JSON bundles are metadata-only**. Trusted `reopen_bundle()` still requires referenced playback bytes to already exist in the current audio store and fails clearly if they are missing. It never rerenders or rematches. This behaviour is retained for compatibility and is not silently reinterpreted.
 
-There are now two non-interchangeable export surfaces.
+Fresh-process reproducibility uses the self-contained binary transport **`zaaggenz-listening-archive/1.0.0`** (`application/vnd.zaaggenz-listening-archive`). It carries the role-appropriate existing bundle plus exact frozen raw PCM and exact matched playback PCM. Every byte blob is addressed by its existing SHA-256, and reopen verifies the manifest digest, framing, lengths, shapes and every blob hash before the material can be used.
 
-`/api/listening/export` returns `zaaggenz-listening-participant-bundle/1.0.0`. It contains stimulus provenance, the participant-safe trial projection and participant-safe response projections. It never contains the trusted manifest ID, seed, hidden ABX truth or ABX correctness. The visible browser download button uses this format, including before a response has been submitted.
+The archive is deliberately **not ZIP/TAR and has no entry filenames or extraction paths**. Stimulus names remain metadata only; hostile names such as `../x` cannot become filesystem paths. This removes traversal/overwrite/arbitrary-extraction semantics rather than attempting to sanitise a path namespace that the format does not need.
 
-`/api/listening/trusted-export` requires the trusted capability and returns the existing `zaaggenz-listening-bundle/1.0.0`: complete stimulus provenance, authoritative trusted manifest including ABX truth, and full results including server-scored ABX correctness. `/api/listening/reopen` likewise requires the trusted capability and accepts only the trusted bundle format; a participant bundle cannot be reinterpreted as trusted evidence.
+Archive defaults are bounded to 16 unique blobs, 256 MiB restored retained PCM, 20 MiB canonical manifest metadata and 320 MiB total archive bytes. Blob count, manifest length and total archive size are rejected before parsing/material installation proceeds beyond the declared envelope. Reopen then also passes through the ordinary audio-store and registry admission checks, so archive import cannot bypass #115/#132 resource contracts.
 
-Raw/matched WAV bytes remain in the bounded local audio store rather than being duplicated into JSON. Trusted reopen validates every provenance object and requires the exact playback SHA-256 bytes to remain available. Missing audio causes an explicit error. This prevents an edited project from silently generating replacement research material.
+Transport may deduplicate identical raw/playback bytes by SHA. On reopen, the normal store accounting is reconstructed exactly: raw entries remain stimulus-owned and playback remains SHA-deduplicated. Missing, corrupt, truncated, trailing or mismatched content fails; there is no fallback to current source state.
+
+### Trusted archive
+
+`POST /api/listening/trusted-archive` requires the trusted capability and returns a role `trusted` archive containing full trusted bundle provenance, including ABX truth and server-scored results where present. `POST /api/listening/reopen-archive` requires the trusted capability and accepts only the archive MIME type. A participant archive cannot be reinterpreted as trusted evidence.
+
+Programmatically, `export_service_archive()`, `reopen_service_archive()` and `publish_service_archive()` provide the same contract. `publish_service_archive()` uses the accepted atomic publication primitive: write a sibling temporary file, flush/fsync it, honour cancellation before publication, then `os.replace`. Cancellation/failure therefore cannot replace an existing complete archive with a partial one.
+
+### Participant archive
+
+`POST /api/listening/archive` uses the participant capability and returns a role `participant` archive. Its embedded bundle is the same participant-safe projection as the JSON export: no trusted manifest ID, seed, hidden ABX truth or ABX correctness. Exact audio bytes do not grant a metadata/protocol truth oracle beyond the audio the participant is already entitled to hear.
+
+### Rights and private-reference boundary
+
+The archive follows only already-frozen `RenderArtifact` listening stimuli and their matched derivatives. It does **not** follow source locators, project paths or reference-library links and does not automatically include private reference recordings merely because provenance or a study refers to them. Raw material in the archive is the exact frozen render excerpt represented by the listening stimulus, not an arbitrary upstream file.
 
 ## Browser workflow
 
-The `/listen` page intentionally starts from already saved Compose project files:
+The `/listen` page starts from saved Compose project files:
 
-1. choose project JSON files and **Render + freeze** them;
+1. choose project JSON and **Render + freeze** exact material;
 2. select A/B, ABX or multi, presentation seed and endpoints;
-3. level-match and create the participant-safe trial (ABX truth is server-held, not derived from the visible seed);
+3. level-match and create the participant-safe trial;
 4. use blind playback controls, comfortable level, stop/rest, ratings and time-local annotation;
-5. submit completed/aborted state and optionally download the participant-safe bundle.
+5. submit completed/aborted state and optionally export participant-safe evidence.
 
-Compose stays available in a separate route and is not modified when a trial is created or submitted. Trusted archival export is intentionally not exposed to participant browser capability.
+Compose remains available separately and is not modified when a trial is created, submitted or archived. Trusted archival operations are intentionally not exposed through participant capability.
 
 ## Verification
 
@@ -110,8 +113,6 @@ python tools/listening_fixture_report.py --out listening-fixtures-48k.json --art
 python tests/listening/browser.py --out listening-browser-acceptance
 ```
 
-The direct HTTP suite checks pre-answer participant export, bootstrap, trial projection, X route, forged/missing trusted capability, trusted-ID misuse, one-shot submission, participant result receipts, trusted archival export, foreign Origin and invalid participant tokens. Service tests additionally cover A/B and multi views, participant-bundle rejection by trusted reopen, and exact trusted scoring.
+The archive regression suite covers fresh-runtime bit-exact reopen without render/match state, raw/playback SHA identity, mono/stereo shape, completed/aborted/missing results, transport deduplication with restored store accounting, corruption/truncation/bounds, inert hostile names, cancellation-safe atomic publication, participant/trusted role separation and the legacy metadata-only fail-closed path. HTTP tests cover participant and trusted archive capabilities plus binary trusted reopen. The ZG-015 workflow runs the suite on Ubuntu and Windows.
 
-Real Chromium acceptance performs the normal UI workflow and verifies that its downloaded bundle is participant-safe while the server-held trusted archive retains the exact hidden truth and score. Existing level matching, immutable stimulus identity, replay counts, annotations and Compose independence remain exercised.
-
-Automated passing evidence demonstrates identity, matching, capability and workflow integrity. It is not owner listening approval and does not establish that any acoustic change is preferred.
+Automated passing evidence demonstrates identity, matching, capability, durability and workflow integrity. It is not owner listening approval and does not establish that any acoustic change is preferred.
