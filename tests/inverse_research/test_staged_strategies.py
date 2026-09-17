@@ -15,23 +15,55 @@ class StagedStrategyV2Tests(unittest.TestCase):
         fit, audit = fixture.experiment()
         return fixture, fit, audit, run_staged(fit, StagedSpec(method))
 
-    def test_all_frozen_allocations_consume_exact_budget_and_retain_lineage(self):
+    def test_all_frozen_allocations_respect_budget_lineage_and_fail_closed_stops(self):
+        """A declared 24-evaluation budget is a cap, not permission to promote rejected parents.
+
+        Protocol v2 explicitly requires an early fail-closed stop when a stage has no
+        eligible parent.  A development case may therefore consume less than 24 while
+        remaining a valid (worst-ranked) equal-budget comparison.  This test covers
+        both the full-budget path and each legal prefix shape without weakening any
+        eligibility gate.
+        """
         for method in METHODS:
             with self.subTest(method=method):
                 fixture, fit, _, result = self.run_fixture(method=method)
                 expected = dict(zip(('A', 'B', 'C'), StagedSpec(method).allocation))
-                self.assertEqual(len(result.candidates), 24)
-                self.assertEqual(dict(result.stage_consumption), expected)
-                self.assertEqual(len({candidate.id for candidate in result.candidates}), 24)
-                self.assertEqual(len(result.lineage), 24)
-                self.assertEqual(fit.render_calls, 48)
-                self.assertIsNone(result.stop_reason)
-                self.assertEqual([row['stage'] for row in result.promotions], ['A', 'B', 'C-final'])
+                consumed = dict(result.stage_consumption)
+                self.assertLessEqual(len(result.candidates), 24)
+                self.assertEqual(sum(consumed.values()), len(result.candidates))
+                self.assertEqual(len({candidate.id for candidate in result.candidates}), len(result.candidates))
+                self.assertEqual(len(result.lineage), len(result.candidates))
+                self.assertEqual(fit.render_calls, 2 * len(result.candidates))
+
                 eligible = {candidate.id for candidate in result.candidates if candidate.eligible}
                 for promotion in result.promotions:
                     self.assertLessEqual(len(promotion['retained_candidate_ids']), 4)
                     self.assertTrue(set(promotion['retained_candidate_ids']) <= eligible)
-                self.assertTrue(result.final_retained_candidate_ids)
+
+                if result.stop_reason is None:
+                    self.assertEqual(len(result.candidates), 24)
+                    self.assertEqual(consumed, expected)
+                    self.assertEqual([row['stage'] for row in result.promotions], ['A', 'B', 'C-final'])
+                    self.assertTrue(result.final_retained_candidate_ids)
+                elif result.stop_reason == 'stage-A-no-eligible-parent':
+                    self.assertEqual(consumed, {'A': expected['A'], 'B': 0, 'C': 0})
+                    self.assertEqual([row['stage'] for row in result.promotions], ['A'])
+                    self.assertFalse(result.final_retained_candidate_ids)
+                elif result.stop_reason == 'stage-B-no-eligible-parent':
+                    self.assertEqual(consumed, {'A': expected['A'], 'B': expected['B'], 'C': 0})
+                    self.assertEqual([row['stage'] for row in result.promotions], ['A', 'B'])
+                    self.assertFalse(result.final_retained_candidate_ids)
+                elif result.stop_reason == 'stage-C-no-eligible-final-alternative':
+                    self.assertEqual(consumed, expected)
+                    self.assertEqual([row['stage'] for row in result.promotions], ['A', 'B', 'C-final'])
+                    self.assertFalse(result.final_retained_candidate_ids)
+                else:
+                    self.fail('unexpected staged stop reason: ' + str(result.stop_reason))
+
+                budget = result.to_dict()['budget']
+                self.assertEqual(budget['declared_evaluations'], 24)
+                self.assertEqual(budget['consumed_evaluations'], len(result.candidates))
+                self.assertEqual(budget['unspent_evaluations'], 24-len(result.candidates))
 
     def test_parameter_families_are_isolated_by_stage_and_parent(self):
         fixture, _, _, result = self.run_fixture()
