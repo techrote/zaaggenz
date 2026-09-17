@@ -21,3 +21,9 @@ Trial tests distinguish A/B choice, hidden ABX accuracy, task ratings, confidenc
 Local Playwright acceptance was not claimed because a managed Chromium binary was not present in the local environment. The final PR workflow installs Chromium on Windows and Ubuntu and runs the real browser workflow against the actual loopback numerical server.
 
 Final acceptance is produced by `.github/workflows/zg015-listening.yml` plus the independent ZG-002 contracts/legacy workflow. The PR/issue completion comment records final head SHA, workflow IDs, artifact IDs and remote evidence inspection.
+
+## Corrective semantic validation (#105)
+
+The result wire format remains `zaaggenz-listening-result/1.0.0`, but authoritative validation now binds A/B and multi choices to exact presented stimulus IDs, binds every annotation target to the trial, defines completed/aborted/missing observation policy, and validates annotation time against the exact frozen stimulus presentation clock whenever trusted stimulus metadata is available. Live service submission and trusted bundle reopen always supply that timing context. The canonical rules and compatibility policy are recorded in `RESULT_SEMANTICS.md`.
+
+This repair does not alter frozen stimulus bytes, level matching, ABX truth generation, participant/trusted capability separation, valid-result serialization/digests, Compose state, or any DSP/default behaviour.
