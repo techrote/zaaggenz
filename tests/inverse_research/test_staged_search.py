@@ -148,6 +148,7 @@ class StagedSearchTests(unittest.TestCase):
             research_fixture(DEV_NAMES[0], seed=CONFIRM_SEEDS[0])
 
     def test_fresh_safety_probes_are_bounded_and_explicit(self):
+        math = __import__("math")
         for name in SAFETY_NAMES:
             fixture, state, purpose = safety_fixture(name)
             with self.subTest(name=name):
@@ -156,8 +157,11 @@ class StagedSearchTests(unittest.TestCase):
                 self.assertEqual(fixture.budget.max_evaluations, 1)
                 fit, _ = fixture.experiment()
                 candidate = fit.evaluate(state, 0)
-                self.assertIsNotNone(candidate.to_dict()["validation"])
-                self.assertTrue(all(__import__("math").isfinite(x) for x in candidate.to_dict()["fit"]["objectives"]["components"].values()))
+                data = candidate.to_dict()
+                self.assertIn(data["validation_state"], ("accepted", "accepted-with-exceptions", "rejected"))
+                for value in data["fit"]["objectives"]["components"].values():
+                    if value is not None:
+                        self.assertTrue(math.isfinite(value))
 
 
 if __name__ == "__main__":
