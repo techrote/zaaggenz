@@ -76,6 +76,33 @@ class TransientGateTests(unittest.TestCase):
                 finding = next(x for x in report['findings'] if x['gate'] == 'transient_loss')
                 self.assertGreaterEqual(finding['value'], .4)
 
+    def test_global_gain_is_not_attack_loss_but_independent_level_gate_remains(self):
+        candidate = (self.target*.1).astype(np.float32)
+        metric = transient_preservation(self.target, candidate, SR)
+        self.assertAlmostEqual(metric['ratio'], 1., places=6)
+        self.assertAlmostEqual(metric['channels'][0]['channel_activity_ratio'], 1., places=6)
+        report = validation_measurements(self.target, candidate, SR)
+        self.assertNotIn('transient_loss', reasons(report))
+        self.assertIn('level_mismatch', reasons(report))
+        self.assertIn('normalisation_suspect', reasons(report))
+
+    def test_channel_activity_rejects_candidate_silence_and_whole_channel_loss(self):
+        silence = np.zeros_like(self.target)
+        metric = transient_preservation(self.target, silence, SR)
+        self.assertEqual(metric['ratio'], 0.)
+        self.assertEqual(metric['channels'][0]['channel_activity_ratio'], 0.)
+        self.assertIn('transient_loss', reasons(validation_measurements(self.target, silence, SR)))
+
+        stereo_target = np.column_stack((self.target, -self.target))
+        stereo_candidate = stereo_target.copy()
+        stereo_candidate[:, 1] = 0.
+        metric = transient_preservation(stereo_target, stereo_candidate, SR)
+        self.assertEqual(metric['channels'][1]['channel_activity_ratio'], 0.)
+        self.assertEqual(metric['ratio'], 0.)
+        report = validation_measurements(stereo_target, stereo_candidate, SR)
+        self.assertIn('transient_loss', reasons(report))
+        self.assertEqual(len(report['measurements']['transient_channel_ratios']), 2)
+
     def test_removed_smoothed_attenuated_lowpass_and_flattened_attacks_reject(self):
         target = self.target.astype(np.float64)
         n22, n6 = round(.022*SR), round(.006*SR)
@@ -191,10 +218,12 @@ class TransientGateTests(unittest.TestCase):
 
     def test_method_record_is_explicit_and_bounded(self):
         result = transient_preservation(self.target, self.target, SR)
-        self.assertEqual(result['method'], 'zg.inverse.transient-onset-contrast.v3')
+        self.assertEqual(result['method'], 'zg.inverse.transient-onset-contrast.v4')
         self.assertEqual(result['parameters']['max_anchors_per_channel'], 8)
         self.assertEqual(result['parameters']['high_band_cutoff_hz'], 1000.)
+        self.assertAlmostEqual(result['global']['gain_ratio'], 1.)
         self.assertLessEqual(len(result['anchor_samples'][0]), 8)
+        self.assertEqual(result['channels'][0]['channel_activity_ratio'], 1.)
         for record in result['channels'][0]['anchors']:
             self.assertEqual(set(record), {
                 'anchor_sample', 'target_onset_contrast', 'candidate_onset_contrast',
