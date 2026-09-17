@@ -1,6 +1,6 @@
 """Phase-robust transient-preservation diagnostics for inverse eligibility.
 
-This module owns only the inverse-search safety diagnostic.  It intentionally does
+This module owns only the inverse-search safety diagnostic. It intentionally does
 not change the accepted ZG-019 placement metrics, acoustic objective, renderer, or
 candidate proposal logic.
 """
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import numpy as np
 
-METHOD_ID = 'zg.inverse.transient-onset-contrast.v3'
+METHOD_ID = 'zg.inverse.transient-onset-contrast.v4'
 RMS_FLOOR = 1e-8
 ANCHOR_WINDOW_SECONDS = .004
 ANCHOR_RELATIVE_PEAK = .25
@@ -99,7 +99,7 @@ def _anchor_record(target, candidate, target_contrast, candidate_contrast,
     candidate_late = candidate[min(len(candidate), index+early):min(len(candidate), index+late_end)]
 
     if not len(target_late) or not len(candidate_late):
-        # Target anchor selection normally excludes this case.  Keep the record
+        # Target anchor selection normally excludes this case. Keep the record
         # finite and conservative if a future very-low-rate boundary reaches it.
         onset_ratio = amplitude_ratio = spectral_ratio = score = 1.
         applicable = False
@@ -147,14 +147,25 @@ def _anchor_record(target, candidate, target_contrast, candidate_contrast,
 def transient_preservation(target, candidate, sample_rate_hz):
     """Measure target-anchored attack preservation per physical channel.
 
-    The metric is deliberately relative: gain, root and timbre may change globally,
-    but an onset is compared with that signal's own local post-onset tail.  The
-    candidate never chooses anchors.  A missing target onset therefore cannot be
-    hidden by a later surviving transient.
+    Attack components are deliberately relative: global gain, root and timbre may
+    change without becoming attack loss, while a candidate can never choose or
+    move target anchors. A gain-normalized per-channel activity component also
+    prevents complete loss of one physical channel from becoming invisible when
+    aggregate stereo level remains plausible.
     """
     target_matrix, candidate_matrix = _matrix(target), _matrix(candidate)
     if target_matrix.shape != candidate_matrix.shape:
         raise ValueError('transient preservation requires matching arrays')
+
+    target_global_rms = _rms(target_matrix.reshape(-1))
+    candidate_global_rms = _rms(candidate_matrix.reshape(-1))
+    if target_global_rms > RMS_FLOOR and candidate_global_rms > RMS_FLOOR:
+        global_gain_ratio = candidate_global_rms/target_global_rms
+    elif target_global_rms > RMS_FLOOR:
+        global_gain_ratio = 0.
+    else:
+        global_gain_ratio = 1.
+
     channel_ratios, channel_anchors, channels = [], [], []
     for channel in range(target_matrix.shape[1]):
         reference = target_matrix[:, channel]
@@ -164,11 +175,30 @@ def transient_preservation(target, candidate, sample_rate_hz):
         records = [_anchor_record(reference, proposal, target_contrast,
                                   candidate_contrast, index, sample_rate_hz)
                    for index in anchors]
-        ratio = min((record['score'] for record in records), default=1.)
+        anchor_ratio = min((record['score'] for record in records), default=1.)
+
+        target_channel_rms = _rms(reference)
+        candidate_channel_rms = _rms(proposal)
+        if target_channel_rms <= RMS_FLOOR:
+            channel_activity_ratio = 1.
+        elif global_gain_ratio <= RMS_FLOOR:
+            channel_activity_ratio = 0.
+        else:
+            local_gain_ratio = candidate_channel_rms/max(target_channel_rms, RMS_FLOOR)
+            channel_activity_ratio = local_gain_ratio/global_gain_ratio
+        ratio = min(anchor_ratio, max(channel_activity_ratio, 0.))
+
         channel_ratios.append(float(ratio))
         channel_anchors.append(anchors)
-        channels.append({'channel': channel, 'ratio': float(ratio),
-                         'anchors': records})
+        channels.append({
+            'channel': channel,
+            'ratio': float(ratio),
+            'anchor_ratio': float(anchor_ratio),
+            'channel_activity_ratio': float(channel_activity_ratio),
+            'target_channel_rms': float(target_channel_rms),
+            'candidate_channel_rms': float(candidate_channel_rms),
+            'anchors': records,
+        })
     aggregate = min(channel_ratios, default=1.)
     return {
         'method': METHOD_ID,
@@ -176,6 +206,11 @@ def transient_preservation(target, candidate, sample_rate_hz):
         'channel_ratios': channel_ratios,
         'anchor_samples': channel_anchors,
         'channels': channels,
+        'global': {
+            'target_rms': float(target_global_rms),
+            'candidate_rms': float(candidate_global_rms),
+            'gain_ratio': float(global_gain_ratio),
+        },
         'parameters': {
             'anchor_window_ms': ANCHOR_WINDOW_SECONDS*1000.,
             'anchor_relative_peak': ANCHOR_RELATIVE_PEAK,
@@ -186,6 +221,9 @@ def transient_preservation(target, candidate, sample_rate_hz):
             'late_end_ms': LATE_END_SECONDS*1000.,
             'high_band_cutoff_hz': min(HIGH_BAND_MAX_HZ, HIGH_BAND_SR_FRACTION*sample_rate_hz),
             'high_band_fraction_floor': HIGH_BAND_FRACTION_FLOOR,
-            'aggregation': 'minimum anchor score over target anchors and physical channels',
+            'channel_activity': ('candidate/target channel RMS gain divided by candidate/target '
+                                 'global RMS gain; target-inactive channel is neutral'),
+            'aggregation': ('minimum of target-anchor preservation and gain-normalized channel '
+                            'activity over all physical channels'),
         },
     }
