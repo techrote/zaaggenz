@@ -1,8 +1,10 @@
 from __future__ import annotations
-import copy,sys,unittest
+import sys,unittest
+from unittest.mock import patch
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2];sys.path.insert(0,str(ROOT));sys.path.insert(0,str(ROOT/'app'))
 from zaaggenz_listening import ListeningError,TrialResult,make_result,make_trial
+from zaaggenz_listening.service import ListeningService
 
 
 def matched(stimulus_hex,playback_hex):
@@ -70,6 +72,17 @@ class ResultSemanticTests(unittest.TestCase):
         result=make_result(trial,status='aborted',choice=sid,ratings={'groove':22},effort=81,replay_counts=counts,
                            annotations=[{'stimulus_id':sid,'time_seconds':1.0,'label':'tail','note':'stopped here'}],stimulus_metadata=self.meta)
         self.assertEqual(result.to_dict()['status'],'aborted');self.assertEqual(result.to_dict()['choice'],sid);self.assertIsNone(result.to_dict()['abx_correct'])
+
+    def test_live_service_submission_supplies_timing_context_and_rejects_late_annotation(self):
+        trial=self._trial();tid=trial.to_dict()['id'];sid=trial.to_dict()['presentation_order'][0]
+        service=ListeningService(None);service.trials[tid]=trial
+        payload={'status':'aborted','choice':None,'ratings':{},'confidence':None,'effort':None,'comfortable_level':None,
+                 'replay_counts':{x:0 for x in trial.to_dict()['presentation_order']},'x_replay_count':0,
+                 'annotations':[{'stimulus_id':sid,'time_seconds':1.000001,'label':'late','note':''}],'note':''}
+        with patch.object(service,'_trial_stimulus_metadata',return_value=self.meta):
+            with self.assertRaisesRegex(ListeningError,'exceeds referenced stimulus duration'):
+                service.submit(tid,payload)
+        self.assertEqual(service.results,{})
 
     def test_persisted_result_revalidation_rejects_manifest_and_semantic_tampering(self):
         trial=self._trial();sid=trial.to_dict()['presentation_order'][0]
