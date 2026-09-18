@@ -100,12 +100,42 @@ def main(argv=None):
     outdir = Path(args.audio_dir)
     outdir.mkdir(parents=True, exist_ok=True)
     recipe, progression, baseline, pocket, plan = _render(args.sample_rate)
+    operation = pocket.diagnostics["pockets"]["operations"][0]
+
+    matched_controls = {
+        "same_recipe": True,
+        "same_progression": True,
+        "same_runtime_state": baseline.state.to_dict() == pocket.state.to_dict(),
+        "same_synthline_pcm": _sha(baseline.stems["synthline"]) == _sha(pocket.stems["synthline"]),
+        "same_exciter_pcm": _sha(baseline.stems["exciter"]) == _sha(pocket.stems["exciter"]),
+        "same_sub_pcm": _sha(baseline.stems["sub"]) == _sha(pocket.stems["sub"]),
+        "master_owner": pocket.diagnostics["final_master_owner"],
+        "normalization": pocket.diagnostics["normalization"],
+        "makeup_gain_db": pocket.diagnostics["pockets"]["makeup_gain_db"],
+    }
+    required_true = (
+        "same_recipe", "same_progression", "same_runtime_state",
+        "same_synthline_pcm", "same_exciter_pcm", "same_sub_pcm",
+    )
+    failures = [name for name in required_true if matched_controls[name] is not True]
+    if matched_controls["master_owner"] != "render-recipe.output":
+        failures.append("master_owner")
+    if matched_controls["normalization"] != "none":
+        failures.append("normalization")
+    if matched_controls["makeup_gain_db"] != 0.0:
+        failures.append("makeup_gain_db")
+    if operation["active_samples"] <= 0 or not 0.0 < operation["observed_max_attenuation_db"] <= 9.0:
+        failures.append("bounded_active_pocket")
+    if _sha(baseline.stems["body"]) == _sha(pocket.stems["body"]):
+        failures.append("body_must_yield")
+    if failures:
+        raise RuntimeError("ZG-030 matched evidence invariant failure: " + ", ".join(failures))
+
     baseline_path = outdir / "matched-baseline.wav"
     pocket_path = outdir / "matched-body-yields-to-synthline.wav"
     _wav(baseline_path, baseline.mix, args.sample_rate)
     _wav(pocket_path, pocket.mix, args.sample_rate)
 
-    operation = pocket.diagnostics["pockets"]["operations"][0]
     report = {
         "format": "zaaggenz-zg030-pocket-audition",
         "version": "1.0.0",
@@ -113,17 +143,7 @@ def main(argv=None):
         "recipe_sha256": recipe.sha256,
         "progression_sha256": progression.sha256,
         "pocket_plan_sha256": plan.sha256,
-        "matched_controls": {
-            "same_recipe": True,
-            "same_progression": True,
-            "same_runtime_state": baseline.state.to_dict() == pocket.state.to_dict(),
-            "same_synthline_pcm": _sha(baseline.stems["synthline"]) == _sha(pocket.stems["synthline"]),
-            "same_exciter_pcm": _sha(baseline.stems["exciter"]) == _sha(pocket.stems["exciter"]),
-            "same_sub_pcm": _sha(baseline.stems["sub"]) == _sha(pocket.stems["sub"]),
-            "master_owner": pocket.diagnostics["final_master_owner"],
-            "normalization": pocket.diagnostics["normalization"],
-            "makeup_gain_db": pocket.diagnostics["pockets"]["makeup_gain_db"],
-        },
+        "matched_controls": matched_controls,
         "baseline": {
             "mix_pcm_f32le_sha256": _sha(baseline.mix),
             "mix_rms": _rms(baseline.mix),
