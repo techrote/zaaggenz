@@ -21,7 +21,7 @@ Repository = "https://github.com/techrote/zaaggenz"
 
 [project.optional-dependencies]
 browser = ["playwright>=1.57,<1.58"]
-dev = ["playwright>=1.57,<1.58"]
+dev = ["playwright>=1.57,<1.58", "build>=1.6,<1.7"]
 test = ["build>=1.6,<1.7"]
 research = ["numpy>=2.3,<2.4", "scipy>=1.17,<1.18"]
 
