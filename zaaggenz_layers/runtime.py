@@ -404,15 +404,18 @@ def _sha_audio(array):
 
 
 def render_coordinated_layers(base_recipe, progression, frame_beats, duration_beats, spec,
-                              *, state=None, section_transition=None, muted_roles=()):
+                              *, state=None, section_transition=None, muted_roles=(), _defer_final_output=False):
     """Render protected SYNTHLINE/exciter plus explicit persistent harmony roles.
 
     This is a ZG-029 adapter around the frozen RenderRecipe/PhrasePlan contracts. It does not
     synthesize a replacement SYNTHLINE, does not alter source identity and applies the base
-    recipe output policy exactly once after role assembly.
+    recipe output policy exactly once after role assembly. The private defer switch exists only
+    so downstream owned pre-master stages can run before that one final output application.
     """
     if not isinstance(spec, LayerRuntimeSpec):
         _fail("invalid-runtime-spec", "LayerRuntimeSpec required")
+    if type(_defer_final_output) is not bool:
+        _fail("invalid-output-deferral", "private final-output deferral flag must be boolean")
     contract, data = _recipe(base_recipe)
     phrase = data["phrase"]
     roles = _progression_roles(progression)
@@ -507,10 +510,19 @@ def render_coordinated_layers(base_recipe, progression, frame_beats, duration_be
     for role in _PERSISTENT_ROLES:
         if role not in muted:
             pre_master += role_stems[role]
-    try:
-        mix, master_diag = apply_output_policy(pre_master, data["output"])
-    except GraphError as exc:
-        _fail("final-master-failed", "declared final output policy could not execute", error=str(exc))
+
+    if _defer_final_output:
+        mix = pre_master.copy()
+        master_diag = {
+            "state": "deferred-pre-master",
+            "owner": ownership["master"]["owner"],
+            "application_count": 0,
+        }
+    else:
+        try:
+            mix, master_diag = apply_output_policy(pre_master, data["output"])
+        except GraphError as exc:
+            _fail("final-master-failed", "declared final output policy could not execute", error=str(exc))
 
     next_state = LayerRuntimeState(sample_rate, voices_state)
     stems = {
@@ -539,5 +551,22 @@ def render_coordinated_layers(base_recipe, progression, frame_beats, duration_be
         "mix_sha256": _sha_audio(mix),
         "final_master_owner": ownership["master"]["owner"],
         "normalization": ownership["master"]["normalization"],
+        "final_master_application_count": 0 if _defer_final_output else 1,
     }
-    return CoordinatedRenderResult(np.asarray(mix, dtype=np.float32), stems, next_state, diagnostics)
+    output_dtype = np.float64 if _defer_final_output else np.float32
+    return CoordinatedRenderResult(np.asarray(mix, dtype=output_dtype), stems, next_state, diagnostics)
+
+
+def _render_coordinated_pre_master(base_recipe, progression, frame_beats, duration_beats, spec,
+                                   *, state=None, section_transition=None, muted_roles=()):
+    """Internal ZG-029 assembly entry used by owned downstream pre-master stages.
+
+    The returned ``mix`` field is the full-precision pre-master assembly and diagnostics prove
+    that the final output stage has not executed. Public callers should use
+    ``render_coordinated_layers`` unless they own an explicit pre-master integration stage.
+    """
+    return render_coordinated_layers(
+        base_recipe, progression, frame_beats, duration_beats, spec,
+        state=state, section_transition=section_transition, muted_roles=muted_roles,
+        _defer_final_output=True,
+    )
