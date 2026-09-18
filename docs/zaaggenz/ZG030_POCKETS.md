@@ -42,7 +42,7 @@ The dry path is never split/recombined. The existing fourth-order zero-phase But
 
 Every pocket operation records before/after float32 PCM hashes, before/after RMS, requested controls, measured maximum attenuation, active-sample bounds, detector hash/mute state where applicable, and an explicit `makeup_gain_db: 0.0`.
 
-`render_coordinated_pockets()` uses ZG-029 for source and persistent-layer generation. With an empty pocket plan it returns the accepted ZG-029 audio bit-for-bit. With an active plan it discards ZG-029's provisional mastered mix, applies only the pocketed persistent-role deltas to the accepted pre-master stem, then executes `RenderRecipe.output` once for the returned mix. The pocket stage never normalizes or compensates for subtraction.
+`render_coordinated_pockets()` uses ZG-029 for source and persistent-layer generation. Empty plans, zero-attenuation plans, muted-detector sidechains, and any other plan whose computed persistent-role deltas are exactly zero return the accepted ZG-029 mix/stems bit-for-bit. When a pocket actually changes a persistent stem, the wrapper discards ZG-029's provisional mastered mix, applies only those persistent-role deltas to the accepted pre-master stem, then executes `RenderRecipe.output` once for the returned modified signal path. The pocket stage never normalizes or compensates for subtraction.
 
 The oscillator/phase/tail `LayerRuntimeState` is unchanged by pockets. ZG-029 remains the owner of persistent voice continuity and section transitions.
 
@@ -50,4 +50,4 @@ The oscillator/phase/tail `LayerRuntimeState` is unchanged by pockets. ZG-029 re
 
 ZG-030 does not change recovered source bytes/provenance, frozen ZG-002 schema versions, ZG-008 source-note derivation, ZG-010 harmony targets, ZG-016 crossover/filter identity, tuning equations, source SYNTHLINE/exciter stems, ZG-029 phase/tail state, final clipping/master ownership, inverse/listening/reference evidence, or artistic defaults.
 
-The curated listening evidence is a matched baseline/pocket pair with the same source, harmony, generator intent, master policy, and SUB. It is an audition aid, not a preference result and not an optimization target.
+The curated listening evidence is a matched baseline/pocket pair with the same source, harmony, generator intent, master policy, and SUB. CI treats those matched controls as executable invariants: fixture generation fails if SYNTHLINE, exciter, SUB, runtime state, master ownership, normalization, or zero-makeup constraints drift, or if BODY does not actually yield. The pair is an audition aid, not a preference result and not an optimization target.
