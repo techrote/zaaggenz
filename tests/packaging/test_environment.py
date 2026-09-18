@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.metadata
 from pathlib import Path
 import subprocess
+import tempfile
 import sys
 import tomllib
 import unittest
@@ -10,7 +11,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from zaaggenz_environment import VERSION, MissingExtraError, external_tool_policy, external_tool_report, package_identity, require_extra
+from zaaggenz_environment import VERSION, MissingExtraError, external_tool_policy, external_tool_report, installed_asset_report, package_identity, require_extra
 
 
 class CanonicalEnvironmentTests(unittest.TestCase):
@@ -99,6 +100,27 @@ class CanonicalEnvironmentTests(unittest.TestCase):
             timeout=30,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_installed_asset_validator_fails_on_one_missing_required_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            required = (
+                "web/timeline/index.html",
+                "web/listening/app.mjs",
+                "web/inspector/app.mjs",
+                "web/vocal/app.mjs",
+                "app/webapp.py",
+                "app/uptempo_harmony/__init__.py",
+            )
+            for rel in required:
+                path = root / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"x")
+            report = installed_asset_report(root)
+            self.assertEqual(set(report["required_files"]), set(required))
+            (root / "web/listening/app.mjs").unlink()
+            with self.assertRaisesRegex(RuntimeError, "web/listening/app.mjs"):
+                installed_asset_report(root)
 
     def test_canonical_pins_cover_audited_distribution_report(self):
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
