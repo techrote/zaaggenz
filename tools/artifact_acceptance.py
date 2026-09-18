@@ -50,6 +50,7 @@ from pathlib import Path
 import sys
 
 import zaaggenz_environment
+from zaaggenz_environment import installed_asset_report
 from zaaggenz_contracts import validate
 from zaaggenz_contracts.examples import examples
 from zaaggenz_runtime import ZaaggenzServer
@@ -59,10 +60,7 @@ from zaaggenz_web_release import build_web_releases
 validate(examples()["RenderRecipe"], "RenderRecipe")
 assert importlib.metadata.version("zaaggenz") == zaaggenz_environment.VERSION
 root = Path(ROOT).resolve()
-assert (root / "web" / "timeline" / "index.html").is_file()
-assert (root / "web" / "listening" / "app.mjs").is_file()
-assert (root / "app" / "webapp.py").is_file()
-assert (root / "app" / "uptempo_harmony").is_dir()
+assets = installed_asset_report(root)
 releases = build_web_releases(root, unified_runtime=True)
 assert set(releases) == {"timeline", "listening", "inspector", "vocal"}
 timeline = TimelineServer(0, 12000)
@@ -72,6 +70,7 @@ runtime.server_close()
 print(json.dumps({
     "version": zaaggenz_environment.VERSION,
     "installed_root": str(root),
+    "installed_assets": assets,
     "timeline_html_sha256": hashlib.sha256((root / "web" / "timeline" / "index.html").read_bytes()).hexdigest(),
     "recovered_webapp_sha256": hashlib.sha256((root / "app" / "webapp.py").read_bytes()).hexdigest(),
     "playwright_present": importlib.util.find_spec("playwright") is not None,
