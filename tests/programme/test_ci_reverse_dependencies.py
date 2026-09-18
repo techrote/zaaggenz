@@ -20,13 +20,14 @@ class ReverseDependencyCI(unittest.TestCase):
 
     def test_complete_current_workflow_audit(self) -> None:
         _, _, audits = ci.build_audit(ROOT)
-        self.assertEqual(34, len(audits))
+        self.assertEqual(35, len(audits))
         self.assertIn("zg001-recovery.yml", audits)
         self.assertTrue(audits["zg002-contracts.yml"].always_native)
         self.assertIn("zg024a-lab.yml", audits)
         self.assertIn("zg024b-strategies.yml", audits)
         self.assertIn("zg024d-staged.yml", audits)
         self.assertIn("zg029-layers.yml", audits)
+        self.assertIn("zg030-pockets.yml", audits)
         self.assertIn("zg032-vocal.yml", audits)
         self.assertIn("zg045-environment.yml", audits)
 
@@ -87,6 +88,14 @@ class ReverseDependencyCI(unittest.TestCase):
         result = ci.classify_changed_paths(["zaaggenz_layers/runtime.py"], ROOT)
         self.assertEqual(["ZG-029"], result["direct_stable_ids"])
         self.assertIn("zg029-layers.yml", result["native"])
+
+    def test_layer_pockets_have_explicit_owner_and_native_gate(self) -> None:
+        result = ci.classify_changed_paths(["zaaggenz_layers/pockets.py"], ROOT)
+        self.assertEqual(["ZG-030"], result["direct_stable_ids"])
+        self.assertIn("zg030-pockets.yml", result["native"])
+        integration = ci.classify_changed_paths(["zaaggenz_layers/integration.py"], ROOT)
+        self.assertEqual(["ZG-030"], integration["direct_stable_ids"])
+        self.assertIn("zg030-pockets.yml", integration["native"])
 
     def test_packaging_change_runs_zg045_natively_without_inventing_downstream_consumers(self) -> None:
         result = ci.classify_changed_paths(["zaaggenz_environment/runtime.py"], ROOT)
