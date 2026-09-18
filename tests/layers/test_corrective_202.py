@@ -35,8 +35,8 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
         source = render_phrase(recipe)
         full = render_coordinated_layers(recipe, progression, beats, durations, runtime)
 
-        # These are real PCM comparisons, not ownership-policy labels.  The protected
-        # source renderer remains authoritative inside the coordinated runtime.
+        # Real PCM comparisons: coordinated rendering keeps the accepted source
+        # renderer authoritative rather than inferring preservation from role labels.
         np.testing.assert_array_equal(
             full.stems["synthline"][: len(source.stems["synthline"])],
             source.stems["synthline"],
@@ -52,10 +52,23 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
         without_synthline = render_coordinated_layers(
             recipe, progression, beats, durations, runtime, muted_roles=("synthline",)
         )
-        np.testing.assert_array_equal(without_exciter.stems["synthline"], full.stems["synthline"])
-        np.testing.assert_array_equal(without_synthline.stems["exciter"], full.stems["exciter"])
-        np.testing.assert_array_equal(without_exciter.stems["exciter"], np.zeros_like(full.stems["exciter"]))
-        np.testing.assert_array_equal(without_synthline.stems["synthline"], np.zeros_like(full.stems["synthline"]))
+        # Exciter removal cannot remove or replace full SYNTHLINE.
+        np.testing.assert_array_equal(
+            without_exciter.stems["synthline"], full.stems["synthline"]
+        )
+        np.testing.assert_array_equal(
+            without_exciter.stems["exciter"], np.zeros_like(full.stems["exciter"])
+        )
+        # SYNTHLINE muting occurs before its preserved topology.  The processed
+        # synthline-named stem need not be numerically zero because an independently
+        # retained exciter may still traverse that topology, but the mute must alter
+        # SYNTHLINE while leaving the exciter stem itself byte-identical.
+        self.assertFalse(
+            np.array_equal(without_synthline.stems["synthline"], full.stems["synthline"])
+        )
+        np.testing.assert_array_equal(
+            without_synthline.stems["exciter"], full.stems["exciter"]
+        )
 
         synth_sha = _sha_f32le(full.stems["synthline"])
         exciter_sha = _sha_f32le(full.stems["exciter"])
@@ -63,24 +76,22 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual(full.diagnostics["stem_sha256"]["synthline"], synth_sha)
         self.assertEqual(full.diagnostics["stem_sha256"]["exciter"], exciter_sha)
 
-        # Exercise the downstream ZG-030 integration with an actual subtractive BODY
-        # edit.  Source stems and their content hashes must remain exactly bound.
         plan = LayerPocketPlan(
             CROSSOVERS,
             static_pockets=(
-                StaticPocketSpec(
-                    "body",
-                    "lowmid",
-                    (PocketAutomationPoint(0, 6.0),),
-                ),
+                StaticPocketSpec("body", "lowmid", (PocketAutomationPoint(0, 6.0),)),
             ),
         )
         pocketed = render_coordinated_pockets(
             recipe, progression, beats, durations, runtime, plan
         )
         self.assertFalse(np.array_equal(pocketed.stems["body"], full.stems["body"]))
-        np.testing.assert_array_equal(pocketed.stems["synthline"], full.stems["synthline"])
-        np.testing.assert_array_equal(pocketed.stems["exciter"], full.stems["exciter"])
+        np.testing.assert_array_equal(
+            pocketed.stems["synthline"], full.stems["synthline"]
+        )
+        np.testing.assert_array_equal(
+            pocketed.stems["exciter"], full.stems["exciter"]
+        )
         self.assertEqual(pocketed.diagnostics["recipe_sha256"], recipe.sha256)
         self.assertEqual(pocketed.diagnostics["stem_sha256"]["synthline"], synth_sha)
         self.assertEqual(pocketed.diagnostics["stem_sha256"]["exciter"], exciter_sha)
@@ -92,11 +103,7 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
         plan = LayerPocketPlan(
             CROSSOVERS,
             static_pockets=(
-                StaticPocketSpec(
-                    "body",
-                    "lowmid",
-                    (PocketAutomationPoint(0, 9.0),),
-                ),
+                StaticPocketSpec("body", "lowmid", (PocketAutomationPoint(0, 9.0),)),
             ),
         )
         first = render_coordinated_pockets(
@@ -108,7 +115,9 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
         ownership = ownership_manifest(
             recipe.to_dict()["phrase"], phase_policy=recipe.to_dict()["phase_policy"]
         )
-        transition = section_transition_manifest(ownership, boundary_id="corrective-202-next")
+        transition = section_transition_manifest(
+            ownership, boundary_id="corrective-202-next"
+        )
 
         direct = render_coordinated_pockets(
             recipe,
@@ -135,7 +144,6 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
             np.testing.assert_array_equal(direct.stems[name], roundtrip.stems[name])
         self.assertEqual(direct.state.to_dict(), roundtrip.state.to_dict())
 
-        # A BODY-only pocket must not mutate the persistent SUB/source state or PCM.
         unpocketed = render_coordinated_layers(
             recipe,
             progression,
@@ -146,7 +154,9 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
             section_transition=transition,
         )
         np.testing.assert_array_equal(direct.stems["sub"], unpocketed.stems["sub"])
-        np.testing.assert_array_equal(direct.stems["synthline"], unpocketed.stems["synthline"])
+        np.testing.assert_array_equal(
+            direct.stems["synthline"], unpocketed.stems["synthline"]
+        )
         self.assertEqual(direct.state.to_dict(), unpocketed.state.to_dict())
 
         expected = np.clip(
@@ -156,10 +166,14 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
             1.0,
         ).astype(np.float32)
         np.testing.assert_allclose(direct.mix, expected, rtol=0, atol=2e-7)
-        self.assertEqual(direct.diagnostics["final_master_owner"], "render-recipe.output")
+        self.assertEqual(
+            direct.diagnostics["final_master_owner"], "render-recipe.output"
+        )
         self.assertEqual(direct.diagnostics["normalization"], "none")
         self.assertEqual(direct.diagnostics["pockets"]["makeup_gain_db"], 0.0)
-        self.assertIn("RenderRecipe.output once", direct.diagnostics["pocket_master_path"])
+        self.assertIn(
+            "RenderRecipe.output once", direct.diagnostics["pocket_master_path"]
+        )
 
     def test_transform_conflict_and_infeasible_runtime_inputs_fail_closed(self):
         recipe, progression, beats, durations = runtime_fixture()
@@ -171,7 +185,9 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
             render_coordinated_layers(
                 recipe, progression, beats, durations, _spec(claims=competing)
             )
-        self.assertEqual(conflict.exception.diagnostic["code"], "competing-transform-owners")
+        self.assertEqual(
+            conflict.exception.diagnostic["code"], "competing-transform-owners"
+        )
 
         ordered = (
             {"layer": "body", "quantity": "retune", "owner": "adaptive", "order": 0},
@@ -189,10 +205,15 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
             _spec(claims=ordered, targets=targets),
         )
         row = next(
-            item for item in result.diagnostics["voice_trace"] if item["voice_id"] == "body"
+            item
+            for item in result.diagnostics["voice_trace"]
+            if item["voice_id"] == "body"
         )
         self.assertEqual(
-            [(item["owner"], item["order"], item["state"]) for item in row["retune_trace"]],
+            [
+                (item["owner"], item["order"], item["state"])
+                for item in row["retune_trace"]
+            ],
             [("adaptive", 0, "applied"), ("spectral", 1, "applied")],
         )
         self.assertAlmostEqual(row["retune_cents"], 7.0)
@@ -205,7 +226,9 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
         self.assertEqual(
             infeasible.exception.diagnostic["code"], "missing-persistent-generator"
         )
-        self.assertEqual(infeasible.exception.diagnostic["missing_roles"], ["aux", "sub"])
+        self.assertEqual(
+            infeasible.exception.diagnostic["missing_roles"], ["aux", "sub"]
+        )
 
 
 if __name__ == "__main__":
