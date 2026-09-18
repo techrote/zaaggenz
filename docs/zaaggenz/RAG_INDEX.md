@@ -68,6 +68,7 @@ Search for the stable ID, contract name or exact musical/DSP term first. Prefer 
 `docs/inverse/RECOVERED_BASELINE.md` preserves predecessor provenance;
 `docs/inverse/ZG024_RESEARCH_HANDOFF_1.md` records the deterministic laboratory calibration;
 `docs/inverse/ZG024_RESEARCH_HANDOFF_2.md` records the fixed-budget grid/uniform/Halton/coordinate strategy comparison, gate interaction, and staged-search research directions;
+`docs/inverse/ZG024_LINEAGE_RECONCILIATION.md` is the authoritative branch/PR disposition and superseded-evidence preservation record; it prevents historical work branches or PR #85 from being mistaken for current implementation instructions;
 `docs/inverse/TRANSIENT_PRESERVATION_GATE.md` defines the repaired `zg.inverse.transient-onset-contrast.v4` hard eligibility diagnostic and its limits;
 `docs/inverse/TRANSIENT_V4_EVIDENCE_MIGRATION.md` records the exact frozen-calibration and strategy-evidence transition from the derivative gate to transient v4.
 Issue #25 remains open: ZG-024a is substrate and ZG-024b is strategy evidence, neither is the final production optimizer.
