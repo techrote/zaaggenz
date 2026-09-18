@@ -10,7 +10,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from zaaggenz_environment import VERSION, MissingExtraError, external_tool_report, package_identity, require_extra
+from zaaggenz_environment import VERSION, MissingExtraError, external_tool_policy, external_tool_report, package_identity, require_extra
 
 
 class CanonicalEnvironmentTests(unittest.TestCase):
@@ -31,9 +31,13 @@ class CanonicalEnvironmentTests(unittest.TestCase):
         groups = project["optional-dependencies"]
         self.assertIn("playwright", "\n".join(groups["browser"]).lower())
         self.assertIn("playwright", "\n".join(groups["dev"]).lower())
-        self.assertEqual(groups["test"], [])
+        self.assertIn("build", "\n".join(groups["test"]).lower())
         self.assertIn("numpy", "\n".join(groups["research"]).lower())
         self.assertIn("scipy", "\n".join(groups["research"]).lower())
+        packages = metadata["tool"]["setuptools"]["packages"]["find"]
+        self.assertTrue(packages["namespaces"])
+        self.assertIn("app*", packages["include"])
+        self.assertIn("web*", packages["include"])
 
     def test_generated_views_and_workflow_pins_are_in_sync(self):
         result = subprocess.run(
@@ -69,6 +73,14 @@ class CanonicalEnvironmentTests(unittest.TestCase):
         deps = "\n".join(metadata["project"]["dependencies"]).lower()
         self.assertNotIn("ffmpeg", deps)
         self.assertNotIn("ffprobe", deps)
+        policy = external_tool_policy()
+        self.assertEqual(policy["format"], "zaaggenz-external-tool-policy")
+        self.assertEqual(policy["tools"]["node"]["requirement"], "test-dev")
+        self.assertEqual(policy["tools"]["node"]["supported_range"], ">=22 <25")
+        self.assertEqual(policy["tools"]["ffmpeg"]["requirement"], "optional")
+        self.assertEqual(policy["tools"]["ffmpeg"]["version_policy"], "record-only")
+        self.assertIsNone(policy["tools"]["ffmpeg"]["supported_range"])
+        self.assertEqual(report["external_tool_policy"], policy)
 
     def test_minimal_runtime_imports_do_not_import_playwright(self):
         code = (
