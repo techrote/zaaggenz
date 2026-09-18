@@ -32,6 +32,7 @@
     "zg026-meter.yml": "ZG-026",
     "zg027-gesture.yml": "ZG-027",
     "zg028-linked.yml": "ZG-028",
+    "zg029-layers.yml": "ZG-029",
     "zg031-textgesture.yml": "ZG-031",
     "zg032-vocal.yml": "ZG-032",
     "zg045-environment.yml": "ZG-045"
@@ -70,6 +71,7 @@
     "zaaggenz_meter/**": ["ZG-026"],
     "zaaggenz_gesture/**": ["ZG-027"],
     "zaaggenz_linked/**": ["ZG-028"],
+    "zaaggenz_layers/**": ["ZG-029"],
     "zaaggenz_textgesture/**": ["ZG-031"],
     "zaaggenz_vocal/**": ["ZG-032"],
     "web/vocal/**": ["ZG-032"],

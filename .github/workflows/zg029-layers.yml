@@ -1,0 +1,61 @@
+name: ZG-029 persistent layer coordination
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_layers/**'
+      - 'tests/layers/**'
+      - 'tools/layer_fixture_report.py'
+      - 'zaaggenz_contracts/ownership.py'
+      - 'zaaggenz_harmony/**'
+      - 'zaaggenz_melody/**'
+      - 'docs/zaaggenz/ZG029_*.md'
+      - 'programme/ci_reverse_dependencies.json'
+      - '.github/workflows/zg029-layers.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  layers:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Capture exact tracked source
+        run: git archive --format=zip --output=verification-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zg029-source-${{ matrix.os }}
+          path: verification-source.zip
+          retention-days: 7
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical and shared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Persistent layer runtime and adversarial boundaries
+        run: python -m unittest discover -s tests/layers -v
+      - name: Accepted ownership, harmony and source renderer regressions
+        run: |
+          python -m unittest discover -s tests/contracts -p "test_layer_ownership.py" -v
+          python -m unittest discover -s tests/harmony -v
+          python -m unittest discover -s tests/melody -v
+      - name: Deterministic owner-audition fixtures
+        run: python tools/layer_fixture_report.py --out zg029-layer-fixtures.json --audio-dir zg029-layer-listening --sample-rate 12000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg029-layer-evidence-${{ matrix.os }}
+          path: |
+            zg029-layer-fixtures.json
+            zg029-layer-listening/
