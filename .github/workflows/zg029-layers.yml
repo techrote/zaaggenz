@@ -21,7 +21,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    timeout-minutes: 40
     env:
       PYTHONUTF8: '1'
       OPENBLAS_NUM_THREADS: '1'
@@ -50,6 +50,13 @@ jobs:
           python -m unittest discover -s tests/contracts -p "test_layer_ownership.py" -v
           python -m unittest discover -s tests/harmony -v
           python -m unittest discover -s tests/melody -v
+      - name: Inherited ZG-016 through ZG-021, ZG-025 and ZG-027 regressions
+        run: |
+          python -m unittest discover -s tests/dsp -v
+          python -m unittest discover -s tests/spectral -v
+          python -m unittest discover -s tests/tuning -v
+          python -m unittest discover -s tests/phrase -v
+          python -m unittest discover -s tests/gesture -v
       - name: Deterministic owner-audition fixtures
         run: python tools/layer_fixture_report.py --out zg029-layer-fixtures.json --audio-dir zg029-layer-listening --sample-rate 12000
       - uses: actions/upload-artifact@v4
