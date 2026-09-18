@@ -14,6 +14,15 @@ from typing import Callable, Iterable
 from ._version import VERSION
 
 _DISTRIBUTION = "zaaggenz"
+_REQUIRED_PACKAGE_FILES = (
+    "web/timeline/index.html",
+    "web/listening/app.mjs",
+    "web/inspector/app.mjs",
+    "web/vocal/app.mjs",
+    "app/webapp.py",
+    "app/uptempo_harmony/__init__.py",
+)
+
 _AUDITED_DISTRIBUTIONS = (
     "numpy",
     "scipy",
@@ -134,6 +143,19 @@ def _distribution_metadata(name: str) -> dict[str, object]:
         "license_expression": metadata.get("License-Expression"),
         "license": metadata.get("License"),
         "home_page": metadata.get("Home-page"),
+    }
+
+
+def installed_asset_report(root: Path | None = None) -> dict[str, object]:
+    """Fail closed if a built install omitted required runtime/browser material."""
+    base = Path(__file__).resolve().parents[1] if root is None else Path(root).resolve()
+    missing = [rel for rel in _REQUIRED_PACKAGE_FILES if not (base / rel).is_file()]
+    if missing:
+        raise RuntimeError("installed ZaagGenZ package is missing required assets: " + ", ".join(missing))
+    return {
+        "root": str(base),
+        "required_files": list(_REQUIRED_PACKAGE_FILES),
+        "byte_sizes": {rel: (base / rel).stat().st_size for rel in _REQUIRED_PACKAGE_FILES},
     }
 
 
