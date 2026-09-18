@@ -1,6 +1,5 @@
 {
   "format": "zaaggenz-external-tool-policy",
-  "version": "1.0.0",
   "tools": {
     "ffmpeg": {
       "ci_version": null,
@@ -30,5 +29,6 @@
       "supported_range": ">=22 <25",
       "version_policy": "supported-range"
     }
-  }
+  },
+  "version": "1.0.0"
 }
