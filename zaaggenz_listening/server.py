@@ -8,6 +8,7 @@ from zaaggenz_contracts.model import loads
 from zaaggenz_timeline.model import default_document
 from zaaggenz_timeline.service import TimelineService
 from zaaggenz_timeline.server import Handler as TimelineHandler
+from zaaggenz_web_release import build_web_releases
 from .archive import (ARCHIVE_MIME, ListeningArchiveLimits, export_service_archive,
                       reopen_service_archive)
 from .model import ListeningError,ENDPOINTS,exact
@@ -31,6 +32,7 @@ class Handler(TimelineHandler):
         try:
             if path=='/api/listening/bootstrap':
                 return self._json({'token':self.server.token,
+                    'web_release':self._release_payload('listening'),
                     'capability':{'format':'zaaggenz-listening-capability','version':'1.0.0','role':'participant',
                                   'permissions':['freeze','match','create-trial','play','submit','participant-export','participant-archive']},
                     'templates':self.server.listening.templates,'endpoints':list(ENDPOINTS),'compose_independent':True})
@@ -45,13 +47,15 @@ class Handler(TimelineHandler):
                 return self._binary(self.server.listening.audio.wav(row['playback_sha256']),'audio/wav',extra_headers={'Cache-Control':'no-store'})
             resources={'/listen':('index.html','text/html; charset=utf-8'),'/listen/':('index.html','text/html; charset=utf-8'),'/listen/app.mjs':('app.mjs','text/javascript; charset=utf-8'),'/listen/style.css':('style.css','text/css; charset=utf-8')}
             if path in resources:
-                filename,mime=resources[path];return self._binary((STATIC/filename).read_bytes(),mime,extra_headers={'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"})
+                filename,mime=resources[path]
+                return self._workspace_asset('listening',filename,mime,STATIC/filename,'/listen')
             return super().do_GET()
         except (ListeningError,ValueError,KeyError) as e:return self._error(str(e),400)
     def do_POST(self):
         if not self._origin_ok():return
         path=urlparse(self.path).path
         if not path.startswith('/api/listening/'):return super().do_POST()
+        if not self._frontend_release_ok('listening'):return
         if path in TRUSTED_PATHS:
             if not self._trusted_ok():return self._error('trusted listening capability required',403)
         elif not self._participant_ok():return self._error('participant listening capability required',403)
@@ -91,7 +95,7 @@ class Handler(TimelineHandler):
 class ListeningServer(ThreadingHTTPServer):
     daemon_threads=True
     def __init__(self,port=8765,sample_rate=48000,verbose=False,*,timeline=None):
-        super().__init__(('127.0.0.1',port),Handler);self.token=secrets.token_urlsafe(32);self.trusted_token=secrets.token_urlsafe(32);self.verbose=verbose;self.initial_document=default_document(sample_rate)
+        super().__init__(('127.0.0.1',port),Handler);self.token=secrets.token_urlsafe(32);self.trusted_token=secrets.token_urlsafe(32);self.verbose=verbose;self.web_releases=build_web_releases(ROOT);self.initial_document=default_document(sample_rate)
         self._owns_timeline=timeline is None;self.timeline=TimelineService() if timeline is None else timeline;self.listening=ListeningService(self.timeline)
     def server_close(self):
         if getattr(self,'_owns_timeline',False) and hasattr(self,'timeline'):self.timeline.close()
