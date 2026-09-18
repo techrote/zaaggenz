@@ -8,7 +8,8 @@ import numpy as np
 
 from tests.layers.test_pockets import CROSSOVERS
 from tests.layers.test_runtime import _fixture as runtime_fixture, _spec
-from zaaggenz_contracts import ownership_manifest, section_transition_manifest
+from zaaggenz_contracts import Contract, ownership_manifest, section_transition_manifest
+from zaaggenz_contracts.legacy import envelope
 from zaaggenz_layers import (
     LayerGeneratorSpec,
     LayerPocketPlan,
@@ -28,11 +29,37 @@ def _sha_f32le(audio):
     return hashlib.sha256(np.asarray(audio, dtype="<f4").tobytes()).hexdigest()
 
 
+def _with_nonzero_exciter(recipe):
+    """Add an explicit source-owned roll gesture without changing layer semantics."""
+    data = recipe.to_dict()
+    gesture = envelope(
+        "GestureSpec",
+        id="corrective-202-roll",
+        duration_beats="1/2",
+        curves=[
+            {
+                "axis": "density_per_beat",
+                "unit": "events/beat",
+                "interpolation": "step",
+                "points": [
+                    {"beat": "0/1", "value": 4.0},
+                    {"beat": "1/2", "value": 4.0},
+                ],
+            }
+        ],
+    )
+    data["phrase"]["gestures"] = [gesture]
+    data["phrase"]["events"][0]["gesture_id"] = "corrective-202-roll"
+    return Contract(data)
+
+
 class Corrective202RuntimeEvidenceTests(unittest.TestCase):
     def test_source_stems_are_independent_pcm_and_remain_hash_bound_through_pockets(self):
         recipe, progression, beats, durations = runtime_fixture(master_gain_db=-6.0)
+        recipe = _with_nonzero_exciter(recipe)
         runtime = _spec()
         source = render_phrase(recipe)
+        self.assertGreater(float(np.max(np.abs(source.stems["exciter"]), initial=0)), 0.0)
         full = render_coordinated_layers(recipe, progression, beats, durations, runtime)
 
         # Real PCM comparisons: coordinated rendering keeps the accepted source
@@ -53,7 +80,7 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
             recipe, progression, beats, durations, runtime, muted_roles=("synthline",)
         )
         # Mute is an assembly decision: first-class raw audition stems are retained
-        # for inspection/null tests while the returned audible mix changes.  Muting
+        # for inspection/null tests while the returned audible mix changes. Muting
         # one source role must never delete, substitute, or rewrite either stem.
         for muted_result in (without_exciter, without_synthline):
             np.testing.assert_array_equal(
