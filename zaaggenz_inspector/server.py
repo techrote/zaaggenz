@@ -10,6 +10,7 @@ from zaaggenz_jobs import JobError
 from zaaggenz_timeline.model import default_document
 from zaaggenz_timeline.server import Handler as TimelineHandler
 from zaaggenz_timeline.service import TimelineService
+from zaaggenz_web_release import build_web_releases
 from .model import InspectorError
 from .service import InspectorService
 
@@ -30,7 +31,7 @@ class Handler(TimelineHandler):
         if not self._origin_ok():return
         parsed=urlparse(self.path);path=parsed.path
         try:
-            if path=='/api/inspector/bootstrap':return self._json({'token':self.server.token,'state':self.server.inspector.state()})
+            if path=='/api/inspector/bootstrap':return self._json({'token':self.server.token,'state':self.server.inspector.state(),'web_release':self._release_payload('inspector')})
             if path=='/api/inspector/state':return self._json(self.server.inspector.state())
             match=JOB.fullmatch(path)
             if match:return self._json(self.server.inspector.status(match[1]))
@@ -42,8 +43,7 @@ class Handler(TimelineHandler):
                        '/inspector/app.mjs':('app.mjs','text/javascript; charset=utf-8'),'/inspector/style.css':('style.css','text/css; charset=utf-8')}
             if path in resources:
                 filename,mime=resources[path]
-                return self._binary((STATIC/filename).read_bytes(),mime,extra_headers={'X-Content-Type-Options':'nosniff','Cache-Control':'no-store, max-age=0',
-                    'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"})
+                return self._workspace_asset('inspector',filename,mime,STATIC/filename,'/inspector')
             if path in ('/','/index.html'):
                 page=(webapp.STATIC_ROOT/'index.html').read_text(encoding='utf-8');page=page.replace('<body>','<body><nav><a href="/timeline">Open note / clip timeline</a> · <a href="/inspector">Open Research harmonic-comb inspector</a></nav>',1)
                 return self._binary(page.encode(),'text/html; charset=utf-8')
@@ -54,6 +54,7 @@ class Handler(TimelineHandler):
         if not self._origin_ok():return
         path=urlparse(self.path).path
         if not path.startswith('/api/inspector/'):return super().do_POST()
+        if not self._frontend_release_ok('inspector'):return
         if not secrets.compare_digest(self.headers.get('X-Zaaggenz-Token',''),self.server.token):return self._error('inspector session token required',403)
         try:
             if self.headers.get('Content-Type','').split(';')[0]!='application/json':raise ValueError('application/json required')
@@ -84,7 +85,7 @@ class Handler(TimelineHandler):
 class InspectorServer(ThreadingHTTPServer):
     daemon_threads=True
     def __init__(self,port=8766,sample_rate=12000,verbose=False,*,timeline=None,demo_fixture=False):
-        super().__init__(('127.0.0.1',port),Handler);self.token=secrets.token_urlsafe(32);self.verbose=verbose
+        super().__init__(('127.0.0.1',port),Handler);self.token=secrets.token_urlsafe(32);self.verbose=verbose;self.web_releases=build_web_releases(ROOT)
         self.initial_document=default_document(sample_rate);self._owns_timeline=timeline is None;self.timeline=TimelineService() if timeline is None else timeline
         self.inspector=InspectorService(sample_rate,demo_fixture=demo_fixture,scheduler=self.timeline.scheduler)
     def server_close(self):
