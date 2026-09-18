@@ -18,6 +18,7 @@ from zaaggenz_inspector.service import InspectorService
 from zaaggenz_inspector.server import Handler as InspectorHandler
 from zaaggenz_vocal.service import VocalService
 from zaaggenz_vocal.server import Handler as VocalHandler
+from zaaggenz_web_release import WEB_API_VERSION,build_web_releases
 from .session import RuntimeSession
 
 
@@ -33,6 +34,8 @@ class Handler(ListeningHandler,InspectorHandler,VocalHandler):
         path=urlparse(self.path).path
         if path=='/api/runtime/bootstrap':
             return self._json({'format':'zaaggenz-runtime-bootstrap','version':'1.0.0',
+                'api_version':WEB_API_VERSION,
+                'web_releases':{name:release.to_dict() for name,release in self.server.web_releases.items()},
                 'token':self.server.token,'session':self.server.session.snapshot(),
                 'routes':{'compose':'/timeline','listening':'/listen','inspector':'/inspector','vocal':'/vocal','legacy':'/'},
                 'capabilities':{'session':'compose-participant','listening_participant':True,'listening_trusted':'separate-server-held-capability'},
@@ -54,6 +57,7 @@ class ZaaggenzServer(ThreadingHTTPServer):
     def __init__(self,port=8765,sample_rate=48000,verbose=False,*,demo_fixture=False):
         super().__init__(('127.0.0.1',port),Handler)
         self.verbose=verbose;self.token=secrets.token_urlsafe(32);self.trusted_token=secrets.token_urlsafe(32);self._closed=False
+        self.web_releases=build_web_releases(ROOT,unified_runtime=True)
         self.scheduler=None
         try:
             initial=default_document(sample_rate);self.initial_document=initial;self.session=RuntimeSession(initial)
