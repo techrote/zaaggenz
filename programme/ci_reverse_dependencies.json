@@ -72,7 +72,8 @@
     "zaaggenz_textgesture/**": ["ZG-031"],
     "zaaggenz_vocal/**": ["ZG-032"],
     "web/vocal/**": ["ZG-032"],
-    "zaaggenz_runtime/**": ["ZG-009", "ZG-015", "ZG-023", "ZG-032"]
+    "zaaggenz_runtime/**": ["ZG-009", "ZG-015", "ZG-023", "ZG-032"],
+    "zaaggenz_web_release/**": ["ZG-009", "ZG-015", "ZG-023", "ZG-032"]
   },
   "validation_only_paths": [
     "programme/dependency_graph.json",
