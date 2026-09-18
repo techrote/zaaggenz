@@ -1,0 +1,115 @@
+name: ZG-045 canonical environment
+
+on:
+  pull_request:
+    paths:
+      - 'pyproject.toml'
+      - 'constraints/**'
+      - 'requirements-*.txt'
+      - 'research/**/requirements*.txt'
+      - 'package.json'
+      - 'zaaggenz_environment/**'
+      - 'tools/sync_environment.py'
+      - 'tests/packaging/**'
+      - 'docs/packaging/**'
+      - '.github/workflows/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  clean-core:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: .venv/bin/python
+          - os: windows-latest
+            python: .venv/Scripts/python.exe
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify generated environment views before installation
+        run: python tools/sync_environment.py --check
+      - name: Verify authenticated recovery contract
+        run: python -m unittest discover -s tests -p test_recovery.py -v
+      - name: Materialize authenticated v1.2.1 compatibility input
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Create clean environment
+        run: python -m venv .venv
+      - name: Install canonical minimal/test environment
+        run: ${{ matrix.python }} -m pip install -c constraints/ci.txt -e ".[test]"
+      - name: Package/environment adversarial and boundary tests
+        run: ${{ matrix.python }} -m unittest discover -s tests/packaging -v
+      - name: Core contract tests
+        run: ${{ matrix.python }} tools/check_contracts.py --baseline --report contracts-check.json
+      - name: Project-state tests
+        run: ${{ matrix.python }} -m unittest discover -s tests/project -v
+      - name: Bounded-job tests
+        run: ${{ matrix.python }} -m unittest discover -s tests/jobs -v
+      - name: Minimal runtime startup has no Playwright dependency
+        run: >-
+          ${{ matrix.python }} -c "import importlib.util;
+          assert importlib.util.find_spec('playwright') is None;
+          from zaaggenz_runtime import ZaaggenzServer;
+          s=ZaaggenzServer(0,12000); s.server_close()"
+      - name: Record exact environment/tool/licence metadata
+        run: ${{ matrix.python }} -m zaaggenz_environment.cli --json > environment-report.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg045-environment-${{ matrix.os }}
+          path: |
+            environment-report.json
+            contracts-check.json
+
+  browser-extra:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      PYTHONPATH: 'app:.'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Materialize authenticated v1.2.1 compatibility input
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install browser/dev extra through canonical metadata
+        run: python -m pip install -c constraints/ci.txt -e ".[dev]"
+      - name: Install explicit acceptance browser
+        run: python -m playwright install --with-deps chromium
+      - name: Verify optional dependency boundary
+        run: python -m zaaggenz_environment.cli --check-extra browser --require-tool node
+      - name: Representative real-Chromium unified-runtime acceptance
+        run: python tests/runtime/browser.py --out runtime-browser --sample-rate 12000
+      - name: Web-release regressions remain intact
+        run: python -m unittest discover -s tests/runtime -p 'test_web_release.py' -v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg045-browser-environment
+          path: runtime-browser/

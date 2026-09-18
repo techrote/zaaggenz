@@ -1,0 +1,7 @@
+# Generated from pyproject.toml by tools/sync_environment.py; do not edit by hand.
+jsonschema==4.26.0
+numpy==2.3.5
+playwright==1.57.0
+referencing==0.37.0
+scipy==1.17.0
+threadpoolctl==3.6.0

@@ -1,2 +1,3 @@
-# Process-wide native numerical thread limiting for bounded worker execution.
-threadpoolctl==3.6.0
+# Generated from pyproject.toml by tools/sync_environment.py; do not edit by hand.
+-c constraints/ci.txt
+threadpoolctl>=3.6,<4

@@ -33,7 +33,8 @@
     "zg027-gesture.yml": "ZG-027",
     "zg028-linked.yml": "ZG-028",
     "zg031-textgesture.yml": "ZG-031",
-    "zg032-vocal.yml": "ZG-032"
+    "zg032-vocal.yml": "ZG-032",
+    "zg045-environment.yml": "ZG-045"
   },
   "source_path_owners": {
     "baseline/recovered_source/**": ["ZG-001"],
@@ -73,7 +74,11 @@
     "zaaggenz_vocal/**": ["ZG-032"],
     "web/vocal/**": ["ZG-032"],
     "zaaggenz_runtime/**": ["ZG-009", "ZG-015", "ZG-023", "ZG-032"],
-    "zaaggenz_web_release/**": ["ZG-009", "ZG-015", "ZG-023", "ZG-032"]
+    "zaaggenz_web_release/**": ["ZG-009", "ZG-015", "ZG-023", "ZG-032"],
+    "pyproject.toml": ["ZG-045"],
+    "constraints/**": ["ZG-045"],
+    "package.json": ["ZG-045"],
+    "zaaggenz_environment/**": ["ZG-045"]
   },
   "validation_only_paths": [
     "programme/dependency_graph.json",
