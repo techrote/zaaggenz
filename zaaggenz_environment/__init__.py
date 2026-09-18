@@ -6,6 +6,8 @@ remain available before optional tooling is installed.
 from ._version import VERSION
 from .runtime import (
     MissingExtraError,
+    external_tool_policy,
+    installed_asset_report,
     external_tool_report,
     package_identity,
     require_extra,
@@ -17,6 +19,8 @@ __all__ = [
     "VERSION",
     "__version__",
     "MissingExtraError",
+    "external_tool_policy",
+    "installed_asset_report",
     "external_tool_report",
     "package_identity",
     "require_extra",

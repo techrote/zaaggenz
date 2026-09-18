@@ -1,0 +1,34 @@
+{
+  "format": "zaaggenz-external-tool-policy",
+  "tools": {
+    "ffmpeg": {
+      "ci_version": null,
+      "required_by": [
+        "private-reference-audit-when-invoked"
+      ],
+      "requirement": "optional",
+      "supported_range": null,
+      "version_policy": "record-only"
+    },
+    "ffprobe": {
+      "ci_version": null,
+      "required_by": [
+        "private-reference-audit-when-invoked"
+      ],
+      "requirement": "optional",
+      "supported_range": null,
+      "version_policy": "record-only"
+    },
+    "node": {
+      "ci_version": "22",
+      "required_by": [
+        "browser-acceptance",
+        "javascript-contract-checks"
+      ],
+      "requirement": "test-dev",
+      "supported_range": ">=22 <25",
+      "version_policy": "supported-range"
+    }
+  },
+  "version": "1.0.0"
+}

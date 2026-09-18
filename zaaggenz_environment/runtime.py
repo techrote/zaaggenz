@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
+import json
 import importlib.metadata
 import importlib.util
+from pathlib import Path
 import platform
 import shutil
 import subprocess
@@ -12,6 +14,15 @@ from typing import Callable, Iterable
 from ._version import VERSION
 
 _DISTRIBUTION = "zaaggenz"
+_REQUIRED_PACKAGE_FILES = (
+    "web/timeline/index.html",
+    "web/listening/app.mjs",
+    "web/inspector/app.mjs",
+    "web/vocal/app.mjs",
+    "app/webapp.py",
+    "app/uptempo_harmony/__init__.py",
+)
+
 _AUDITED_DISTRIBUTIONS = (
     "numpy",
     "scipy",
@@ -19,6 +30,7 @@ _AUDITED_DISTRIBUTIONS = (
     "jsonschema",
     "referencing",
     "playwright",
+    "build",
 )
 _EXTRA_MODULES: dict[str, tuple[str, ...]] = {
     "browser": ("playwright",),
@@ -134,6 +146,36 @@ def _distribution_metadata(name: str) -> dict[str, object]:
     }
 
 
+def installed_asset_report(root: Path | None = None) -> dict[str, object]:
+    """Fail closed if a built install omitted required runtime/browser material."""
+    base = Path(__file__).resolve().parents[1] if root is None else Path(root).resolve()
+    missing = [rel for rel in _REQUIRED_PACKAGE_FILES if not (base / rel).is_file()]
+    if missing:
+        raise RuntimeError("installed ZaagGenZ package is missing required assets: " + ", ".join(missing))
+    return {
+        "root": str(base),
+        "required_files": list(_REQUIRED_PACKAGE_FILES),
+        "byte_sizes": {rel: (base / rel).stat().st_size for rel in _REQUIRED_PACKAGE_FILES},
+    }
+
+
+def external_tool_policy() -> dict[str, object]:
+    """Return the generated machine-readable external executable policy."""
+    path = Path(__file__).with_name("tool_policy.json")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("canonical external tool policy is unavailable") from exc
+    if (
+        type(value) is not dict
+        or value.get("format") != "zaaggenz-external-tool-policy"
+        or value.get("version") != "1.0.0"
+        or type(value.get("tools")) is not dict
+    ):
+        raise RuntimeError("invalid canonical external tool policy")
+    return value
+
+
 def external_tool_report() -> dict[str, object]:
     """Record package/executable identities; never install, download or mutate."""
     tools = {
@@ -157,4 +199,5 @@ def external_tool_report() -> dict[str, object]:
         },
         "python_distributions": dependencies,
         "external_tools": tools,
+        "external_tool_policy": external_tool_policy(),
     }

@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.metadata
 from pathlib import Path
 import subprocess
+import tempfile
 import sys
 import tomllib
 import unittest
@@ -10,7 +11,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
-from zaaggenz_environment import VERSION, MissingExtraError, external_tool_report, package_identity, require_extra
+from zaaggenz_environment import VERSION, MissingExtraError, external_tool_policy, external_tool_report, installed_asset_report, package_identity, require_extra
 
 
 class CanonicalEnvironmentTests(unittest.TestCase):
@@ -31,9 +32,13 @@ class CanonicalEnvironmentTests(unittest.TestCase):
         groups = project["optional-dependencies"]
         self.assertIn("playwright", "\n".join(groups["browser"]).lower())
         self.assertIn("playwright", "\n".join(groups["dev"]).lower())
-        self.assertEqual(groups["test"], [])
+        self.assertIn("build", "\n".join(groups["test"]).lower())
         self.assertIn("numpy", "\n".join(groups["research"]).lower())
         self.assertIn("scipy", "\n".join(groups["research"]).lower())
+        packages = metadata["tool"]["setuptools"]["packages"]["find"]
+        self.assertTrue(packages["namespaces"])
+        self.assertIn("app*", packages["include"])
+        self.assertIn("web*", packages["include"])
 
     def test_generated_views_and_workflow_pins_are_in_sync(self):
         result = subprocess.run(
@@ -69,6 +74,14 @@ class CanonicalEnvironmentTests(unittest.TestCase):
         deps = "\n".join(metadata["project"]["dependencies"]).lower()
         self.assertNotIn("ffmpeg", deps)
         self.assertNotIn("ffprobe", deps)
+        policy = external_tool_policy()
+        self.assertEqual(policy["format"], "zaaggenz-external-tool-policy")
+        self.assertEqual(policy["tools"]["node"]["requirement"], "test-dev")
+        self.assertEqual(policy["tools"]["node"]["supported_range"], ">=22 <25")
+        self.assertEqual(policy["tools"]["ffmpeg"]["requirement"], "optional")
+        self.assertEqual(policy["tools"]["ffmpeg"]["version_policy"], "record-only")
+        self.assertIsNone(policy["tools"]["ffmpeg"]["supported_range"])
+        self.assertEqual(report["external_tool_policy"], policy)
 
     def test_minimal_runtime_imports_do_not_import_playwright(self):
         code = (
@@ -87,6 +100,27 @@ class CanonicalEnvironmentTests(unittest.TestCase):
             timeout=30,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_installed_asset_validator_fails_on_one_missing_required_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            required = (
+                "web/timeline/index.html",
+                "web/listening/app.mjs",
+                "web/inspector/app.mjs",
+                "web/vocal/app.mjs",
+                "app/webapp.py",
+                "app/uptempo_harmony/__init__.py",
+            )
+            for rel in required:
+                path = root / rel
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"x")
+            report = installed_asset_report(root)
+            self.assertEqual(set(report["required_files"]), set(required))
+            (root / "web/listening/app.mjs").unlink()
+            with self.assertRaisesRegex(RuntimeError, "web/listening/app.mjs"):
+                installed_asset_report(root)
 
     def test_canonical_pins_cover_audited_distribution_report(self):
         metadata = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))

@@ -1,7 +1,6 @@
 # Canonical package and environment
 
-Issue #103 establishes the package/environment prerequisite for ZG-045. It does
-**not** declare ZG-045 complete or publish a product release.
+Issue #103 established the package/environment prerequisite for ZG-045; corrective #203 hardens workflow-install enforcement and built-artifact acceptance. Neither declares ZG-045 complete or publishes a product release.
 
 ## Authority and identities
 
@@ -34,6 +33,7 @@ accepted #102 content hashes.
 | jsonschema | supported `>=4.26,<5`; CI `4.26.0` | executable Draft 2020-12 contract validation |
 | referencing | supported `>=0.37,<0.38`; CI `0.37.0` | local-only JSON-Schema reference registry |
 | Playwright | browser/dev extra `>=1.57,<1.58`; CI `1.57.0` | real-Chromium acceptance only; never ordinary runtime |
+| build | test/dev build frontend `>=1.6,<1.7`; CI `1.6.1` | constructs audited wheel/sdist artifacts; never ordinary runtime |
 | Node | `>=22 <25`; canonical new-CI major 22 | contract/browser helper scripts; not Python runtime |
 | ffmpeg/ffprobe | external, version-probed when present | private/reference audit paths; never installed by pip |
 
@@ -65,9 +65,7 @@ python -m zaaggenz_runtime --no-browser
 
 For contract/test work use `-e ".[test]"`; for browser acceptance use
 `-e ".[browser]"` followed by `python -m playwright install chromium` (or
-`--with-deps chromium` on a clean Linux CI host). For development convenience,
-`.[dev]` currently includes the browser tooling. For bounded research setup,
-use `.[research]`.
+`--with-deps chromium` on a clean Linux CI host). For development convenience, `.[dev]` includes browser tooling plus the build frontend. For bounded research setup, use `.[research]`.
 
 The runtime remains loopback/offline. Package installation does not add a cloud
 service, telemetry service, model download or GPU requirement. Browser binaries
@@ -91,13 +89,17 @@ To update a dependency:
 5. run the affected numerical, contract, browser or research gates on Windows
    and Ubuntu before accepting the update.
 
-Legacy workflows may retain redundant exact version text for evidentiary
-readability, but their root requirement fragments now consume
-`constraints/ci.txt`, and the sync checker rejects any conflicting inline
-NumPy/SciPy/threadpoolctl/jsonschema/referencing/Playwright pin. The ZG-001
-recovery workflow is the deliberate exception: it retains its recorded
-baseline-install command as provenance evidence, while the checker still
-requires its NumPy/SciPy pins to agree with the accepted canonical CI pins.
+Active workflow install policy is checked **per pip install command**, not by a file-wide marker. Direct third-party requirements must be declared by `pyproject.toml`, use the canonical exact CI pin, and consume `constraints/ci.txt` directly or through a generated requirement view. Bare/ranged canonical packages, undeclared packages, unreviewed requirement/constraint files, URLs/VCS installs and ambiguous install options fail closed. Thus one canonical command cannot authorize a second rogue command in the same workflow.
+
+The ZG-001 recovery workflow is the only exception: its historical command may directly install exactly the recorded NumPy/SciPy CI pins and nothing else. This preserves recovery evidence without turning the exception into a general dependency escape hatch.
+
+## Built-artifact acceptance
+
+Corrective #203 closes the editable-install blind spot. After the authenticated v1.2.1 runtime is materialized, the packaging workflow builds an sdist and a wheel (the wheel is built through the sdist path by the standard `build` frontend). Setuptools namespace discovery intentionally includes `app*` and `web*`: this packages the already-authenticated recovered runtime files plus the tracked first-party web workspaces without copying or rewriting their bytes.
+
+`tools/artifact_acceptance.py` installs each artifact into a fresh temporary venv, removes `PYTHONPATH`, runs Python in isolated `-I` mode from outside the checkout, validates required installed `app/` and `web/` material, exercises contracts and Timeline/unified server construction, and records the artifact SHA-256. Minimal artifact installs must not acquire Playwright. A separate Ubuntu acceptance installs the built wheel's `browser` extra and opens the installed Timeline surface in real Chromium. Wheel and sdist acceptance runs on Windows and Ubuntu for core/package coverage.
+
+The built artifacts are still programme/pre-release evidence, not an approved public release. ZG-045/#46 retains responsibility for launcher/archive shape, rights exclusions, project licensing, release notes and explicit publication approval.
 
 ## Optional-feature diagnostics
 
@@ -108,12 +110,7 @@ modules are unavailable. The core environment has no Playwright dependency.
 
 ## External executables
 
-`python -m zaaggenz_environment.cli --json` records Python/package identities,
-installed dependency licence metadata when exposed by package metadata, and
-the detected `ffmpeg`, `ffprobe` and `node` executable/version strings. Missing
-external tools are reported as unavailable; they are not silently downloaded.
-Use `--require-tool ffmpeg` / `ffprobe` / `node` only in a workflow that
-actually requires that executable.
+`python -m zaaggenz_environment.cli --json` records Python/package identities, installed dependency licence metadata when exposed by package metadata, the detected `ffmpeg`, `ffprobe` and `node` executable/version strings, and the generated `zaaggenz-external-tool-policy/1.0.0`. Node is a `test-dev` tool with supported range `>=22 <25` and CI major 22. ffmpeg/ffprobe are optional, feature-owned reference-audit tools with `record-only` version policy: the exact detected binary is evidence for a run, not a fabricated universal support range. Missing external tools are reported as unavailable; they are not silently downloaded. Use `--require-tool ffmpeg` / `ffprobe` / `node` only in a workflow that actually requires that executable.
 
 The historical preflight recorded FFmpeg `7.1.5-0+deb13u1`; that is evidence
 for that run, not a universal runtime pin. FFmpeg redistribution/licensing is
