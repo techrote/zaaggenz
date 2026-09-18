@@ -46,11 +46,14 @@ class ZG024LineageReconciliationTests(unittest.TestCase):
             "repair/zg024-staged-strategy-92": "a5e3c814a1bafdecbeb055d284e4e1a375e7103f",
             "repair/zg024-staged-confirmation-92": "c9f6b77730a1b1f9b19202e14b2f3f95b5f31bb4",
         }
+        rows = [line for line in text.splitlines() if line.startswith("| `")]
         for ref, sha in refs.items():
             with self.subTest(ref=ref):
-                self.assertIn(f"`{ref}`", text)
-                self.assertIn(f"`{sha}`", text)
-        self.assertGreaterEqual(text.count("Safe to delete after this reconciliation record is merged."), 7)
+                matching = [line for line in rows if f"`{ref}`" in line]
+                self.assertEqual(1, len(matching))
+                row = matching[0]
+                self.assertIn(f"`{sha}`", row)
+                self.assertIn("safe to delete", row.lower())
 
     def test_unique_association_finding_is_preserved_without_false_promotion(self):
         text = LINEAGE.read_text(encoding="utf-8")
