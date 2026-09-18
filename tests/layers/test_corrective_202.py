@@ -52,23 +52,19 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
         without_synthline = render_coordinated_layers(
             recipe, progression, beats, durations, runtime, muted_roles=("synthline",)
         )
-        # Exciter removal cannot remove or replace full SYNTHLINE.
-        np.testing.assert_array_equal(
-            without_exciter.stems["synthline"], full.stems["synthline"]
-        )
-        np.testing.assert_array_equal(
-            without_exciter.stems["exciter"], np.zeros_like(full.stems["exciter"])
-        )
-        # SYNTHLINE muting occurs before its preserved topology.  The processed
-        # synthline-named stem need not be numerically zero because an independently
-        # retained exciter may still traverse that topology, but the mute must alter
-        # SYNTHLINE while leaving the exciter stem itself byte-identical.
-        self.assertFalse(
-            np.array_equal(without_synthline.stems["synthline"], full.stems["synthline"])
-        )
-        np.testing.assert_array_equal(
-            without_synthline.stems["exciter"], full.stems["exciter"]
-        )
+        # Mute is an assembly decision: first-class raw audition stems are retained
+        # for inspection/null tests while the returned audible mix changes.  Muting
+        # one source role must never delete, substitute, or rewrite either stem.
+        for muted_result in (without_exciter, without_synthline):
+            np.testing.assert_array_equal(
+                muted_result.stems["synthline"], full.stems["synthline"]
+            )
+            np.testing.assert_array_equal(
+                muted_result.stems["exciter"], full.stems["exciter"]
+            )
+        self.assertFalse(np.array_equal(without_exciter.mix, full.mix))
+        self.assertFalse(np.array_equal(without_synthline.mix, full.mix))
+        self.assertFalse(np.array_equal(without_exciter.mix, without_synthline.mix))
 
         synth_sha = _sha_f32le(full.stems["synthline"])
         exciter_sha = _sha_f32le(full.stems["exciter"])
