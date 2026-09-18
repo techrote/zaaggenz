@@ -13,6 +13,7 @@ distribution's licence files or legal review.
 | jsonschema | runtime contract validation | MIT | inspect installed METADATA/licence file for release candidate |
 | referencing | runtime schema reference registry | MIT | inspect installed METADATA/licence file for release candidate |
 | Playwright for Python | optional browser/dev acceptance | Apache-2.0 | not an ordinary runtime dependency; downloaded browsers have separate notices |
+| build (PyPA) | test/dev wheel+sdist frontend | MIT | build-time only; not an ordinary runtime dependency |
 | Node.js | external test/helper runtime | project-specific upstream terms | not bundled by this repair |
 | Chromium via Playwright | external downloaded acceptance browser | BSD/third-party notices | not bundled by this repair |
 | ffmpeg/ffprobe | external reference-audit executables | build-dependent LGPL/GPL and component terms | not bundled; record exact binary/version/configuration before any redistribution |
@@ -30,8 +31,7 @@ ZG-045 must resolve redistribution terms before public package publication.
 The recovered v1.2.1 runtime is a separately authenticated compatibility input.
 Its byte identity and source provenance remain governed by
 `baseline/recovered_source/README.md`, `baseline/V1_2_1_CONTRACT.json` and the
-ZG-001 recovery tests. #103 does not rewrite, relicense or merge those recovered
-bytes into the new source tree.
+ZG-001 recovery tests. #103/#203 do not rewrite or relicense those recovered bytes. #203 packages the authenticated materialized runtime into pre-release wheel/sdist acceptance artifacts only after its existing hash-checked materializer succeeds; this is packaging of the accepted bytes, not a provenance rewrite.
 
 Private/reference recordings are not package dependencies and remain excluded
 from tracked release material unless redistribution rights are separately
