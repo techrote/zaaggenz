@@ -9,7 +9,10 @@ on:
       - 'research/**/requirements*.txt'
       - 'package.json'
       - 'zaaggenz_environment/**'
+      - 'web/**'
+      - 'baseline/recovered_source/**'
       - 'tools/sync_environment.py'
+      - 'tools/artifact_acceptance.py'
       - 'tests/packaging/**'
       - 'docs/packaging/**'
       - '.github/workflows/**'
@@ -56,6 +59,12 @@ jobs:
         run: ${{ matrix.python }} -m pip install -c constraints/ci.txt -e ".[test]"
       - name: Package/environment adversarial and boundary tests
         run: ${{ matrix.python }} -m unittest discover -s tests/packaging -v
+      - name: Build wheel and sdist from authenticated materialized tree
+        run: ${{ matrix.python }} -m build --outdir dist
+      - name: Validate wheel from outside the checkout
+        run: ${{ matrix.python }} tools/artifact_acceptance.py --dist dist --kind wheel --constraints constraints/ci.txt --report wheel-acceptance.json
+      - name: Validate sdist from outside the checkout
+        run: ${{ matrix.python }} tools/artifact_acceptance.py --dist dist --kind sdist --constraints constraints/ci.txt --report sdist-acceptance.json
       - name: Core contract tests
         run: ${{ matrix.python }} tools/check_contracts.py --baseline --report contracts-check.json
       - name: Project-state tests
@@ -77,6 +86,9 @@ jobs:
           path: |
             environment-report.json
             contracts-check.json
+            wheel-acceptance.json
+            sdist-acceptance.json
+            dist/
 
   browser-extra:
     runs-on: ubuntu-latest
@@ -100,6 +112,10 @@ jobs:
         run: python baseline/recovered_source/materialize_v2.py --out .
       - name: Install browser/dev extra through canonical metadata
         run: python -m pip install -c constraints/ci.txt -e ".[dev]"
+      - name: Build wheel for installed-browser acceptance
+        run: python -m build --wheel --outdir dist-browser
+      - name: Validate browser extra from built wheel outside checkout
+        run: python tools/artifact_acceptance.py --dist dist-browser --kind wheel --constraints constraints/ci.txt --report browser-wheel-acceptance.json --browser
       - name: Install explicit acceptance browser
         run: python -m playwright install --with-deps chromium
       - name: Verify optional dependency boundary
@@ -112,4 +128,7 @@ jobs:
         if: always()
         with:
           name: zg045-browser-environment
-          path: runtime-browser/
+          path: |
+            runtime-browser/
+            browser-wheel-acceptance.json
+            dist-browser/
