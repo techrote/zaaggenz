@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=80,<83"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zaaggenz"
+dynamic = ["version"]
+description = "Offline/asynchronously rendered melodic-zaag instrument and reproducible audio-science toolkit"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+  "numpy>=2.3,<2.4",
+  "scipy>=1.17,<1.18",
+  "threadpoolctl>=3.6,<4",
+  "jsonschema>=4.26,<5",
+  "referencing>=0.37,<0.38",
+]
+
+[project.urls]
+Repository = "https://github.com/techrote/zaaggenz"
+
+[project.optional-dependencies]
+browser = ["playwright>=1.57,<1.58"]
+dev = ["playwright>=1.57,<1.58"]
+test = []
+research = ["numpy>=2.3,<2.4", "scipy>=1.17,<1.18"]
+
+[project.scripts]
+zaaggenz-env = "zaaggenz_environment.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["zaaggenz_*", "research*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+"*" = ["*.json", "*.mjs", "*.html", "*.js", "*.css", "**/*.json", "**/*.mjs", "**/*.html", "**/*.js", "**/*.css"]
+
+[tool.setuptools.dynamic]
+version = {attr = "zaaggenz_environment._version.VERSION"}
+
+[tool.zaaggenz.environment]
+ci-python = "3.13"
+node-supported = ">=22 <25"
+ci-node = "22"
+external-tools = ["ffmpeg", "ffprobe"]
+
+[tool.zaaggenz.environment.ci-pins]
+numpy = "2.3.5"
+scipy = "1.17.0"
+threadpoolctl = "3.6.0"
+jsonschema = "4.26.0"
+referencing = "0.37.0"
+playwright = "1.57.0"

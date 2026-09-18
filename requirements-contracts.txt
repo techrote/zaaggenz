@@ -1,4 +1,4 @@
-# Optional development/contract-consumer dependency; legacy requirements unchanged.
-# Both libraries use MIT licences; see docs/contracts/EVOLUTION.md.
-jsonschema==4.26.0
-referencing==0.37.0
+# Generated from pyproject.toml by tools/sync_environment.py; do not edit by hand.
+-c constraints/ci.txt
+jsonschema>=4.26,<5
+referencing>=0.37,<0.38

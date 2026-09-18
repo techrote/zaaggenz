@@ -1,0 +1,7 @@
+{
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "name": "zaaggenz-local-tooling",
+  "private": true
+}
