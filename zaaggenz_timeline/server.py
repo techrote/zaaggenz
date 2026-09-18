@@ -49,10 +49,9 @@ class Handler(webapp.Handler):
     def _frontend_release_ok(self, workspace, *, compatible_callers=()):
         """Admit the exact current release of the endpoint owner or named callers.
 
-        The Listening workspace deliberately renders through Timeline before it
-        freezes a stimulus. Its release identity includes the Timeline protocol
-        owner, so that current Listening bundle is a valid caller of Timeline.
-        Other workspace identities do not gain ambient cross-API authority.
+        Cross-workspace callers are explicit, bounded protocol dependencies, not
+        ambient authority. Their release identities include Timeline's protocol
+        owner, so any Timeline protocol edit changes those caller identities too.
         Tokens/capabilities are still checked separately after this stale-bundle
         gate.
         """
@@ -123,10 +122,11 @@ class Handler(webapp.Handler):
         path = urlparse(self.path).path
         if not path.startswith('/api/timeline/'):
             return super().do_POST()
-        # Listening's current release is explicitly Timeline-compatible because
-        # its frontend renders exact source material through this API before
-        # freezing it. No other sidecar is an admitted Timeline mutation caller.
-        if not self._frontend_release_ok('timeline', compatible_callers=('listening',)):
+        # Listening renders exact source material through Timeline before freeze;
+        # Vocal renders its explicit compiled proposal as a non-authoritative
+        # preview. Those are the only sidecar browser mutation callers admitted
+        # to Timeline. Inspector binds server-side and needs no browser admission.
+        if not self._frontend_release_ok('timeline', compatible_callers=('listening', 'vocal')):
             return
         if not secrets.compare_digest(self.headers.get('X-Zaaggenz-Token', ''), self.server.token):
             return self._error('timeline session token required', 403)
