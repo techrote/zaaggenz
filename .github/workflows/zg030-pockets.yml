@@ -1,0 +1,64 @@
+name: ZG-030 layer-aware spectral pockets
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_layers/pockets.py'
+      - 'zaaggenz_layers/integration.py'
+      - 'zaaggenz_layers/__init__.py'
+      - 'zaaggenz_layers/runtime.py'
+      - 'zaaggenz_dsp/band_router.py'
+      - 'zaaggenz_dsp/multiband.py'
+      - 'tests/layers/**'
+      - 'tests/dsp/**'
+      - 'tools/layer_pocket_fixture_report.py'
+      - 'docs/zaaggenz/ZG030_*.md'
+      - 'programme/ci_reverse_dependencies.json'
+      - 'tests/programme/test_ci_reverse_dependencies.py'
+      - '.github/workflows/zg030-pockets.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  pockets:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Capture exact tracked source
+        run: git archive --format=zip --output=verification-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zg030-source-${{ matrix.os }}
+          path: verification-source.zip
+          retention-days: 7
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical and shared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Layer pocket and persistent-runtime adversarial boundaries
+        run: python -m unittest discover -s tests/layers -v
+      - name: Accepted ZG-016 effect-delta and multiband regressions
+        run: python -m unittest discover -s tests/dsp -v
+      - name: Reverse-dependency ownership audit
+        run: python -m unittest tests.programme.test_ci_reverse_dependencies -v
+      - name: Matched baseline and pocket listening fixtures
+        run: python tools/layer_pocket_fixture_report.py --out zg030-pocket-fixtures.json --audio-dir zg030-pocket-listening --sample-rate 12000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg030-pocket-evidence-${{ matrix.os }}
+          path: |
+            zg030-pocket-fixtures.json
+            zg030-pocket-listening/

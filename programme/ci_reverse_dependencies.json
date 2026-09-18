@@ -33,6 +33,7 @@
     "zg027-gesture.yml": "ZG-027",
     "zg028-linked.yml": "ZG-028",
     "zg029-layers.yml": "ZG-029",
+    "zg030-pockets.yml": "ZG-030",
     "zg031-textgesture.yml": "ZG-031",
     "zg032-vocal.yml": "ZG-032",
     "zg045-environment.yml": "ZG-045"
@@ -72,6 +73,9 @@
     "zaaggenz_gesture/**": ["ZG-027"],
     "zaaggenz_linked/**": ["ZG-028"],
     "zaaggenz_layers/**": ["ZG-029"],
+    "zaaggenz_layers/pockets.py": ["ZG-030"],
+    "zaaggenz_layers/integration.py": ["ZG-030"],
+    "zaaggenz_layers/__init__.py": ["ZG-030"],
     "zaaggenz_textgesture/**": ["ZG-031"],
     "zaaggenz_vocal/**": ["ZG-032"],
     "web/vocal/**": ["ZG-032"],
