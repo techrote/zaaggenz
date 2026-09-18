@@ -13,11 +13,15 @@ sys.path.insert(0, str(ROOT / 'app'))
 import webapp
 from zaaggenz_contracts.model import loads
 from zaaggenz_jobs import JobError
+from zaaggenz_web_release import (MISMATCH_MESSAGE, asset_request_matches, build_web_releases,
+                                 cache_headers, fingerprint_html, frontend_release_matches,
+                                 instrument_entry_module)
 from .model import default_document, exact
 from .service import TimelineService
 
 STATIC = ROOT / 'web' / 'timeline'
 JOB = re.compile(r'/api/timeline/jobs/([0-9a-f]{32})(/audio)?\Z')
+WORKSPACE_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
 
 
 class Handler(webapp.Handler):
@@ -36,6 +40,32 @@ class Handler(webapp.Handler):
             return False
         return True
 
+    def _release(self, workspace):
+        return self.server.web_releases[workspace]
+
+    def _release_payload(self, workspace):
+        return self._release(workspace).to_dict()
+
+    def _frontend_release_ok(self, workspace):
+        if frontend_release_matches(self.headers, self._release(workspace)):
+            return True
+        self._error(MISMATCH_MESSAGE, 409)
+        return False
+
+    def _workspace_asset(self, workspace, filename, mime, source, url_prefix, *, csp=WORKSPACE_CSP):
+        release = self._release(workspace)
+        if not asset_request_matches(self.path, release):
+            return self._error(MISMATCH_MESSAGE, 409)
+        raw = source.read_bytes()
+        if filename == 'index.html':
+            raw = fingerprint_html(raw, release, url_prefix)
+        elif filename == 'app.mjs':
+            raw = instrument_entry_module(raw, release)
+        headers = cache_headers(release)
+        if csp:
+            headers['Content-Security-Policy'] = csp
+        return self._binary(raw, mime, extra_headers=headers)
+
     def do_GET(self):
         if not self._origin_ok():
             return
@@ -44,7 +74,8 @@ class Handler(webapp.Handler):
             if path == '/api/timeline/bootstrap':
                 session = getattr(self.server, 'session', None)
                 document = self.server.initial_document if session is None else session.document()
-                payload = {'document': document.to_dict(), 'token': self.server.token}
+                payload = {'document': document.to_dict(), 'token': self.server.token,
+                           'web_release': self._release_payload('timeline')}
                 if session is not None:
                     payload['session'] = session.snapshot()
                 return self._json(payload)
@@ -62,11 +93,10 @@ class Handler(webapp.Handler):
                          '/timeline/style.css': ('style.css', 'text/css; charset=utf-8')}
             if path in resources:
                 filename, mime = resources[path]
-                return self._binary((STATIC / filename).read_bytes(), mime,
-                                    extra_headers={'X-Content-Type-Options': 'nosniff',
-                                     'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"})
+                return self._workspace_asset('timeline', filename, mime, STATIC / filename, '/timeline')
             if path == '/timeline/jobs_transport.mjs':
-                return self._binary((ROOT / 'web' / 'jobs_transport.mjs').read_bytes(), 'text/javascript')
+                return self._workspace_asset('timeline', 'jobs_transport.mjs', 'text/javascript; charset=utf-8',
+                                             ROOT / 'web' / 'jobs_transport.mjs', '/timeline')
             if path in ('/', '/index.html'):
                 page = (webapp.STATIC_ROOT / 'index.html').read_text(encoding='utf-8')
                 page = page.replace('<body>', '<body><nav><a href="/timeline">Open note / clip timeline</a></nav>', 1)
@@ -83,6 +113,8 @@ class Handler(webapp.Handler):
         path = urlparse(self.path).path
         if not path.startswith('/api/timeline/'):
             return super().do_POST()
+        if not self._frontend_release_ok('timeline'):
+            return
         if not secrets.compare_digest(self.headers.get('X-Zaaggenz-Token', ''), self.server.token):
             return self._error('timeline session token required', 403)
         try:
@@ -119,6 +151,7 @@ class TimelineServer(ThreadingHTTPServer):
         super().__init__(('127.0.0.1', port), Handler)
         self.token = secrets.token_urlsafe(32)
         self.verbose = verbose
+        self.web_releases = build_web_releases(ROOT)
         self.initial_document = default_document(sample_rate)
         self.timeline = TimelineService()
 
