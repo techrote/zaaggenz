@@ -4,6 +4,7 @@ on:
     paths:
       - 'zaaggenz_layers/**'
       - 'tests/layers/**'
+      - 'tools/layer_fixture_report.py'
       - 'zaaggenz_contracts/ownership.py'
       - 'zaaggenz_harmony/**'
       - 'zaaggenz_melody/**'
@@ -49,3 +50,12 @@ jobs:
           python -m unittest discover -s tests/contracts -p "test_layer_ownership.py" -v
           python -m unittest discover -s tests/harmony -v
           python -m unittest discover -s tests/melody -v
+      - name: Deterministic owner-audition fixtures
+        run: python tools/layer_fixture_report.py --out zg029-layer-fixtures.json --audio-dir zg029-layer-listening --sample-rate 12000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg029-layer-evidence-${{ matrix.os }}
+          path: |
+            zg029-layer-fixtures.json
+            zg029-layer-listening/
