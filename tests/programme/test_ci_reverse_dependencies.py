@@ -89,12 +89,14 @@ class ReverseDependencyCI(unittest.TestCase):
         self.assertEqual(["ZG-029"], result["direct_stable_ids"])
         self.assertIn("zg029-layers.yml", result["native"])
 
-    def test_layer_pockets_have_explicit_owner_and_native_gate(self) -> None:
+    def test_layer_pockets_preserve_package_owner_and_add_feature_owner(self) -> None:
         result = ci.classify_changed_paths(["zaaggenz_layers/pockets.py"], ROOT)
-        self.assertEqual(["ZG-030"], result["direct_stable_ids"])
+        self.assertEqual(["ZG-029", "ZG-030"], result["direct_stable_ids"])
+        self.assertIn("zg029-layers.yml", result["native"])
         self.assertIn("zg030-pockets.yml", result["native"])
         integration = ci.classify_changed_paths(["zaaggenz_layers/integration.py"], ROOT)
-        self.assertEqual(["ZG-030"], integration["direct_stable_ids"])
+        self.assertEqual(["ZG-029", "ZG-030"], integration["direct_stable_ids"])
+        self.assertIn("zg029-layers.yml", integration["native"])
         self.assertIn("zg030-pockets.yml", integration["native"])
 
     def test_packaging_change_runs_zg045_natively_without_inventing_downstream_consumers(self) -> None:
