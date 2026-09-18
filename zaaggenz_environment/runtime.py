@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
+import json
 import importlib.metadata
 import importlib.util
+from pathlib import Path
 import platform
 import shutil
 import subprocess
@@ -19,6 +21,7 @@ _AUDITED_DISTRIBUTIONS = (
     "jsonschema",
     "referencing",
     "playwright",
+    "build",
 )
 _EXTRA_MODULES: dict[str, tuple[str, ...]] = {
     "browser": ("playwright",),
@@ -134,6 +137,23 @@ def _distribution_metadata(name: str) -> dict[str, object]:
     }
 
 
+def external_tool_policy() -> dict[str, object]:
+    """Return the generated machine-readable external executable policy."""
+    path = Path(__file__).with_name("tool_policy.json")
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("canonical external tool policy is unavailable") from exc
+    if (
+        type(value) is not dict
+        or value.get("format") != "zaaggenz-external-tool-policy"
+        or value.get("version") != "1.0.0"
+        or type(value.get("tools")) is not dict
+    ):
+        raise RuntimeError("invalid canonical external tool policy")
+    return value
+
+
 def external_tool_report() -> dict[str, object]:
     """Record package/executable identities; never install, download or mutate."""
     tools = {
@@ -157,4 +177,5 @@ def external_tool_report() -> dict[str, object]:
         },
         "python_distributions": dependencies,
         "external_tools": tools,
+        "external_tool_policy": external_tool_policy(),
     }
