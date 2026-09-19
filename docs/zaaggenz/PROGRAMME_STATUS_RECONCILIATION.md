@@ -75,3 +75,38 @@ python -m unittest discover -s tests/programme -p 'test_programme_*.py' -v
 `check_programme_docs.py` verifies the core document set exists, points status-bearing prose to the accepted state authority, retains the latest ZG-024 handoff pointers, confirms key live state (ZG-001 resolved; ZG-022 owner-gated; ZG-024 active), checks the accepted baseline hashes against the recovered-source provenance document, and rejects known bootstrap-era present-tense blocker phrases.
 
 When implementation/evidence changes, update `task_state.json` through review first. Narrative documents should consume that state rather than inventing a parallel completion vocabulary.
+
+
+## Post-merge evidence rollback — 2026-09-19
+
+Independent review of the newly merged ZG-040/PR #211 and ZG-042/PR #210 found material gaps that were not exercised by their original acceptance fixtures. This is an evidence-state correction, not a planned-DAG change and not a reopening of the earlier broad corrective campaign.
+
+### ZG-040 / #41
+
+The merged scaffold remains useful, but dependency acceptance is revoked pending bounded corrections for:
+
+- authentication of statistical outcomes/item identity against trusted ZG-015 evidence;
+- duplicate/relabelled physical-item prevention in crossed inference;
+- single-use amendment/deviation iterable safety;
+- executable planned-observation, missing-data and stopping rules;
+- method/estimand/endpoint/confirmatory compatibility;
+- bounded randomisation/bootstrap memory/work execution.
+
+Live state is therefore `implementation=partial`, `evidence=partial`, `research=active`, `dependency_satisfied=false`; issue #41 is reopened. Formal downstream studies requiring ZG-040 must wait for reacceptance.
+
+### ZG-042 / #43
+
+The workload policy/benchmark/BATCH-lane work remains useful, but dependency acceptance is revoked pending bounded corrections for:
+
+- immutable admission/execution input ownership;
+- conservative accounting of real long-form object lifetimes and retained products;
+- cancellation before large retained allocation;
+- exact continuation only at boundaries whose in-progress state is serializable;
+- unfinished-glide boundary rejection or a versioned continuation-state extension;
+- full-rate evidence for the documented section plan.
+
+Live state is therefore `implementation=partial`, `evidence=partial`, `dependency_satisfied=false`; issue #43 is reopened. ZG-044/ZG-045 may not use the disputed bound/exactness claims as accepted release evidence.
+
+### Workflow consequence
+
+A previously accepted/merged parent can be downgraded when later adversarial review reproduces a material failure. The original PR and green CI remain historical evidence; readiness is changed explicitly in `task_state.json`. Agents must re-read the live state before starting dependent work and before merge. Reacceptance requires adversarial regressions for the reproduced failures and a fresh final-head/reverse-dependency gate.
