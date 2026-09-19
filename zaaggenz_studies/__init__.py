@@ -7,10 +7,11 @@ from .model import (
     verify_amendment_chain, make_deviation,
 )
 from .corrective import (
-    StudyDataset, StudyEvidencePlan, freeze_evidence_plan, analyse_study,
+    StudyDataset, StudyEvidencePlan, freeze_evidence_plan,
     freeze_manifest, SimulationAssumptions, balanced_cyclic_orders,
     simulate_crossed_design, plan_precision,
 )
+from .public import analyse_study
 
 __all__ = [
     "VERSION", "FAMILIES", "MODES", "SCALES", "METHODS", "StudyError",
