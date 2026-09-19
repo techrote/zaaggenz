@@ -12,7 +12,8 @@ from .model import check_json, digest
 from .validation import validate
 
 POLICY_ID = "zaaggenz.layer-ownership"
-POLICY_VERSION = "1.0.0"
+POLICY_VERSION = "1.1.0"
+LEGACY_POLICY_VERSION = "1.0.0"
 CANONICAL_LAYER_ROLES = ("synthline", "exciter", "body", "aux", "sub")
 _TRANSFORM_QUANTITIES = frozenset(("retune", "reweight"))
 _PHASE_POLICIES = frozenset(("legacy-v1.2.1", "continuous-integrated", "reset-event", "source-derived"))
@@ -27,6 +28,7 @@ _OWNER = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
 _BASE = {
     "synthline": {
         "stem": "synthline",
+        "stem_domain": "raw-source-audition",
         "musical_role": "lead/source",
         "source_identity_owner": "protected-source",
         "source_policy": "source-derived-unless-explicit-target-note",
@@ -37,15 +39,16 @@ _BASE = {
         "tail_owner": "render-recipe",
         "state_lifetime": "note-or-source-event",
         "gain_owner": "event-gesture-then-final-master",
-        "nonlinear_owner": "synthline-pre-master-graph",
+        "nonlinear_owner": "shared-source-bus-topology",
         "pocket_policy": "explicit-only-no-makeup",
-        "audition_policy": "independent-pre-master-stem",
-        "mute_scope": "role-stem-only",
+        "audition_policy": "independent-raw-audition-stem",
+        "mute_scope": "source-bus-input-before-shared-topology",
         "transform_bypass": "identity-no-retune-or-reweight",
         "persistent": False,
     },
     "exciter": {
         "stem": "exciter",
+        "stem_domain": "raw-source-audition",
         "musical_role": "exciter",
         "source_identity_owner": "synthline-event",
         "source_policy": "derived-transient-never-synthline-substitute",
@@ -56,15 +59,16 @@ _BASE = {
         "tail_owner": "exciter-generator",
         "state_lifetime": "exciter-trigger",
         "gain_owner": "exciter-generator-then-final-master",
-        "nonlinear_owner": "none-unless-explicit-stage",
+        "nonlinear_owner": "shared-source-bus-topology",
         "pocket_policy": "explicit-only-no-makeup",
-        "audition_policy": "independent-pre-master-stem",
-        "mute_scope": "role-stem-only",
+        "audition_policy": "independent-raw-audition-stem",
+        "mute_scope": "source-bus-input-before-shared-topology",
         "transform_bypass": "identity-no-retune-or-reweight",
         "persistent": False,
     },
     "body": {
         "stem": "body",
+        "stem_domain": "independent-pre-master-role",
         "musical_role": "upper-sonority",
         "source_identity_owner": "layer-generator",
         "source_policy": "persistent-layer-not-source-replacement",
@@ -84,6 +88,7 @@ _BASE = {
     },
     "aux": {
         "stem": "aux",
+        "stem_domain": "independent-pre-master-role",
         "musical_role": "complementary-group",
         "source_identity_owner": "layer-generator",
         "source_policy": "persistent-layer-not-source-replacement",
@@ -103,6 +108,7 @@ _BASE = {
     },
     "sub": {
         "stem": "sub",
+        "stem_domain": "independent-pre-master-role",
         "musical_role": "pedal-or-moving-root",
         "source_identity_owner": "layer-generator",
         "source_policy": "persistent-foundation",
@@ -320,6 +326,15 @@ def ownership_manifest(phrase, *, phase_policy="source-derived", transform_claim
         "bass_role": bass_role,
         "roles": roles,
         "transform_plan": resolve_transform_claims(transform_claims),
+        "source_bus": {
+            "stem": "source_bus",
+            "position": "post-preserved-synthline-topology-pre-master",
+            "inputs": ["synthline", "exciter"],
+            "input_domain": "raw-source-audition",
+            "topology_owner": "render-recipe.synthline-graph",
+            "mute_semantics": "selected-raw-inputs-before-shared-topology",
+            "additive_decomposition": "not-guaranteed-through-nonlinear-topology",
+        },
         "master": {
             "owner": "render-recipe.output",
             "position": "single-final-stage",

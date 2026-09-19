@@ -6,7 +6,7 @@ ZG-030 adds an explicit subtractive layer-separation stage on top of the accepte
 
 `LayerPocketPlan` is a versioned Python control object (`zaaggenz.layer-pockets/1.0.0`). It requires three explicit ZG-016 crossover frequencies and contains typed static automation and/or dynamic sidechain specifications. No pocket is an implicit product default.
 
-V1 permits BODY, AUX, or SUB to be the **yielding** layer. SYNTHLINE and exciter may be detector inputs but are not rewritten by the pocket stage. This preserves source-owned SYNTHLINE/exciter PCM while still allowing persistent accompaniment to make deliberate space for source arrivals. SUB may be pocketed only when explicitly authored; the curated ZG-030 fixture deliberately leaves SUB untouched so bass support is not selected away by a proxy score.
+V1 permits BODY, AUX, or SUB to be the **yielding** layer. SYNTHLINE and exciter may be detector inputs but are the raw source-owned audition stems defined by ZG-029 policy 1.1.0; neither they nor the processed `source_bus` are rewritten by the pocket stage. This preserves source evidence and the shared nonlinear source path while still allowing persistent accompaniment to make deliberate space for source arrivals. SUB may be pocketed only when explicitly authored; the curated ZG-030 fixture deliberately leaves SUB untouched so bass support is not selected away by a proxy score.
 
 Each `(yielding_role, band)` has at most one pocket owner in v1. Ambiguous chains fail closed rather than inventing order. Sidechain detector roles must differ from the yielding role.
 
@@ -26,7 +26,7 @@ The resulting gain is strictly `(0, 1]`: this stage cannot add gain. A zero-dB c
 - attack, release, and offline lookahead in samples;
 - maximum attenuation in dB.
 
-The detector is the selected band of the **pre-pocket role stem**. Detector inputs are snapshotted before any pockets run, so one pocket cannot silently alter a later detector. A role muted by the coordinated renderer is explicitly zero at the detector, which makes that sidechain an exact bypass.
+The detector is the selected band of the **pre-pocket canonical detector stem**. For BODY/AUX/SUB that is the persistent pre-master role stem; for SYNTHLINE/exciter it is the raw audition stem, not a fictitious nonlinear post-topology decomposition. Detector inputs are snapshotted before any pockets run, so one pocket cannot silently alter a later detector. A role muted by the coordinated renderer is explicitly zero at the detector, which makes that sidechain an exact bypass.
 
 Attack/release use a deterministic one-pole envelope over detector magnitude. Gain reduction is the detector excess above threshold, capped by `max_attenuation_db`. There is no ratio/makeup stage and no hidden post-pocket normalization. Lookahead reads future detector samples offline; it does not introduce a delayed dry path.
 
@@ -42,7 +42,7 @@ The dry path is never split/recombined. The existing fourth-order zero-phase But
 
 Every pocket operation records before/after float32 PCM hashes, before/after RMS, requested controls, measured maximum attenuation, active-sample bounds, detector hash/mute state where applicable, and an explicit `makeup_gain_db: 0.0`.
 
-`render_coordinated_pockets()` uses ZG-029 for source and persistent-layer generation. Empty plans, zero-attenuation plans, muted-detector sidechains, and any other plan whose computed persistent-role deltas are exactly zero return the accepted ZG-029 mix/stems bit-for-bit. When a pocket actually changes a persistent stem, the wrapper discards ZG-029's provisional mastered mix, applies only those persistent-role deltas to the accepted pre-master stem, then executes `RenderRecipe.output` once for the returned modified signal path. The pocket stage never normalizes or compensates for subtraction.
+`render_coordinated_pockets()` uses ZG-029 for source and persistent-layer generation. Empty plans, zero-attenuation plans, muted-detector sidechains, and any other plan whose computed persistent-role deltas are exactly zero return the accepted ZG-029 mix/stems bit-for-bit. When a pocket actually changes a persistent stem, the wrapper discards ZG-029's provisional mastered mix, applies only BODY/AUX/SUB deltas around the already-processed `source_bus`, then executes `RenderRecipe.output` once for the returned modified signal path. The pocket stage never attempts to split a shared nonlinear source bus and never normalizes or compensates for subtraction.
 
 The oscillator/phase/tail `LayerRuntimeState` is unchanged by pockets. ZG-029 remains the owner of persistent voice continuity and section transitions.
 

@@ -405,11 +405,12 @@ def _sha_audio(array):
 
 def render_coordinated_layers(base_recipe, progression, frame_beats, duration_beats, spec,
                               *, state=None, section_transition=None, muted_roles=()):
-    """Render protected SYNTHLINE/exciter plus explicit persistent harmony roles.
+    """Render raw source audition stems, their processed source bus, and persistent harmony roles.
 
-    This is a ZG-029 adapter around the frozen RenderRecipe/PhrasePlan contracts. It does not
-    synthesize a replacement SYNTHLINE, does not alter source identity and applies the base
-    recipe output policy exactly once after role assembly.
+    SYNTHLINE/exciter remain byte-identifiable raw source-owned audition stems. Role mute/solo
+    decisions select those raw inputs before the shared preserved SYNTHLINE topology, producing
+    one explicit processed source_bus contribution. BODY/AUX/SUB remain independently additive
+    pre-master role stems. The final RenderRecipe output policy executes once after assembly.
     """
     if not isinstance(spec, LayerRuntimeSpec):
         _fail("invalid-runtime-spec", "LayerRuntimeSpec required")
@@ -460,20 +461,29 @@ def render_coordinated_layers(base_recipe, progression, frame_beats, duration_be
     source = render_phrase(contract)
     raw_synthline = np.asarray(source.stems["synthline"], dtype=np.float64)
     raw_exciter = np.asarray(source.stems["exciter"], dtype=np.float64)
+    accepted_source_pre = np.asarray(source.stems["pre_master"], dtype=np.float64)
     phrase_start = beat_to_sample(data["time_map"], phrase["start_beat"])
     phrase_end = beat_to_sample(data["time_map"], phrase["end_beat"])
     section_samples = max(0, phrase_end - phrase_start)
-    n = max(section_samples, len(raw_synthline), len(raw_exciter))
+    n = max(section_samples, len(raw_synthline), len(raw_exciter), len(accepted_source_pre))
 
     def pad(array):
         array = np.asarray(array, dtype=np.float64)
         return np.pad(array, (0, max(0, n - len(array))))
 
     raw_synthline, raw_exciter = pad(raw_synthline), pad(raw_exciter)
-    source_sum = np.zeros(n, dtype=np.float64) if "synthline" in muted else raw_synthline.copy()
-    if "exciter" not in muted:
-        source_sum += raw_exciter
-    source_pre = pad(_apply_preserved_topology(source_sum, data))
+    # The normal path retains ZG-008's accepted post-topology source contribution
+    # bit-for-bit. Source-role mute/solo audition is explicitly an assembly operation:
+    # selected exposed raw stems are passed through the same shared topology before
+    # persistent roles are added. Nonlinear solo buses therefore need not add to the
+    # unmuted bus.
+    if not ({"synthline", "exciter"} & muted):
+        source_pre = pad(accepted_source_pre)
+    else:
+        source_sum = np.zeros(n, dtype=np.float64) if "synthline" in muted else raw_synthline.copy()
+        if "exciter" not in muted:
+            source_sum += raw_exciter
+        source_pre = pad(_apply_preserved_topology(source_sum, data))
 
     role_stems = {role: np.zeros(n, dtype=np.float64) for role in _PERSISTENT_ROLES}
     traces = []
@@ -514,8 +524,14 @@ def render_coordinated_layers(base_recipe, progression, frame_beats, duration_be
 
     next_state = LayerRuntimeState(sample_rate, voices_state)
     stems = {
+        # Raw source-owned audition/null stems. They deliberately remain unchanged by
+        # role muting; muting selects inputs to source_bus rather than deleting evidence.
         "synthline": np.asarray(raw_synthline, dtype=np.float32),
         "exciter": np.asarray(raw_exciter, dtype=np.float32),
+        # Exact post-topology source contribution used in pre-master assembly. With
+        # nonlinear topology it is not additively decomposable into separately processed
+        # SYNTHLINE and exciter contributions.
+        "source_bus": np.asarray(source_pre, dtype=np.float32),
         "body": np.asarray(role_stems["body"], dtype=np.float32),
         "aux": np.asarray(role_stems["aux"], dtype=np.float32),
         "sub": np.asarray(role_stems["sub"], dtype=np.float32),
@@ -534,6 +550,7 @@ def render_coordinated_layers(base_recipe, progression, frame_beats, duration_be
         "muted_roles": sorted(muted),
         "transform_plan": deepcopy(transform_plan),
         "voice_trace": traces,
+        "source_bus": deepcopy(ownership["source_bus"]),
         "master": deepcopy(master_diag),
         "stem_sha256": {name: _sha_audio(audio) for name, audio in stems.items()},
         "mix_sha256": _sha_audio(mix),

@@ -50,7 +50,10 @@ class ProgrammeStateTests(unittest.TestCase):
 
     def test_blocked_task_requires_a_blocker(self) -> None:
         bad = copy.deepcopy(self.state)
-        bad["tasks"]["ZG-030"]["blockers"] = []
+        row = bad["tasks"]["ZG-030"]
+        row["implementation"] = "blocked"
+        row["dependency_satisfied"] = False
+        row["blockers"] = []
         with self.assertRaises(ps.StateError):
             ps.validate_state(bad, root=ROOT)
 

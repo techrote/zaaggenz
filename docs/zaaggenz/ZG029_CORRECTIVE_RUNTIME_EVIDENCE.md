@@ -1,7 +1,7 @@
 # ZG-029 corrective runtime evidence
 
 Status: executable evidence map for corrective issue #202  
-Parent authority: `zaaggenz.layer-ownership/1.0.0` / `ZG029_LAYER_OWNERSHIP_ADR.md`  
+Parent authority: `zaaggenz.layer-ownership/1.1.0` / `ZG029_LAYER_OWNERSHIP_ADR.md`  
 Runtime implementation: `zaaggenz.layer-runtime/1.0.0`  
 Pocket implementation: ZG-030 `zaaggenz_layers.pockets`
 
@@ -17,8 +17,10 @@ No frozen ZG-002 wire contract is widened by this corrective. No source bytes, r
 
 | #91 / #202 behavior | Executable evidence |
 | --- | --- |
-| Full SYNTHLINE is present independently of exciter | `tests/layers/test_runtime.py::test_source_synthline_and_exciter_are_not_resynthesized_by_harmony` plus `test_corrective_202.py::test_source_stems_are_independent_pcm_and_remain_hash_bound_through_pockets`; both compare real float PCM. The corrective test separately mutes SYNTHLINE and exciter and proves muting one leaves the other stem byte-identical. |
-| Source-derived material is not silently resynthesized | The coordinated SYNTHLINE/exciter PCM is compared directly with `render_phrase()` output. `recipe_sha256` and float32 little-endian stem SHA-256 values are checked before and after a real BODY pocket. |
+| Full SYNTHLINE is present independently of exciter | `tests/layers/test_runtime.py::test_source_synthline_and_exciter_are_not_resynthesized_by_harmony` plus `test_corrective_202.py::test_source_stems_are_independent_pcm_and_remain_hash_bound_through_pockets`; both compare real raw float PCM. Source-role mutes alter assembly but leave both retained raw audition/null stems byte-identical. |
+| Raw source stems versus processed pre-master bus are unambiguous | `test_corrective_202.py::test_linear_topology_exposes_raw_audition_stems_and_exact_processed_source_bus` proves a non-identity linear graph: raw SYNTHLINE/exciter remain exact while `source_bus` equals the accepted ZG-008 post-topology source contribution and reconstructs `pre_master` with BODY/AUX/SUB. |
+| Shared nonlinear topology is not falsely decomposed | `test_corrective_202.py::test_nonlinear_topology_mutes_before_shared_bus_and_is_not_additively_decomposed` uses real `core.tanh.v1`, proves source mute/solo occurs before the shared graph, proves raw source evidence is unchanged, and explicitly demonstrates that solo processed buses do not add to the full processed bus. |
+| Source-derived material is not silently resynthesized | Coordinated raw SYNTHLINE/exciter PCM is compared directly with `render_phrase()`; the unmuted `source_bus` is the accepted ZG-008 `pre_master` source contribution. `recipe_sha256` and float32 little-endian stem/bus SHA-256 values remain bound through a real BODY pocket. |
 | Fixed SUB remains fixed while upper harmony moves | `test_runtime.py::test_fixed_pedal_stays_fixed_while_upper_sonority_moves`. |
 | Moving-root SUB follows only declared harmony | `test_runtime.py::test_moving_sub_follows_declared_harmony_and_is_rejected_under_pedal_contract`. |
 | Upper-only retune does not drag SUB | `test_runtime.py::test_upper_retune_is_layer_scoped_and_cannot_drag_locked_sub` checks exact SUB PCM and state identity. |
@@ -36,7 +38,16 @@ No frozen ZG-002 wire contract is widened by this corrective. No source bytes, r
 
 The canonical evidence is float32 PCM plus content hashes, not a listening copy and not a metadata label. `render_coordinated_layers()` records `recipe_sha256`, `progression_sha256`, runtime-state identity, per-stem float32 SHA-256 and final-mix SHA-256. The ZG-029 owner-audition fixture report carries those identities into its deterministic evidence artifact.
 
-The corrective test additionally recomputes SYNTHLINE and exciter hashes from actual arrays and requires those hashes to remain identical after a real ZG-030 BODY pocket. Thus downstream layer coordination cannot claim source preservation merely because a field still says `synthline`.
+The corrective tests additionally recompute SYNTHLINE and exciter hashes from actual arrays, require those hashes to remain identical after a real ZG-030 BODY pocket, and require `source_bus` to remain unchanged by persistent-role pocketing. Thus downstream layer coordination cannot claim source preservation merely because a field still says `synthline`.
+
+The evidence domains are intentionally separate:
+
+- `synthline` / `exciter`: raw source-owned audition/null PCM;
+- `source_bus`: processed post-topology source contribution used in assembly;
+- `body` / `aux` / `sub`: independently additive persistent pre-master role PCM;
+- `pre_master`: assembled `source_bus` plus unmuted persistent roles.
+
+Policy 1.0.0's old label `independent-pre-master-stem` for the raw source arrays is retired by policy 1.1.0. Historical 1.0.0 policy evidence is not rewritten; old section-transition policy documents must be regenerated from unchanged PhrasePlan/reset intent before binding to 1.1.0.
 
 ## Transform ordering scope
 
@@ -62,7 +73,7 @@ The repository-wide reverse-dependency impact workflow remains authoritative for
 
 ## Protected semantics
 
-This evidence harness adds no sound-generating default and changes no production DSP. It does not alter:
+This corrective changes ownership metadata and exposes the already-existing processed source contribution as an explicit runtime `source_bus`; it adds no sound-generating default and changes no DSP algorithm. The normal unmuted source path remains the accepted ZG-008 output. It does not alter:
 
 - authenticated recovered source bytes or provenance;
 - frozen ZG-002 contract versions;
