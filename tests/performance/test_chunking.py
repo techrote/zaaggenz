@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import sys
 import threading
 import unittest
+from pathlib import Path
 
 import numpy as np
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "app"))
 
 from zaaggenz_analysis import STFTSpec, stft
 from zaaggenz_contracts.legacy import adapt_parameters, freeze_legacy
