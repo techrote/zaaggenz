@@ -33,7 +33,7 @@ User intent controls the artistic target. Literature constrains factual/scientif
 
 ## Active reconciliation campaign
 
-Before changing programme state, authority-bearing front-door prose, RAG/read sets or pre-ZG-043 readiness guards, read `AUTHORITY_RECONCILIATION_RAG.md`. It records the 2026-09-19 audit findings, protected authority hierarchy, serialized repair sequence and focused read sets. The campaign document is a planning/retrieval aid; live readiness remains `programme/task_state.json`.
+Before changing programme state, authority-bearing front-door prose, RAG/read sets or pre-ZG-043 readiness guards, read `AUTHORITY_RECONCILIATION_RAG.md`. It records the 2026-09-19 audit findings, protected authority hierarchy, serialized repair sequence and focused read sets. Active execution issues are #217 (machine authority) → #218 (human/RAG authority) → #219 (drift guardrails/final ZG-043 certification), followed by separate ZG-042 hardening #220. The campaign document is a planning/retrieval aid; live readiness remains `programme/task_state.json`.
 
 ## Suggested read sets
 
