@@ -19,7 +19,7 @@ def main():
             self_initial=page.locator('#revision').inner_text()
             page.locator('#project-name').fill('ZG-041 workspace persistence')
             page.locator('#project-name').dispatch_event('change')
-            page.wait_for_function("initial=>document.getElementById('revision').textContent!==initial && !document.getElementById('revision').textContent.includes('Validating')",self_initial)
+            page.wait_for_function("initial=>document.getElementById('revision').textContent!==initial && !document.getElementById('revision').textContent.includes('Validating')",arg=self_initial)
             compose_revision=page.locator('#revision').inner_text();assert compose_revision!=self_initial
             session_before=server.session.snapshot();assert session_before['timeline_revision_id']==compose_revision
 
