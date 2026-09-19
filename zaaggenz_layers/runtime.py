@@ -461,20 +461,29 @@ def render_coordinated_layers(base_recipe, progression, frame_beats, duration_be
     source = render_phrase(contract)
     raw_synthline = np.asarray(source.stems["synthline"], dtype=np.float64)
     raw_exciter = np.asarray(source.stems["exciter"], dtype=np.float64)
+    accepted_source_pre = np.asarray(source.stems["pre_master"], dtype=np.float64)
     phrase_start = beat_to_sample(data["time_map"], phrase["start_beat"])
     phrase_end = beat_to_sample(data["time_map"], phrase["end_beat"])
     section_samples = max(0, phrase_end - phrase_start)
-    n = max(section_samples, len(raw_synthline), len(raw_exciter))
+    n = max(section_samples, len(raw_synthline), len(raw_exciter), len(accepted_source_pre))
 
     def pad(array):
         array = np.asarray(array, dtype=np.float64)
         return np.pad(array, (0, max(0, n - len(array))))
 
     raw_synthline, raw_exciter = pad(raw_synthline), pad(raw_exciter)
-    source_sum = np.zeros(n, dtype=np.float64) if "synthline" in muted else raw_synthline.copy()
-    if "exciter" not in muted:
-        source_sum += raw_exciter
-    source_pre = pad(_apply_preserved_topology(source_sum, data))
+    # The normal path retains ZG-008's accepted post-topology source contribution
+    # bit-for-bit. Source-role mute/solo audition is explicitly an assembly operation:
+    # selected exposed raw stems are passed through the same shared topology before
+    # persistent roles are added. Nonlinear solo buses therefore need not add to the
+    # unmuted bus.
+    if not ({"synthline", "exciter"} & muted):
+        source_pre = pad(accepted_source_pre)
+    else:
+        source_sum = np.zeros(n, dtype=np.float64) if "synthline" in muted else raw_synthline.copy()
+        if "exciter" not in muted:
+            source_sum += raw_exciter
+        source_pre = pad(_apply_preserved_topology(source_sum, data))
 
     role_stems = {role: np.zeros(n, dtype=np.float64) for role in _PERSISTENT_ROLES}
     traces = []
