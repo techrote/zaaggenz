@@ -53,6 +53,31 @@ def _with_nonzero_exciter(recipe):
     return Contract(data)
 
 
+def _with_topology(recipe, type_id, params):
+    """Attach one preserved source-bus topology node without changing source identity."""
+    data = recipe.to_dict()
+    node_id = "corrective-202-source-topology"
+    data["nodes"] = [
+        envelope(
+            "DSPNodeSpec",
+            id=node_id,
+            type_id=type_id,
+            inputs=[data["source"]["id"]],
+            channels=1,
+            params=dict(params),
+            state_policy="stateless",
+            phase_policy="source-derived",
+            latency_samples=0,
+            lookahead_samples=0,
+            bypass="identity",
+            automation=[],
+        )
+    ]
+    data["output_node"] = node_id
+    data["sculpt"] = None
+    return Contract(data)
+
+
 class Corrective202RuntimeEvidenceTests(unittest.TestCase):
     def test_source_stems_are_independent_pcm_and_remain_hash_bound_through_pockets(self):
         recipe, progression, beats, durations = runtime_fixture(master_gain_db=-6.0)
@@ -115,10 +140,163 @@ class Corrective202RuntimeEvidenceTests(unittest.TestCase):
         np.testing.assert_array_equal(
             pocketed.stems["exciter"], full.stems["exciter"]
         )
+        np.testing.assert_array_equal(
+            pocketed.stems["source_bus"], full.stems["source_bus"]
+        )
         self.assertEqual(pocketed.diagnostics["recipe_sha256"], recipe.sha256)
         self.assertEqual(pocketed.diagnostics["stem_sha256"]["synthline"], synth_sha)
         self.assertEqual(pocketed.diagnostics["stem_sha256"]["exciter"], exciter_sha)
         self.assertEqual(pocketed.diagnostics["pockets"]["makeup_gain_db"], 0.0)
+
+    def test_linear_topology_exposes_raw_audition_stems_and_exact_processed_source_bus(self):
+        recipe, progression, beats, durations = runtime_fixture(master_gain_db=0.0)
+        recipe = _with_topology(
+            _with_nonzero_exciter(recipe), "core.gain.v1", {"gain_db": -9.0}
+        )
+        runtime = _spec()
+        source = render_phrase(recipe)
+        result = render_coordinated_layers(
+            recipe, progression, beats, durations, runtime
+        )
+
+        # Raw audition/null stems remain the accepted ZG-008 source evidence.
+        np.testing.assert_array_equal(
+            result.stems["synthline"][: len(source.stems["synthline"])],
+            source.stems["synthline"],
+        )
+        np.testing.assert_array_equal(
+            result.stems["exciter"][: len(source.stems["exciter"])],
+            source.stems["exciter"],
+        )
+        # With no source-role mute, the source bus is exactly the accepted ZG-008
+        # post-topology pre-master source contribution.
+        np.testing.assert_array_equal(
+            result.stems["source_bus"][: len(source.stems["pre_master"])],
+            source.stems["pre_master"],
+        )
+
+        gain = 10.0 ** (-9.0 / 20.0)
+        expected_bus = (
+            np.asarray(result.stems["synthline"], dtype=np.float64)
+            + np.asarray(result.stems["exciter"], dtype=np.float64)
+        ) * gain
+        np.testing.assert_allclose(
+            result.stems["source_bus"], expected_bus, rtol=2e-6, atol=3e-7
+        )
+
+        reconstructed = (
+            np.asarray(result.stems["source_bus"], dtype=np.float64)
+            + np.asarray(result.stems["body"], dtype=np.float64)
+            + np.asarray(result.stems["aux"], dtype=np.float64)
+            + np.asarray(result.stems["sub"], dtype=np.float64)
+        )
+        np.testing.assert_allclose(
+            result.stems["pre_master"], reconstructed, rtol=0, atol=3e-7
+        )
+        self.assertEqual(
+            result.diagnostics["source_bus"]["position"],
+            "post-preserved-synthline-topology-pre-master",
+        )
+        self.assertEqual(
+            result.diagnostics["source_bus"]["input_domain"], "raw-source-audition"
+        )
+
+    def test_nonlinear_topology_mutes_before_shared_bus_and_is_not_additively_decomposed(self):
+        recipe, progression, beats, durations = runtime_fixture(master_gain_db=0.0)
+        recipe = _with_topology(
+            _with_nonzero_exciter(recipe),
+            "core.tanh.v1",
+            {"drive_db": 36.0, "mix": 1.0},
+        )
+        runtime = _spec()
+        source = render_phrase(recipe)
+        full = render_coordinated_layers(
+            recipe, progression, beats, durations, runtime
+        )
+        synth_solo = render_coordinated_layers(
+            recipe,
+            progression,
+            beats,
+            durations,
+            runtime,
+            muted_roles=("exciter", "body", "aux", "sub"),
+        )
+        exciter_solo = render_coordinated_layers(
+            recipe,
+            progression,
+            beats,
+            durations,
+            runtime,
+            muted_roles=("synthline", "body", "aux", "sub"),
+        )
+        source_silence = render_coordinated_layers(
+            recipe,
+            progression,
+            beats,
+            durations,
+            runtime,
+            muted_roles=("synthline", "exciter", "body", "aux", "sub"),
+        )
+
+        # Full unmuted coordination keeps the accepted protected source output exact.
+        np.testing.assert_array_equal(
+            full.stems["source_bus"][: len(source.stems["pre_master"])],
+            source.stems["pre_master"],
+        )
+        # Mute/solo is an assembly choice before the shared nonlinear topology; it
+        # never rewrites the retained raw audition/null evidence.
+        for result in (synth_solo, exciter_solo, source_silence):
+            np.testing.assert_array_equal(
+                result.stems["synthline"], full.stems["synthline"]
+            )
+            np.testing.assert_array_equal(
+                result.stems["exciter"], full.stems["exciter"]
+            )
+        np.testing.assert_allclose(
+            synth_solo.stems["pre_master"],
+            synth_solo.stems["source_bus"],
+            rtol=0,
+            atol=3e-7,
+        )
+        np.testing.assert_allclose(
+            exciter_solo.stems["pre_master"],
+            exciter_solo.stems["source_bus"],
+            rtol=0,
+            atol=3e-7,
+        )
+        self.assertEqual(float(np.max(np.abs(source_silence.stems["source_bus"]))), 0.0)
+        self.assertEqual(float(np.max(np.abs(source_silence.stems["pre_master"]))), 0.0)
+
+        # This is the regression that the old "two independent pre-master source
+        # stems" wording could not represent: shared nonlinear processing is not
+        # additively decomposable into separately processed solo buses.
+        solo_sum = (
+            np.asarray(synth_solo.stems["source_bus"], dtype=np.float64)
+            + np.asarray(exciter_solo.stems["source_bus"], dtype=np.float64)
+        )
+        nonadditivity = float(
+            np.max(
+                np.abs(
+                    np.asarray(full.stems["source_bus"], dtype=np.float64)
+                    - solo_sum
+                )
+            )
+        )
+        self.assertGreater(nonadditivity, 1e-4)
+
+        reconstructed = (
+            np.asarray(full.stems["source_bus"], dtype=np.float64)
+            + np.asarray(full.stems["body"], dtype=np.float64)
+            + np.asarray(full.stems["aux"], dtype=np.float64)
+            + np.asarray(full.stems["sub"], dtype=np.float64)
+        )
+        np.testing.assert_allclose(
+            full.stems["pre_master"], reconstructed, rtol=0, atol=3e-7
+        )
+        self.assertEqual(
+            full.diagnostics["source_bus"]["additive_decomposition"],
+            "not-guaranteed-through-nonlinear-topology",
+        )
 
     def test_pocketed_save_reload_continue_preserves_state_and_one_final_master(self):
         recipe, progression, beats, durations = runtime_fixture(master_gain_db=-9.0)
