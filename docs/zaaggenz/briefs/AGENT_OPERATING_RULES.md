@@ -18,6 +18,21 @@ Keep compose mode usable without scientific prerequisites. Expensive work runs t
 
 Use existing tested modules through an adapter before adopting new libraries. Record licences and citations; prefer author implementations when compatible, but never assume availability or an acceptable licence from a citation alone. Cache expensive shared features by content and method hash; never reuse analysis after its input or method has changed.
 
+## Post-merge review and evidence revocation
+
+A merged PR or previously green final-head CI is **not irrevocable dependency evidence**. If later adversarial review reproduces a material contract, provenance, numerical-bound, concurrency or research-integrity failure in an accepted task:
+
+1. preserve the original merged PR/completion record as historical evidence;
+2. reopen the parent issue (or create a tightly scoped successor only when lineage genuinely belongs elsewhere);
+3. immediately update `programme/task_state.json` so implementation/evidence/research/blocker fields describe the new reality and set `dependency_satisfied: false` when downstream reliance is unsafe;
+4. update task-specific contracts/docs and this programme workflow as needed before starting newly unblocked downstream work;
+5. add the reproduction as an adversarial regression and require the repaired final head to re-pass direct and reverse-dependency gates;
+6. reclose/reaccept only after the stronger acceptance claim is executable, not merely documented.
+
+Do not erase useful prior evidence merely because a narrower guarantee failed. Conversely, do not leave a task dependency-satisfying just because most of its implementation remains useful. Readiness is an explicit evidence decision.
+
+When consuming a recently accepted parent, inspect `task_state.json` immediately before coding and again before merge. If a parent has been downgraded or reopened for a material corrective, stop work that depends on the disputed guarantee rather than relying on an earlier green run.
+
 ## Verify and report
 
 Run the recovered baseline tests and the issue-specific fixtures. Add positive, identity, adversarial and boundary cases. Include actual commands, environment, result hashes and known limitations in the PR. Numerical metrics do not certify a musical improvement: provide reproducible level-matched audition recipes where sound changes. Owner approval is required before replacing a default sound.
