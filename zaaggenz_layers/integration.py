@@ -22,9 +22,10 @@ def render_coordinated_pockets(base_recipe, progression, frame_beats, duration_b
 
     The accepted ZG-029 runtime remains the authoritative source/persistent-layer renderer. Its
     provisional mastered mix is discarded whenever a pocket changes a persistent stem. Pocket
-    deltas are applied to the accepted pre-master role stems and the declared RenderRecipe output
-    policy is then executed exactly once for the returned modified mix. Empty and computed-zero
-    pocket plans return the accepted ZG-029 audio bit-for-bit unchanged.
+    deltas are applied only to independently additive BODY/AUX/SUB pre-master role stems; the
+    processed source_bus and raw SYNTHLINE/exciter audition evidence are never decomposed or
+    rewritten. The declared RenderRecipe output policy then executes exactly once for the returned
+    modified mix. Empty and computed-zero pocket plans return accepted ZG-029 audio bit-for-bit unchanged.
     """
     if not isinstance(pocket_plan, LayerPocketPlan):
         raise TypeError("pocket_plan must be LayerPocketPlan")
@@ -85,7 +86,7 @@ def render_coordinated_pockets(base_recipe, progression, frame_beats, duration_b
     diagnostics["stem_sha256"] = {name: _sha_audio(audio) for name, audio in stems.items()}
     diagnostics["mix_sha256"] = _sha_audio(mix)
     diagnostics["pocket_changed_roles"] = changed_roles
-    diagnostics["pocket_master_path"] = "ZG-029 pre-master role stems -> ZG-030 confined subtractive deltas -> RenderRecipe.output once for returned modified mix"
+    diagnostics["pocket_master_path"] = "ZG-029 source_bus + persistent pre-master role stems -> ZG-030 confined persistent-role deltas -> RenderRecipe.output once for returned modified mix"
     diagnostics["normalization"] = base.diagnostics.get("normalization", "none")
     diagnostics["final_master_owner"] = base.diagnostics.get("final_master_owner", "render-recipe.output")
     return CoordinatedRenderResult(mix, stems, base.state, diagnostics)
