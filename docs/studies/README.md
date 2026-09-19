@@ -1,7 +1,23 @@
 # ZG-040 preregistration and reproducible study scaffold
 
-Status: implementation/evidence contract for ZG-040 / issue #41  
+Status: **post-merge corrective-active; implementation/evidence partial; not dependency-satisfying** (issue #41 reopened 2026-09-19)  
 Manifest version: `zaaggenz-study-manifest/1.0.0`
+
+## Current corrective hold — 2026-09-19
+
+PR #211 established useful study-manifest, calibration and reporting machinery, but independent post-merge review found trust-boundary failures that make the current implementation unsafe as a prerequisite for confirmatory studies. Until issue #41 is repaired and reclosed, the remainder of this document describes the **intended contract**, not a claim that every guarantee is currently enforced.
+
+Known corrective requirements:
+
+- statistical outcome values, participant/item identity and assignment identity must be authenticated against trusted ZG-015 evidence rather than accepted beside merely well-formed hashes;
+- repeated/crossed item identity must not be inflatable by relabelling the same physical evidence;
+- amendments/deviations must be snapshotted once before validation so generators/iterators cannot erase post-outcome demotion or audit records;
+- the frozen planned observation schedule, stopping rule and missing-data denominator must be executable; omitted planned cells remain missing rather than disappearing;
+- endpoint scale, estimand, analysis method and confirmatory/exploratory role must be validated as one compatible contract;
+- each method must compute the declared estimand; descriptive-only output cannot satisfy a confirmatory primary contrast;
+- randomisation/bootstrap cardinality, memory and work need an authoritative bounded preflight plus batched execution/cancellation where necessary.
+
+The synthetic calibration and null/inconclusive semantics remain valuable evidence, but they do not override these integrity gaps. `programme/task_state.json` is authoritative and currently marks ZG-040 partial/research-active/not dependency-satisfying.
 
 ## Boundary
 
@@ -45,7 +61,7 @@ They do **not** share a compulsory endpoint. Bounded continuous, ordinal, binary
 
 A changed manifest therefore needs a content-addressed `StudyAmendment`. Amendment lineage records exact JSON-pointer paths and whether the amendment occurred prospectively or after outcome access.
 
-Post-outcome amendments are retained, but `analyse_study()` demotes the affected run from confirmatory interpretation rather than silently treating the new plan as preregistered.
+Post-outcome amendments must be retained and must demote the affected run from confirmatory interpretation rather than silently treating the new plan as preregistered. **Current 1.0 code has a single-use iterable defect that can bypass this guarantee; do not rely on it for confirmatory work until #41 is reclosed.**
 
 Operational departures use `StudyDeviation` with machine-readable phase/category/impact. A deviation may explicitly mark confirmatory interpretation invalid while retaining all observations for exploratory reporting.
 
@@ -53,7 +69,7 @@ Historical frozen evidence is never rewritten.
 
 ## Observation binding
 
-`StudyDataset` is a normalised statistical view over trusted study evidence. Every row binds:
+`StudyDataset` is intended to be a normalised statistical view over trusted study evidence. **Current 1.0 implementation does not yet authenticate caller-supplied outcome values/item identity against the referenced ZG-015 trial/result evidence; issue #41 owns that corrective boundary.** Every row is intended to bind:
 
 - pseudonymous study-local participant ID;
 - item/family ID;
