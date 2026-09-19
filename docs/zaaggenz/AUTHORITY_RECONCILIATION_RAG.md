@@ -73,7 +73,7 @@ The authority repair is deliberately serialized into three ZG-000 child issues. 
 
 ### A. Machine-readable live authority
 
-**Issue title:** `[ZG-000 authority reconciliation] Repair machine-readable live programme authority`
+**Issue:** #217 — `[ZG-000 authority reconciliation] Repair machine-readable live programme authority`
 
 Owns:
 
@@ -102,7 +102,7 @@ This issue must land before the human-facing authority issue.
 
 ### B. Human-facing authority and RAG reconciliation
 
-**Issue title:** `[ZG-000 authority reconciliation] Reconcile front-door docs and RAG with accepted main`
+**Issue:** #218 — `[ZG-000 authority reconciliation] Reconcile front-door docs and RAG with accepted main`
 
 Depends on A.
 
@@ -140,7 +140,7 @@ This issue is documentation/read-set reconciliation only. It must not edit `task
 
 ### C. Authority drift guardrails and final dispatch certification
 
-**Issue title:** `[ZG-000 authority reconciliation] Harden authority drift checks and certify ZG-043 dispatch readiness`
+**Issue:** #219 — `[ZG-000 authority reconciliation] Harden authority drift checks and certify ZG-043 dispatch readiness`
 
 Depends on A and B.
 
@@ -172,7 +172,7 @@ Required outcomes:
 
 ### D. Adjacent technical hardening before substantial ZG-043 work
 
-**Issue title:** `[ZG-042 follow-up] Enforce process/native memory evidence against long-form reservations`
+**Issue:** #220 — `[ZG-042 follow-up] Enforce process/native memory evidence against long-form reservations`
 
 This is **not** an authority-reconciliation issue and must not be described as one. It is included here because the audit found one remaining acceptance-strength gap directly relevant to ZG-043.
 
@@ -317,15 +317,15 @@ Do not manually trigger broad expensive suites merely because prose changed; let
 Required serial order:
 
 ```text
-A machine authority
+#217 machine authority
     ↓
-B human/RAG authority
+#218 human/RAG authority
     ↓
-C guardrails + ZG-000 body + final readiness certification
+#219 guardrails + ZG-000 body + final readiness certification
     ↓
 authority reconciled
     ↓
-D ZG-042 native/process-memory hardening (prefer before substantial ZG-043)
+#220 ZG-042 native/process-memory hardening (prefer before substantial ZG-043)
     ↓
 ZG-043 implementation
 ```
