@@ -1,0 +1,59 @@
+name: ZG-040 preregistration and reproducible studies
+
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_studies/**'
+      - 'tests/studies/**'
+      - 'tools/study_fixture_report.py'
+      - 'docs/studies/**'
+      - 'zaaggenz_listening/**'
+      - 'zaaggenz_qc/**'
+      - 'zaaggenz_contracts/**'
+      - 'programme/ci_reverse_dependencies.json'
+      - 'programme/task_state.json'
+      - '.github/workflows/zg040-studies.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  studies:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      NUMEXPR_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install accepted numerical/listening dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: ZG-040 study freeze, analysis, planning and adversarial tests
+        run: python -m unittest discover -s tests/studies -v
+      - name: Inherited listening and QC trust-boundary regressions
+        run: |
+          python -m unittest discover -s tests/listening -v
+          python -m unittest discover -s tests/qc -v
+      - name: Deterministic synthetic study evidence
+        run: python tools/study_fixture_report.py --out zg040-study-evidence.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg040-study-evidence-${{ matrix.os }}
+          path: zg040-study-evidence.json
+          retention-days: 14
