@@ -19,6 +19,7 @@ User intent controls the artistic target. Literature constrains factual/scientif
 | `OVERVIEW.md` | task/dependency/concurrency questions; milestone and evidence-gate context |
 | `CONTEXT_AND_DECISIONS.md` | protected behaviours, artistic target, authority and historical/current source-access distinction |
 | `PROGRAMME_STATUS_RECONCILIATION.md` | dated status/document reconciliation audit and current-state transition record |
+| `AUTHORITY_RECONCILIATION_RAG.md` | active pre-ZG-043 authority-reconciliation campaign plan, issue sequencing and autonomous execution read sets |
 | `briefs/AGENT_OPERATING_RULES.md` | every implementation/research task |
 | `briefs/VALIDATION_GATES.md` | acceptance evidence, tests, release readiness |
 | `briefs/SPECTRAL_HARMONY.md` | ZG-013/014/017–024, 029–030, 033–034 |
@@ -29,6 +30,10 @@ User intent controls the artistic target. Literature constrains factual/scientif
 | `references/SOURCES.md` | literature/provenance claims and source-specific limitations |
 | `REQUIREMENTS_TRACEABILITY.md` | why a task exists and which user requirement it addresses |
 | `WORKED_WORKFLOWS.md` | target end-to-end creative/research workflow expectations |
+
+## Active reconciliation campaign
+
+Before changing programme state, authority-bearing front-door prose, RAG/read sets or pre-ZG-043 readiness guards, read `AUTHORITY_RECONCILIATION_RAG.md`. It records the 2026-09-19 audit findings, protected authority hierarchy, serialized repair sequence and focused read sets. The campaign document is a planning/retrieval aid; live readiness remains `programme/task_state.json`.
 
 ## Suggested read sets
 
