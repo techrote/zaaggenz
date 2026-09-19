@@ -344,7 +344,7 @@ def apply_layer_pockets(stems, sample_rate_hz, plan, *, muted_roles=()):
         "plan_sha256": plan.sha256,
         "crossovers_hz": list(crossovers),
         "filter": filter_metadata(crossovers, sample_rate_hz),
-        "detector_domain": "pre-pocket role stems; muted detectors are explicit zero",
+        "detector_domain": "pre-pocket canonical detector stems; synthline/exciter are raw audition stems; muted detectors are explicit zero",
         "reconstruction": "dry + confined effect delta",
         "normalization": "none",
         "makeup_gain_db": 0.0,
