@@ -41,7 +41,7 @@ class LayerOwnershipPolicyTests(unittest.TestCase):
         self.assertEqual(a["sha256"], digest({k: v for k, v in a.items() if k != "sha256"}))
         json.dumps(a, allow_nan=False)
 
-    def test_all_canonical_roles_have_one_same_named_pre_master_stem(self):
+    def test_role_stem_domains_distinguish_raw_audition_from_pre_master_roles(self):
         manifest = ownership_manifest(self.phrase())
         policies = {row["role"]: row for row in manifest["roles"]}
         self.assertEqual(set(policies), set(CANONICAL_LAYER_ROLES))
@@ -49,12 +49,43 @@ class LayerOwnershipPolicyTests(unittest.TestCase):
         for role in CANONICAL_LAYER_ROLES:
             self.assertEqual(policies[role]["stem"], role)
             self.assertEqual(policies[role]["pocket_policy"], "explicit-only-no-makeup")
+            self.assertEqual(policies[role]["transform_bypass"], "identity-no-retune-or-reweight")
+        for role in ("synthline", "exciter"):
+            self.assertEqual(policies[role]["stem_domain"], "raw-source-audition")
+            self.assertEqual(policies[role]["audition_policy"], "independent-raw-audition-stem")
+            self.assertEqual(policies[role]["mute_scope"], "source-bus-input-before-shared-topology")
+            self.assertEqual(policies[role]["nonlinear_owner"], "shared-source-bus-topology")
+        for role in ("body", "aux", "sub"):
+            self.assertEqual(policies[role]["stem_domain"], "independent-pre-master-role")
             self.assertEqual(policies[role]["audition_policy"], "independent-pre-master-stem")
             self.assertEqual(policies[role]["mute_scope"], "role-stem-only")
-            self.assertEqual(policies[role]["transform_bypass"], "identity-no-retune-or-reweight")
+        self.assertEqual(
+            manifest["source_bus"],
+            {
+                "stem": "source_bus",
+                "position": "post-preserved-synthline-topology-pre-master",
+                "inputs": ["synthline", "exciter"],
+                "input_domain": "raw-source-audition",
+                "topology_owner": "render-recipe.synthline-graph",
+                "mute_semantics": "selected-raw-inputs-before-shared-topology",
+                "additive_decomposition": "not-guaranteed-through-nonlinear-topology",
+            },
+        )
         self.assertEqual(manifest["master"]["owner"], "render-recipe.output")
         self.assertEqual(manifest["master"]["position"], "single-final-stage")
         self.assertEqual(manifest["master"]["normalization"], "none")
+
+    def test_policy_revision_is_explicit_for_source_bus_semantics(self):
+        self.assertEqual(POLICY_VERSION, "1.1.0")
+        manifest = ownership_manifest(self.phrase())
+        self.assertEqual(manifest["version"], "1.1.0")
+        legacy = section_transition_manifest(manifest, boundary_id="section-a")
+        tampered = deepcopy(legacy)
+        tampered["version"] = "1.0.0"
+        tampered["sha256"] = digest({k: v for k, v in tampered.items() if k != "sha256"})
+        with self.assertRaises(OwnershipConflict) as caught:
+            validate_section_transition(tampered, ownership=manifest)
+        self.assertEqual(caught.exception.diagnostic["code"], "invalid-section-transition")
 
     def test_synthline_and_exciter_follow_declared_note_phase_but_persistent_layers_do_not(self):
         for phase in ("source-derived", "reset-event"):
@@ -85,8 +116,10 @@ class LayerOwnershipPolicyTests(unittest.TestCase):
         self.assertEqual(exciter["source_policy"], "derived-transient-never-synthline-substitute")
         self.assertEqual(synthline["source_identity_owner"], "protected-source")
         self.assertNotEqual(exciter["stem"], synthline["stem"])
-        self.assertEqual(synthline["audition_policy"], "independent-pre-master-stem")
-        self.assertEqual(exciter["audition_policy"], "independent-pre-master-stem")
+        self.assertEqual(synthline["audition_policy"], "independent-raw-audition-stem")
+        self.assertEqual(exciter["audition_policy"], "independent-raw-audition-stem")
+        self.assertEqual(synthline["stem_domain"], "raw-source-audition")
+        self.assertEqual(exciter["stem_domain"], "raw-source-audition")
 
     def test_legacy_projection_is_explicit_and_body_subcomponents_do_not_fake_new_wire_roles(self):
         manifest = ownership_manifest(self.phrase())
