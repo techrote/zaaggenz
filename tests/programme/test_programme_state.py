@@ -47,11 +47,11 @@ class ProgrammeStateTests(unittest.TestCase):
         # live row is now reaccepted after #118/#138; this test is about the
         # evidence-state rule, not about keeping a repaired task stale forever.
         row["dependency_satisfied"] = False
-        row["blockers"] = [{"ref": "issue:#118", "kind": "corrective"}]
+        row["blockers"] = [{"ref": "corrective:ZG-028-issue-118-repair", "kind": "corrective"}]
         ps.validate_state(candidate, root=ROOT)
         self.assertFalse(row["dependency_satisfied"])
         refs = {b["ref"] for b in row["blockers"]}
-        self.assertIn("issue:#118", refs)
+        self.assertIn("corrective:ZG-028-issue-118-repair", refs)
         self.assertIn("issue:#138:corrective-repair", row["evidence_refs"])
         self.assertIn("issue:#118:corrective-repair", row["evidence_refs"])
 
@@ -137,6 +137,92 @@ class ProgrammeStateTests(unittest.TestCase):
         self.assertTrue(integrated["dependency_satisfied"])
         self.assertEqual(integrated["blockers"], [])
         self.assertIn("pr:#215", integrated["evidence_refs"])
+
+    def test_zg024_uses_semantic_research_blocker_and_current_evidence(self) -> None:
+        row = self.state["tasks"]["ZG-024"]
+        self.assertEqual(
+            [{"ref": "research:ZG-024-eligible-candidate-heldout-generalisation", "kind": "research"}],
+            row["blockers"],
+        )
+        for ref in (
+            "pr:#187",
+            "pr:#194",
+            "pr:#195",
+            "docs:docs/inverse/CANDIDATE_PROVENANCE.md",
+            "docs:docs/inverse/TRANSIENT_PRESERVATION_GATE.md",
+            "docs:docs/inverse/TRANSIENT_V4_EVIDENCE_MIGRATION.md",
+            "docs:docs/inverse/ZG024_STAGED_PROTOCOL_V2.md",
+            "docs:docs/inverse/ZG024_STAGED_RESULT.md",
+            "docs:docs/inverse/ZG024_LINEAGE_RECONCILIATION.md",
+            "issue:#25:remaining-research-blocker",
+        ):
+            self.assertIn(ref, row["evidence_refs"])
+
+    def test_issue_number_cannot_be_live_research_blocker_identity(self) -> None:
+        bad = copy.deepcopy(self.state)
+        bad["tasks"]["ZG-024"]["blockers"] = [{"ref": "issue:#92", "kind": "research"}]
+        with self.assertRaises(ps.StateError):
+            ps.validate_state(bad, root=ROOT)
+
+    def test_zg024_issue_mirror_does_not_change_zg039_readiness(self) -> None:
+        opened = ps.with_issue_state(self.state, "ZG-024", "open")
+        closed = ps.with_issue_state(self.state, "ZG-024", "closed")
+        self.assertFalse(ps.hard_prerequisites_satisfied("ZG-039", opened, root=ROOT))
+        self.assertFalse(ps.hard_prerequisites_satisfied("ZG-039", closed, root=ROOT))
+
+    def test_zg029_points_directly_to_final_policy_1_1_evidence(self) -> None:
+        row = self.state["tasks"]["ZG-029"]
+        self.assertTrue(row["dependency_satisfied"])
+        self.assertIn("pr:#209", row["evidence_refs"])
+        self.assertIn("issue:#202:final-completion", row["evidence_refs"])
+        self.assertIn("docs:docs/zaaggenz/ZG029_LAYER_OWNERSHIP_ADR.md", row["evidence_refs"])
+
+    def test_zg045_has_no_completed_prerequisite_issue_blocker(self) -> None:
+        row = self.state["tasks"]["ZG-045"]
+        self.assertFalse(row["dependency_satisfied"])
+        self.assertEqual([], row["blockers"])
+
+    def test_unknown_dependency_blocker_fails(self) -> None:
+        bad = copy.deepcopy(self.state)
+        bad["tasks"]["ZG-043"]["blockers"] = [{"ref": "task:ZG-999", "kind": "dependency"}]
+        with self.assertRaises(ps.StateError):
+            ps.validate_state(bad, root=ROOT)
+
+    def test_missing_docs_evidence_ref_fails(self) -> None:
+        bad = copy.deepcopy(self.state)
+        bad["tasks"]["ZG-023"]["evidence_refs"].append("docs:docs/does-not-exist.md")
+        with self.assertRaises(ps.StateError):
+            ps.validate_state(bad, root=ROOT)
+
+    def test_duplicate_and_malformed_blocker_identities_fail(self) -> None:
+        bad = copy.deepcopy(self.state)
+        blocker = {"ref": "owner-gate:ZG-022-listening-default-approval", "kind": "owner_gate"}
+        bad["tasks"]["ZG-022"]["blockers"] = [blocker, copy.deepcopy(blocker)]
+        with self.assertRaises(ps.StateError):
+            ps.validate_state(bad, root=ROOT)
+
+        bad = copy.deepcopy(self.state)
+        bad["tasks"]["ZG-022"]["blockers"] = [{"ref": "owner-gate:", "kind": "owner_gate"}]
+        with self.assertRaises(ps.StateError):
+            ps.validate_state(bad, root=ROOT)
+
+    def test_readiness_table_matches_authority_reconciliation_contract(self) -> None:
+        report = ps.readiness_report(self.state, root=ROOT)
+        expected = {
+            "ZG-033": ["ZG-022"],
+            "ZG-034": ["ZG-022"],
+            "ZG-035": [],
+            "ZG-036": [],
+            "ZG-037": [],
+            "ZG-038": [],
+            "ZG-039": ["ZG-024"],
+            "ZG-043": [],
+            "ZG-044": ["ZG-022", "ZG-024", "ZG-043"],
+            "ZG-045": ["ZG-043", "ZG-044"],
+        }
+        for sid, unsatisfied in expected.items():
+            self.assertEqual(unsatisfied, report[sid]["unsatisfied_parents"])
+            self.assertEqual(not unsatisfied, report[sid]["hard_prerequisites_satisfied"])
 
     def test_unknown_task_and_wrong_issue_mapping_fail(self) -> None:
         bad = copy.deepcopy(self.state)

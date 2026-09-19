@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from copy import deepcopy
 from pathlib import Path
 
@@ -24,6 +25,17 @@ RESEARCH = {"not_applicable", "planned", "active", "accepted"}
 OWNER_GATE = {"not_applicable", "pending", "satisfied"}
 ISSUE_STATE = {"open", "closed", "unknown"}
 BLOCKER_KIND = {"dependency", "owner_gate", "research", "corrective", "external"}
+BLOCKER_PREFIX = {
+    "dependency": "task:",
+    "owner_gate": "owner-gate:",
+    "research": "research:",
+    "corrective": "corrective:",
+    "external": "external:",
+}
+BLOCKER_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
+ISSUE_EVIDENCE_RE = re.compile(r"issue:#\d+(?::[A-Za-z0-9][A-Za-z0-9._/-]*)*")
+PR_EVIDENCE_RE = re.compile(r"pr:#\d+(?::[A-Za-z0-9][A-Za-z0-9._/-]*)*")
+COMMIT_EVIDENCE_RE = re.compile(r"commit:[0-9a-fA-F]{7,64}")
 
 
 class StateError(RuntimeError):
@@ -38,6 +50,52 @@ def _require_enum(errors: list[str], sid: str, row: dict, key: str, allowed: set
     value = row.get(key)
     if value not in allowed:
         errors.append(f"{sid}: {key}={value!r} not in {sorted(allowed)}")
+
+
+def _validate_evidence_ref(errors: list[str], sid: str, ref: str, *, root: Path) -> None:
+    if ISSUE_EVIDENCE_RE.fullmatch(ref) or PR_EVIDENCE_RE.fullmatch(ref) or COMMIT_EVIDENCE_RE.fullmatch(ref):
+        return
+    if ref.startswith("docs:"):
+        rel = ref.removeprefix("docs:")
+        path = Path(rel)
+        if not rel or path.is_absolute() or ".." in path.parts:
+            errors.append(f"{sid}: invalid docs evidence ref {ref!r}")
+            return
+        if not (root / path).is_file():
+            errors.append(f"{sid}: docs evidence ref does not exist: {ref!r}")
+        return
+    errors.append(f"{sid}: invalid evidence_ref {ref!r}")
+
+
+def _validate_blocker_ref(
+    errors: list[str],
+    sid: str,
+    blocker: dict,
+    *,
+    known_tasks: set[str],
+) -> None:
+    kind = blocker.get("kind")
+    ref = blocker.get("ref")
+    if kind not in BLOCKER_KIND:
+        errors.append(f"{sid}: blocker kind {kind!r} invalid")
+        return
+    if not isinstance(ref, str) or not ref:
+        errors.append(f"{sid}: blocker ref invalid")
+        return
+
+    prefix = BLOCKER_PREFIX[kind]
+    if not ref.startswith(prefix):
+        errors.append(f"{sid}: blocker {ref!r} must use {prefix!r} for kind {kind!r}")
+        return
+    token = ref[len(prefix):]
+    if not BLOCKER_TOKEN_RE.fullmatch(token):
+        errors.append(f"{sid}: malformed blocker identity {ref!r}")
+        return
+    if kind == "dependency":
+        if not re.fullmatch(r"ZG-\d{3}", token):
+            errors.append(f"{sid}: dependency blocker must name stable task ID: {ref!r}")
+        elif token not in known_tasks:
+            errors.append(f"{sid}: dependency blocker names unknown task {token}")
 
 
 def validate_state(state: dict, *, root: Path = ROOT) -> None:
@@ -81,6 +139,10 @@ def validate_state(state: dict, *, root: Path = ROOT) -> None:
         if not isinstance(refs, list) or any(not isinstance(ref, str) or not ref for ref in refs):
             errors.append(f"{sid}: evidence_refs must be a list of non-empty strings")
             refs = []
+        elif len(refs) != len(set(refs)):
+            errors.append(f"{sid}: evidence_refs must not contain duplicates")
+        for ref in refs:
+            _validate_evidence_ref(errors, sid, ref, root=root)
         if row.get("evidence") in {"partial", "accepted"} and not refs:
             errors.append(f"{sid}: {row.get('evidence')} evidence requires evidence_refs")
         if row.get("evidence") == "none" and refs:
@@ -90,14 +152,17 @@ def validate_state(state: dict, *, root: Path = ROOT) -> None:
         if not isinstance(blockers, list):
             errors.append(f"{sid}: blockers must be a list")
             blockers = []
+        blocker_refs: set[str] = set()
         for i, blocker in enumerate(blockers):
             if not isinstance(blocker, dict):
                 errors.append(f"{sid}: blockers[{i}] must be object")
                 continue
-            if blocker.get("kind") not in BLOCKER_KIND:
-                errors.append(f"{sid}: blockers[{i}].kind invalid")
-            if not isinstance(blocker.get("ref"), str) or not blocker["ref"]:
-                errors.append(f"{sid}: blockers[{i}].ref invalid")
+            _validate_blocker_ref(errors, sid, blocker, known_tasks=expected)
+            ref = blocker.get("ref")
+            if isinstance(ref, str):
+                if ref in blocker_refs:
+                    errors.append(f"{sid}: duplicate blocker identity {ref!r}")
+                blocker_refs.add(ref)
 
         mirror = row.get("github_issue")
         if not isinstance(mirror, dict):
