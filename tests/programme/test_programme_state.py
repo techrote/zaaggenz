@@ -94,18 +94,24 @@ class ProgrammeStateTests(unittest.TestCase):
         self.assertEqual(before, ps.hard_prerequisites_satisfied("ZG-025", opened, root=ROOT))
 
     def test_readiness_follows_parent_evidence_not_child_issue_state(self) -> None:
-        # ZG-033 is blocked by unsatisfied ZG-022 and corrective-active ZG-040 regardless of its own issue state.
+        # ZG-033 remains blocked by the unsatisfied ZG-022 owner gate; repaired
+        # ZG-040 is now accepted prerequisite evidence.
         report = ps.readiness_report(self.state, root=ROOT)["ZG-033"]
         self.assertFalse(report["hard_prerequisites_satisfied"])
-        self.assertEqual(report["unsatisfied_parents"], ["ZG-022", "ZG-040"])
+        self.assertEqual(report["unsatisfied_parents"], ["ZG-022"])
 
-    def test_post_merge_corrective_state_is_scoped_to_unrepaired_task(self) -> None:
+    def test_post_merge_corrective_reacceptance_is_scoped_to_repaired_task(self) -> None:
         study = self.state["tasks"]["ZG-040"]
         performance = self.state["tasks"]["ZG-042"]
-        self.assertEqual((study["implementation"], study["evidence"], study["research"]), ("partial", "partial", "active"))
-        self.assertFalse(study["dependency_satisfied"])
-        self.assertEqual(study["github_issue"]["state"], "open")
-        self.assertIn("issue:#41:post-merge-corrective", {b["ref"] for b in study["blockers"]})
+        self.assertEqual(
+            (study["implementation"], study["evidence"], study["research"]),
+            ("accepted", "accepted", "accepted"),
+        )
+        self.assertTrue(study["dependency_satisfied"])
+        self.assertEqual(study["github_issue"]["state"], "closed")
+        self.assertEqual(study["blockers"], [])
+        self.assertIn("pr:#214", study["evidence_refs"])
+        self.assertIn("issue:#41:corrective-reacceptance", study["evidence_refs"])
         self.assertEqual((performance["implementation"], performance["evidence"]), ("accepted", "accepted"))
         self.assertTrue(performance["dependency_satisfied"])
         self.assertEqual(performance["github_issue"]["state"], "closed")

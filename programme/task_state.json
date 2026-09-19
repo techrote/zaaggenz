@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "snapshot_date": "2026-09-15",
+  "snapshot_date": "2026-09-19",
   "authority": "accepted-evidence-v1",
   "note": "GitHub issue state is an informational mirror only. dependency_satisfied is an evidence/gate decision and is never derived from issue open/closed state.",
   "tasks": {
@@ -43,7 +43,7 @@
     "ZG-037": {"implementation":"not_started","evidence":"none","research":"planned","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":38,"state":"open"}},
     "ZG-038": {"implementation":"not_started","evidence":"none","research":"planned","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":39,"state":"open"}},
     "ZG-039": {"implementation":"not_started","evidence":"none","research":"planned","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":40,"state":"open"}},
-    "ZG-040": {"implementation":"partial","evidence":"partial","research":"active","owner_gate":"not_applicable","blockers":[{"ref":"issue:#41:post-merge-corrective","kind":"corrective"}],"dependency_satisfied":false,"evidence_refs":["pr:#211","issue:#41:accepted-completion-record","issue:#41:post-merge-review","docs:docs/studies/README.md"],"github_issue":{"number":41,"state":"open"}},
+    "ZG-040": {"implementation":"accepted","evidence":"accepted","research":"accepted","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["pr:#211","issue:#41:accepted-completion-record","issue:#41:post-merge-review","pr:#214","issue:#41:corrective-reacceptance","docs:docs/studies/README.md"],"github_issue":{"number":41,"state":"closed"}},
     "ZG-041": {"implementation":"not_started","evidence":"none","research":"not_applicable","owner_gate":"not_applicable","blockers":[{"ref":"issue:#95","kind":"corrective"},{"ref":"issue:#102","kind":"corrective"}],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":42,"state":"open"}},
     "ZG-042": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["pr:#210","issue:#43:accepted-completion-record","issue:#43:post-merge-review","pr:#213","issue:#43:corrective-reacceptance","docs:docs/performance/ZG042_LONGFORM.md"],"github_issue":{"number":43,"state":"closed"}},
     "ZG-043": {"implementation":"not_started","evidence":"none","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":44,"state":"open"}},
