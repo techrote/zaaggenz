@@ -30,11 +30,11 @@ The current persistent generator is intentionally narrow: the caller must explic
 
 ## Protected SYNTHLINE and exciter path
 
-The base recipe is rendered through `zaaggenz_melody.render_phrase()`. Its exact raw `synthline` and `exciter` stems are retained in the coordinated result.
+The base recipe is rendered through `zaaggenz_melody.render_phrase()`. Its exact raw `synthline` and `exciter` audition/null stems are retained in the coordinated result. The accepted unmuted ZG-008 post-topology source contribution is retained exactly as the explicit processed `source_bus`.
 
 Harmony voices carrying role `synthline` are recorded in the runtime trace as `source-owned-not-resynthesized`; the coordinator does not create replacement PCM for them. This is the executable source-preservation rule required by ZG-029 and corrective issue #202.
 
-Role-scoped muting happens before the protected SYNTHLINE graph is applied. Therefore a mute cannot be simulated by deleting an already-processed full mix. Existing compatible SYNTHLINE topology is then executed by the same preserved-topology path used by ZG-008.
+Role-scoped source muting/solo happens before the protected shared SYNTHLINE graph is applied. The raw audition stems remain unchanged as evidence; only their assembly participation changes. Therefore a source mute cannot be simulated by deleting an already-processed full mix. With no source-role mute, `source_bus` is the accepted ZG-008 `pre_master` source contribution bit-for-bit. With a source-role mute/solo, the selected exposed raw stem inputs are passed through the same preserved topology. Under nonlinear topology the resulting solo buses are intentionally **not** expected to add back to the unmuted bus.
 
 ## Persistent BODY/AUX/SUB state
 
@@ -78,20 +78,20 @@ This is coordination, not a replacement for ZG-017 spectral tracking or ZG-020 a
 
 ## Stems, routing and final master
 
-A coordinated result exposes same-named role stems:
+A coordinated result exposes three distinct domains:
 
-- `synthline`;
-- `exciter`;
-- `body`;
-- `aux`;
-- `sub`; and
+- raw source-owned audition/null stems: `synthline`, `exciter`;
+- one processed post-topology source contribution: `source_bus`;
+- independently additive persistent pre-master role stems: `body`, `aux`, `sub`;
 - assembled `pre_master`.
 
-BODY/AUX/SUB generator PCM is pre-master and is not passed through the protected SYNTHLINE graph. Future role-local nonlinear stages require an explicit owner/stage contract; they are not inferred here.
+For an unmuted render, `pre_master = source_bus + body + aux + sub` within the float32 numerical policy. If a persistent role is muted, its retained audition stem is excluded from assembly. Source-role mute/solo changes `source_bus` by selecting raw SYNTHLINE/exciter inputs before the shared topology; it does not mutate those raw stems.
+
+BODY/AUX/SUB generator PCM is pre-master and is not passed through the protected SYNTHLINE graph. The preserved SYNTHLINE graph is owned by the shared `source_bus`, not cloned separately onto raw SYNTHLINE and exciter. Future persistent role-local nonlinear stages require an explicit owner/stage contract; they are not inferred here.
 
 The only final output operation is the base `RenderRecipe.output` policy, applied once after role assembly. No normalization, makeup gain or automatic energy restoration is introduced. Stem and final-mix PCM hashes are recorded in diagnostics for null/regression evidence.
 
-ZG-030 remains the owner of layer-aware subtractive pockets and measured sidechain separation. It must consume these role stems and preserve the single-final-master/no-hidden-makeup rule.
+ZG-030 owns layer-aware subtractive pockets and measured sidechain separation. It may use raw SYNTHLINE/exciter stems as explicitly named detectors, but yielding edits remain confined to BODY/AUX/SUB persistent pre-master stems. It must not decompose or rewrite `source_bus`, and it preserves the single-final-master/no-hidden-makeup rule.
 
 ## Fail-closed boundaries
 
@@ -115,8 +115,10 @@ The runtime returns structured diagnostics instead of silently dropping/rebindin
 
 `tests/layers/test_runtime.py` exercises the real ZG-008 renderer plus real harmony progression output. It covers:
 
-- exact SYNTHLINE/exciter PCM preservation;
-- independently addressable BODY/AUX/SUB stems and role mute boundaries;
+- exact raw SYNTHLINE/exciter PCM preservation;
+- exact unmuted processed `source_bus` preservation from ZG-008;
+- linear source-bus reconstruction and nonlinear non-additivity/mute-before-topology evidence;
+- independently addressable BODY/AUX/SUB pre-master stems and role mute boundaries;
 - fixed-pedal versus moving-root SUB;
 - layer-scoped upper retune that leaves SUB unchanged;
 - unordered transform conflict and explicitly ordered execution trace;
@@ -132,4 +134,4 @@ The ZG-029 workflow runs this suite on Ubuntu and Windows together with inherite
 
 This runtime does not claim to implement ZG-030 pocket/sidechain DSP, a new persistent-layer timbre library, automatic adaptive/spectral target selection, or a new frozen contract version. It supplies the executable state/stem/ownership layer those later systems require.
 
-The earlier ownership ADR contains historical wording that persistent BODY/AUX/SUB execution was still future ZG-029 work. That statement describes the pre-runtime state in which the ADR was accepted; this document is the implementation record that supersedes that status while retaining the ADR's policy decisions unchanged.
+The ownership ADR originated before persistent BODY/AUX/SUB execution existed. Runtime implementation superseded that historical status, and corrective #202 subsequently revised the ownership policy to 1.1.0 so raw source audition stems are no longer mislabeled as independent post-topology pre-master contributions. No frozen ZG-002 contract or accepted unmuted audio path changes as a result.
