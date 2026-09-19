@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import unittest
 
 from zaaggenz_jobs import JobClass, SchedulerLimits
@@ -10,6 +11,7 @@ from zaaggenz_performance import (
     chunk_policy,
     estimate_longform_bars,
     estimate_workload,
+    persistent_sequence_memory_bound,
     recommended_section_bars,
     require_chunk_count,
 )
@@ -43,7 +45,7 @@ class WorkloadPolicyTests(unittest.TestCase):
             with self.subTest(workload=estimate.workload):
                 meta = estimate.metadata()
                 self.assertEqual(meta["policy_id"], "zaaggenz.workload-cost")
-                self.assertEqual(meta["version"], "1.0.0")
+                self.assertEqual(meta["version"], "1.1.0")
                 self.assertGreater(meta["estimated_live_bytes"], 0)
                 self.assertGreater(meta["work_units"], 0)
                 self.assertEqual(meta["numeric_threads"], 1)
@@ -59,7 +61,7 @@ class WorkloadPolicyTests(unittest.TestCase):
         self.assertLessEqual(reserved, limits.max_preview_memory_bytes)
         self.assertLessEqual(reserved, limits.interactive_memory_reserve_bytes)
 
-    def test_64_bar_full_rate_cost_requires_sectioning_before_background_admission(self):
+    def test_64_bar_full_rate_plan_uses_authoritative_sequence_bound(self):
         limits = SchedulerLimits()
         full = estimate_longform_bars(
             64, sample_rate_hz=48000, bpm=200.0
@@ -73,17 +75,45 @@ class WorkloadPolicyTests(unittest.TestCase):
         section_bars = recommended_section_bars(
             64, sample_rate_hz=48000, bpm=200.0, limits=limits
         )
-        self.assertGreaterEqual(section_bars, 1)
-        self.assertLess(section_bars, 64)
-        section = estimate_longform_bars(
-            section_bars, sample_rate_hz=48000, bpm=200.0
+        self.assertEqual(section_bars, 20)
+        peak_frames = bar_frame_count(section_bars, 48000, 200.0)
+        section_count = int(math.ceil(64 / section_bars))
+        required = persistent_sequence_memory_bound(
+            full.frames,
+            peak_frames,
+            sample_rate_hz=48000,
+            section_count=section_count,
+            retained_output_stems=5,
         )
-        retained = full.frames * 5 * 4
         hard = min(
             limits.max_job_memory_bytes,
             limits.max_memory_bytes - limits.interactive_memory_reserve_bytes,
         )
-        self.assertLessEqual(section.estimated_live_bytes + retained, hard)
+        self.assertLessEqual(required, hard)
+
+        next_candidate = section_bars + 1
+        rejected = persistent_sequence_memory_bound(
+            full.frames,
+            bar_frame_count(next_candidate, 48000, 200.0),
+            sample_rate_hz=48000,
+            section_count=int(math.ceil(64 / next_candidate)),
+            retained_output_stems=5,
+        )
+        self.assertGreater(rejected, hard)
+
+    def test_sequence_bound_includes_retained_output_and_orchestration_headroom(self):
+        total = bar_frame_count(16, 12000, 240.0)
+        peak = bar_frame_count(4, 12000, 240.0)
+        bound = persistent_sequence_memory_bound(
+            total, peak, sample_rate_hz=12000, section_count=4
+        )
+        raw_components = (
+            estimate_workload(
+                "persistent-layer-render", frames=peak, sample_rate_hz=12000
+            ).estimated_live_bytes
+            + total * 5 * 4
+        )
+        self.assertGreaterEqual(bound - raw_components, 36 * 1024 * 1024)
 
     def test_4_16_64_bar_estimates_scale_without_changing_quality(self):
         estimates = [
@@ -111,6 +141,7 @@ class WorkloadPolicyTests(unittest.TestCase):
         policy = require_chunk_count("persistent-layer-render", 64)
         self.assertTrue(policy.exact_chunking_supported)
         self.assertEqual(policy.mode, "explicit-section-state")
+        self.assertIn("unserialized", policy.reason)
         self.assertEqual(
             chunk_policy("band-processing").mode, "whole-signal-zero-phase"
         )

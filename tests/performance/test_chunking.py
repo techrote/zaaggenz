@@ -4,6 +4,7 @@ import sys
 import threading
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -92,6 +93,24 @@ def _fixture():
     return whole_recipe, full, runtime, sections
 
 
+def _unfinished_glide_fixture():
+    _, _, _, sections = _fixture()
+    runtime = LayerRuntimeSpec(
+        tuple(
+            LayerGeneratorSpec(role, "sine", -30.0, 1500, 128, 0.125)
+            for role in ("body", "aux", "sub")
+        )
+    )
+    repeated_second = LayerSection(
+        sections[1].recipe,
+        sections[1].progression,
+        sections[1].frame_beats,
+        sections[1].duration_beats,
+        "perf-third-same-target",
+    )
+    return runtime, sections + (repeated_second,)
+
+
 class ChunkEquivalenceTests(unittest.TestCase):
     def test_persistent_sections_match_whole_render_through_glide_release_and_phase_state(self):
         recipe, progression, runtime, sections = _fixture()
@@ -107,6 +126,13 @@ class ChunkEquivalenceTests(unittest.TestCase):
                 chunked.stems[name], whole.stems[name], rtol=0, atol=3e-7
             )
         self.assertEqual(chunked.state.to_dict(), whole.state.to_dict())
+
+    def test_unfinished_glide_boundary_fails_before_any_pcm_render(self):
+        runtime, sections = _unfinished_glide_fixture()
+        with patch("zaaggenz_performance.sections.render_coordinated_layers") as render:
+            with self.assertRaisesRegex(PerformanceError, "unfinished glide"):
+                render_persistent_sections(sections, runtime)
+        render.assert_not_called()
 
     def test_source_phrase_chunking_is_not_silently_claimed_equivalent(self):
         _, _, runtime, sections = _fixture()
@@ -146,6 +172,104 @@ class ChunkEquivalenceTests(unittest.TestCase):
         self.assertNotEqual(len(whole.anchors), len(left.anchors) + len(right.anchors))
         with self.assertRaises(PerformanceError):
             require_chunk_count("multiresolution-analysis", 2)
+
+    def test_submit_uses_one_deep_immutable_snapshot_after_admission(self):
+        _, _, runtime, sections = _fixture()
+        scheduler = JobScheduler(
+            SchedulerLimits(
+                interactive_workers=1,
+                background_workers=1,
+                max_memory_bytes=256 * 1024 * 1024,
+                interactive_memory_reserve_bytes=64 * 1024 * 1024,
+                max_job_memory_bytes=192 * 1024 * 1024,
+            )
+        )
+        started = threading.Event()
+        release = threading.Event()
+
+        def hold(ctx):
+            started.set()
+            release.wait(5)
+            ctx.check_cancelled()
+            return "done"
+
+        try:
+            blocker = scheduler.submit(
+                JobClass.BATCH, "b" * 64, hold, estimated_memory_bytes=1
+            )
+            self.assertTrue(started.wait(2))
+
+            recipe_dict = (
+                sections[0].recipe.to_dict()
+                if hasattr(sections[0].recipe, "to_dict")
+                else dict(sections[0].recipe)
+            )
+            mutable_first = LayerSection(
+                recipe_dict,
+                sections[0].progression,
+                sections[0].frame_beats,
+                sections[0].duration_beats,
+                sections[0].boundary_id,
+            )
+            mutable_sections = [mutable_first, sections[1]]
+            job = submit_persistent_sections(
+                scheduler, "a" * 64, mutable_sections, runtime
+            )
+
+            # Mutate both the outer sequence and nested recipe after admission. Neither
+            # mutation may change the already-reserved execution snapshot.
+            mutable_sections.append(sections[1])
+            recipe_dict["phrase"]["end_beat"] = "2/1"
+
+            release.set()
+            scheduler.wait(blocker, 5)
+            snapshot = scheduler.wait(job, 5)
+            self.assertEqual(snapshot.state, "completed")
+            result = scheduler.result(job)
+            self.assertEqual(len(result.mix), 2000)
+        finally:
+            release.set()
+            scheduler.shutdown(cancel=True)
+
+    def test_one_shot_section_iterator_is_snapshotted_once_and_executes(self):
+        _, _, runtime, sections = _fixture()
+        scheduler = JobScheduler(
+            SchedulerLimits(
+                interactive_workers=1,
+                background_workers=1,
+                max_memory_bytes=256 * 1024 * 1024,
+                interactive_memory_reserve_bytes=64 * 1024 * 1024,
+                max_job_memory_bytes=192 * 1024 * 1024,
+            )
+        )
+        try:
+            one_shot = iter(sections)
+            job = submit_persistent_sections(
+                scheduler, "d" * 64, one_shot, runtime
+            )
+            snapshot = scheduler.wait(job, 5)
+            self.assertEqual(snapshot.state, "completed")
+            self.assertEqual(len(scheduler.result(job).mix), 2000)
+            self.assertEqual(list(one_shot), [])
+        finally:
+            scheduler.shutdown(cancel=True)
+
+    def test_cancel_is_checked_before_retained_output_allocation(self):
+        _, _, runtime, sections = _fixture()
+
+        class AlreadyCancelled:
+            def check_cancelled(self):
+                raise RuntimeError("cancel-before-allocation")
+
+            def progress(self, _value):
+                raise AssertionError("progress must not be reached")
+
+        with patch("zaaggenz_performance.sections.np.empty") as empty:
+            with self.assertRaisesRegex(RuntimeError, "cancel-before-allocation"):
+                render_persistent_sections(
+                    sections, runtime, job_context=AlreadyCancelled()
+                )
+        empty.assert_not_called()
 
     def test_longform_wrapper_uses_background_lane_and_preview_lane_remains_available(self):
         _, _, runtime, sections = _fixture()

@@ -99,17 +99,19 @@ class ProgrammeStateTests(unittest.TestCase):
         self.assertFalse(report["hard_prerequisites_satisfied"])
         self.assertEqual(report["unsatisfied_parents"], ["ZG-022", "ZG-040"])
 
-    def test_post_merge_corrective_tasks_are_not_dependency_satisfied(self) -> None:
+    def test_post_merge_corrective_state_is_scoped_to_unrepaired_task(self) -> None:
         study = self.state["tasks"]["ZG-040"]
         performance = self.state["tasks"]["ZG-042"]
         self.assertEqual((study["implementation"], study["evidence"], study["research"]), ("partial", "partial", "active"))
         self.assertFalse(study["dependency_satisfied"])
         self.assertEqual(study["github_issue"]["state"], "open")
         self.assertIn("issue:#41:post-merge-corrective", {b["ref"] for b in study["blockers"]})
-        self.assertEqual((performance["implementation"], performance["evidence"]), ("partial", "partial"))
-        self.assertFalse(performance["dependency_satisfied"])
-        self.assertEqual(performance["github_issue"]["state"], "open")
-        self.assertIn("issue:#43:post-merge-corrective", {b["ref"] for b in performance["blockers"]})
+        self.assertEqual((performance["implementation"], performance["evidence"]), ("accepted", "accepted"))
+        self.assertTrue(performance["dependency_satisfied"])
+        self.assertEqual(performance["github_issue"]["state"], "closed")
+        self.assertEqual(performance["blockers"], [])
+        self.assertIn("pr:#213", performance["evidence_refs"])
+        self.assertIn("issue:#43:corrective-reacceptance", performance["evidence_refs"])
 
     def test_unknown_task_and_wrong_issue_mapping_fail(self) -> None:
         bad = copy.deepcopy(self.state)

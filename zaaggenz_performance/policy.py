@@ -9,8 +9,14 @@ from zaaggenz_jobs import JobClass, SchedulerLimits
 from zaaggenz_jobs.memory import authoritative_memory_reservation
 
 POLICY_ID = "zaaggenz.workload-cost"
-POLICY_VERSION = "1.0.0"
+POLICY_VERSION = "1.1.0"
 MAX_SOURCE_FRAMES = 192000 * 60 * 60  # one hour at the highest accepted sample rate
+
+# Sequence-level Python/runtime objects are not part of the per-section DSP estimate.
+# Reserve explicit headroom for the immutable execution snapshot, retained diagnostics,
+# allocator overlap and orchestration state. These are admission bounds, not allocations.
+PERSISTENT_SEQUENCE_FIXED_OVERHEAD_BYTES = 32 * 1024 * 1024
+PERSISTENT_SEQUENCE_OVERHEAD_BYTES_PER_SECTION = 1 * 1024 * 1024
 
 
 class PerformanceError(ValueError):
@@ -105,8 +111,9 @@ def chunk_policy(workload):
             "sosfiltfilt crossovers are offline zero-phase and naive chunk edges change the transfer result",
         ),
         "persistent-layer-render": ChunkPolicy(
-            "persistent-layer-render", "explicit-section-state", True, "ZG-029 section boundary",
-            "BODY/AUX/SUB oscillator, glide and tail state can continue exactly only through explicit LayerSectionTransition state",
+            "persistent-layer-render", "explicit-section-state", True, "ZG-029 representable section boundary",
+            "BODY/AUX/SUB phase/target/tail state can continue through explicit LayerSectionTransition state; "
+            "boundaries through unserialized in-progress glide trajectories fail closed",
         ),
     }
     try:
@@ -266,6 +273,30 @@ def estimate_workload(workload, *, frames, sample_rate_hz, channels=1, quality="
     raise PerformanceError(f"unknown workload: {workload!r}")
 
 
+def persistent_sequence_memory_bound(total_frames, peak_section_frames, *, sample_rate_hz,
+                                     section_count, retained_output_stems=5):
+    """Authoritative live-byte reservation for retained persistent-section execution."""
+    _dims(total_frames, sample_rate_hz, 1)
+    _dims(peak_section_frames, sample_rate_hz, 1)
+    if peak_section_frames <= 0 or peak_section_frames > total_frames:
+        raise PerformanceError("peak_section_frames must be in 1..total_frames")
+    if type(section_count) is not int or type(section_count) is bool or section_count < 1:
+        raise PerformanceError("section_count must be a positive integer")
+    if type(retained_output_stems) is not int or type(retained_output_stems) is bool or not 1 <= retained_output_stems <= 16:
+        raise PerformanceError("retained_output_stems must be in 1..16")
+    retained = total_frames * retained_output_stems * 4
+    working = estimate_workload(
+        "persistent-layer-render",
+        frames=peak_section_frames,
+        sample_rate_hz=sample_rate_hz,
+    ).estimated_live_bytes
+    orchestration = (
+        PERSISTENT_SEQUENCE_FIXED_OVERHEAD_BYTES
+        + section_count * PERSISTENT_SEQUENCE_OVERHEAD_BYTES_PER_SECTION
+    )
+    return int(retained + working + orchestration)
+
+
 def bar_frame_count(bar_count, sample_rate_hz, bpm, beats_per_bar=4):
     if type(bar_count) is not int or type(bar_count) is bool or not 1 <= bar_count <= 4096:
         raise PerformanceError("bar_count must be in 1..4096")
@@ -314,21 +345,25 @@ def admission_memory(estimate, *, job_class, limits=SchedulerLimits(), requested
 
 def recommended_section_bars(bar_count, *, sample_rate_hz, bpm, beats_per_bar=4,
                              limits=SchedulerLimits(), retained_output_stems=5):
-    if type(retained_output_stems) is not int or not 1 <= retained_output_stems <= 16:
+    if type(retained_output_stems) is not int or type(retained_output_stems) is bool or not 1 <= retained_output_stems <= 16:
         raise PerformanceError("retained_output_stems must be in 1..16")
     total_frames = bar_frame_count(bar_count, sample_rate_hz, bpm, beats_per_bar)
-    retained = total_frames * retained_output_stems * 4
     lane = min(
         limits.max_job_memory_bytes,
         limits.max_memory_bytes - limits.interactive_memory_reserve_bytes,
     )
     best = 0
     for candidate in range(1, bar_count + 1):
-        frames = bar_frame_count(candidate, sample_rate_hz, bpm, beats_per_bar)
-        working = estimate_workload(
-            "persistent-layer-render", frames=frames, sample_rate_hz=sample_rate_hz
-        ).estimated_live_bytes
-        if working + retained <= lane:
+        peak_frames = bar_frame_count(candidate, sample_rate_hz, bpm, beats_per_bar)
+        section_count = int(math.ceil(bar_count / candidate))
+        required = persistent_sequence_memory_bound(
+            total_frames,
+            peak_frames,
+            sample_rate_hz=sample_rate_hz,
+            section_count=section_count,
+            retained_output_stems=retained_output_stems,
+        )
+        if required <= lane:
             best = candidate
         else:
             break
