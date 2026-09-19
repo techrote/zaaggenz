@@ -33,8 +33,9 @@ from zaaggenz_melody import (
     make_melodic_recipe, make_phrase_plan, note_event, render_phrase, rest_event,
 )
 from zaaggenz_performance import (
-    LayerSection, estimate_longform_bars, estimate_workload,
-    recommended_section_bars, render_persistent_sections, submit_persistent_sections,
+    LayerSection, admission_memory, estimate_longform_bars,
+    estimate_persistent_sequence, estimate_workload, recommended_section_bars,
+    render_persistent_sections, submit_persistent_sections,
 )
 
 
@@ -126,6 +127,15 @@ def _harmony(tuning):
     return tuple(rows)
 
 
+def _runtime_spec():
+    return LayerRuntimeSpec(
+        tuple(
+            LayerGeneratorSpec(role, "sine", -30.0, 64, 128, 0.125)
+            for role in ("body", "aux", "sub")
+        )
+    )
+
+
 def _long_fixture(sample_rate, bpm, bars_per_section=4):
     params = adapt_parameters(
         "synth", {"sr": sample_rate, "bpm": bpm, "beats": 1, "f0_hz": 48.0}
@@ -141,12 +151,7 @@ def _long_fixture(sample_rate, bpm, bars_per_section=4):
         params, time_map, tuning, phrase, quality="standard", tail_mode="truncate"
     )
     progressions = _harmony(tuning)
-    runtime = LayerRuntimeSpec(
-        tuple(
-            LayerGeneratorSpec(role, "sine", -30.0, 64, 128, 0.125)
-            for role in ("body", "aux", "sub")
-        )
-    )
+    runtime = _runtime_spec()
 
     def sections(bar_count):
         if bar_count % bars_per_section:
@@ -163,6 +168,33 @@ def _long_fixture(sample_rate, bpm, bars_per_section=4):
     return recipe, runtime, sections
 
 
+def _planned_long_sections(sample_rate, bpm, bar_plan):
+    params = adapt_parameters(
+        "synth", {"sr": sample_rate, "bpm": bpm, "beats": 1, "f0_hz": 48.0}
+    )
+    frozen = freeze_legacy(params).to_dict()
+    tuning, time_map = frozen["tuning"], frozen["time_map"]
+    progressions = _harmony(tuning)
+    sections = []
+    for index, bars in enumerate(bar_plan):
+        beats = bars * 4
+        phrase = make_phrase_plan(
+            tuning["id"],
+            [rest_event(f"full-rate-rest-{index}", "0/1", f"{beats}/1")],
+            start_beat="0/1", end_beat=f"{beats}/1", bass_role="moving",
+        )
+        recipe = make_melodic_recipe(
+            params, time_map, tuning, phrase, quality="standard", tail_mode="truncate"
+        )
+        sections.append(
+            LayerSection(
+                recipe, progressions[index % len(progressions)], ("0/1",),
+                f"{beats}/1", f"full-rate-s{index:04d}",
+            )
+        )
+    return _runtime_spec(), tuple(sections)
+
+
 def _note_fixture(sample_rate, bpm, quality):
     params = adapt_parameters(
         "synth", {"sr": sample_rate, "bpm": bpm, "beats": 1, "f0_hz": 48.0}
@@ -177,6 +209,16 @@ def _note_fixture(sample_rate, bpm, quality):
     return make_melodic_recipe(
         params, time_map, tuning, phrase, quality=quality, tail_mode="truncate"
     )
+
+
+def _bar_plan(total_bars, section_bars):
+    plan = []
+    remaining = total_bars
+    while remaining:
+        current = min(section_bars, remaining)
+        plan.append(current)
+        remaining -= current
+    return tuple(plan)
 
 
 def main():
@@ -204,48 +246,51 @@ def main():
     note_frames = int(round(sr * 60.0 / args.bpm))
     measurements = []
 
-    _, row = _measure(
+    measured, row = _measure(
         "note-render",
         estimate_workload(
             "note-render", frames=note_frames, sample_rate_hz=sr, quality=args.quality
         ),
         lambda: render_phrase(note_recipe),
     )
+    del measured
     measurements.append(row)
 
-    _, row = _measure(
+    measured, row = _measure(
         "multiresolution-analysis",
         estimate_workload("multiresolution-analysis", frames=frames, sample_rate_hz=sr),
         lambda: analyse_multiresolution(source, sr),
     )
+    del measured
     measurements.append(row)
 
-    _, row = _measure(
+    measured, row = _measure(
         "component-tracking",
         estimate_workload("component-tracking", frames=frames, sample_rate_hz=sr),
         lambda: analyse_components(source, sr),
     )
+    del measured
     measurements.append(row)
 
     crossovers = (60.0, min(500.0, sr * 0.12), min(1800.0, sr * 0.40))
-    _, row = _measure(
+    measured, row = _measure(
         "band-processing",
         estimate_workload("band-processing", frames=frames, sample_rate_hz=sr),
         lambda: multiband_gain(source, sr, crossovers, (0.0, -6.0, 3.0, 0.0)),
     )
+    del measured
     measurements.append(row)
 
     _, runtime, section_builder = _long_fixture(sr, args.bpm)
     for bars in (4, 16, 64):
         sections = section_builder(bars)
-        estimate = estimate_longform_bars(
-            bars, sample_rate_hz=sr, bpm=args.bpm
-        )
-        _, row = _measure(
+        estimate = estimate_persistent_sequence(sections)
+        measured, row = _measure(
             f"persistent-layer-{bars}-bar",
             estimate,
             lambda sections=sections: render_persistent_sections(sections, runtime),
         )
+        del measured
         row["bars"] = bars
         row["sections"] = len(sections)
         measurements.append(row)
@@ -276,19 +321,51 @@ def main():
     finally:
         scheduler.shutdown(cancel=True)
 
-    full_rate_projection = {
-        "64_bar_48khz_200bpm": estimate_longform_bars(
+    # The advertised product-scale plan is now executed, not merely projected. Acceptance
+    # requires its Python traced peak to fit the exact reservation used by scheduler admission.
+    default_limits = SchedulerLimits()
+    section_bars = recommended_section_bars(
+        64, sample_rate_hz=48000, bpm=200.0, limits=default_limits
+    )
+    plan = _bar_plan(64, section_bars)
+    full_runtime, full_sections = _planned_long_sections(48000, 200.0, plan)
+    full_estimate = estimate_persistent_sequence(full_sections)
+    full_reserved = admission_memory(
+        full_estimate, job_class=JobClass.BATCH, limits=default_limits
+    )
+    full_result, full_measurement = _measure(
+        "persistent-layer-64-bar-full-rate-accepted-plan",
+        full_estimate,
+        lambda: render_persistent_sections(full_sections, full_runtime),
+    )
+    del full_result
+    full_measurement["bars"] = 64
+    full_measurement["section_plan_bars"] = list(plan)
+    full_measurement["reserved_memory_bytes"] = full_reserved
+    full_measurement["tracemalloc_within_reservation"] = (
+        full_measurement["tracemalloc_peak_bytes"] <= full_reserved
+    )
+    if not full_measurement["tracemalloc_within_reservation"]:
+        raise RuntimeError(
+            "full-rate accepted plan exceeded its authoritative memory reservation: "
+            f"{full_measurement['tracemalloc_peak_bytes']} > {full_reserved}"
+        )
+
+    full_rate_evidence = {
+        "one_job_64_bar_projection": estimate_longform_bars(
             64, sample_rate_hz=48000, bpm=200.0
         ).metadata(),
-        "recommended_section_bars_default_scheduler": recommended_section_bars(
-            64, sample_rate_hz=48000, bpm=200.0
-        ),
+        "recommended_section_bars_default_scheduler": section_bars,
+        "accepted_section_plan_bars": list(plan),
+        "sequence_estimate": full_estimate.metadata(),
+        "admission_reserved_bytes": full_reserved,
+        "measurement": full_measurement,
     }
 
     ranked = sorted(measurements, key=lambda item: item["elapsed_ms"], reverse=True)
     report = {
         "kind": "ZG042PerformanceBenchmark",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "scope": "host-measured; not a universal realtime guarantee",
         "configuration": {
             "sample_rate_hz": sr,
@@ -318,7 +395,7 @@ def main():
             "background_state_at_preview_completion": background_at_preview,
             "lane_contract": "long-form=BATCH/background; preview=PREVIEW/interactive",
         },
-        "full_rate_planning_projection": full_rate_projection,
+        "full_rate_memory_evidence": full_rate_evidence,
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2, allow_nan=False) + "\n", encoding="utf-8")
