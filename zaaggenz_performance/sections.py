@@ -119,8 +119,17 @@ def render_persistent_sections(sections, runtime_spec, *,
             "SYNTHLINE/exciter must be muted rather than arbitrarily chunked"
         )
 
+    estimate = estimate_persistent_sequence(sections)
+    total_frames = estimate.frames
+    names = ("body", "aux", "sub", "pre_master")
+    # Preallocate only retained long-form products. Full per-section raw source/source_bus
+    # evidence remains owned by the section result and can be released after copying, so
+    # sequence memory is bounded by one section working set plus these retained arrays.
+    mix = np.empty(total_frames, dtype=np.float32)
+    stems = {name: np.empty(total_frames, dtype=np.float32) for name in names}
+    diagnostics = []
     state = None
-    results = []
+    cursor = 0
     for index, section in enumerate(sections):
         if not isinstance(section, LayerSection):
             raise PerformanceError("sections must contain LayerSection values")
@@ -141,19 +150,24 @@ def render_persistent_sections(sections, runtime_spec, *,
             contract, section.progression, section.frame_beats, section.duration_beats,
             runtime_spec, state=state, section_transition=transition, muted_roles=tuple(muted),
         )
+        section_frames = len(result.mix)
+        expected_frames = section_frame_count(contract)
+        if section_frames != expected_frames or cursor + section_frames > total_frames:
+            raise PerformanceError("section runtime extent disagrees with preflight estimate")
+        end = cursor + section_frames
+        mix[cursor:end] = result.mix
+        for name in names:
+            stems[name][cursor:end] = result.stems[name]
+        diagnostics.append(result.diagnostics)
         state = result.state
-        results.append(result)
+        cursor = end
         if job_context is not None:
             job_context.progress((index + 1) / len(sections))
 
-    names = ("body", "aux", "sub", "pre_master")
-    stems = {
-        name: np.concatenate([np.asarray(result.stems[name], dtype=np.float32) for result in results])
-        for name in names
-    }
-    mix = np.concatenate([np.asarray(result.mix, dtype=np.float32) for result in results])
+    if cursor != total_frames:
+        raise PerformanceError("sequence runtime extent disagrees with preflight estimate")
     return PersistentSequenceResult(
-        mix, stems, state, tuple(result.diagnostics for result in results)
+        mix, stems, state, tuple(diagnostics)
     )
 
 
