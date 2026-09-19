@@ -20,7 +20,7 @@ class ReverseDependencyCI(unittest.TestCase):
 
     def test_complete_current_workflow_audit(self) -> None:
         _, _, audits = ci.build_audit(ROOT)
-        self.assertEqual(35, len(audits))
+        self.assertEqual(36, len(audits))
         self.assertIn("zg001-recovery.yml", audits)
         self.assertTrue(audits["zg002-contracts.yml"].always_native)
         self.assertIn("zg024a-lab.yml", audits)
@@ -29,6 +29,7 @@ class ReverseDependencyCI(unittest.TestCase):
         self.assertIn("zg029-layers.yml", audits)
         self.assertIn("zg030-pockets.yml", audits)
         self.assertIn("zg032-vocal.yml", audits)
+        self.assertIn("zg042-performance.yml", audits)
         self.assertIn("zg045-environment.yml", audits)
 
     def test_tuning_change_selects_spectral_and_inspector_consumers(self) -> None:
@@ -98,6 +99,11 @@ class ReverseDependencyCI(unittest.TestCase):
         self.assertEqual(["ZG-029", "ZG-030"], integration["direct_stable_ids"])
         self.assertIn("zg029-layers.yml", integration["native"])
         self.assertIn("zg030-pockets.yml", integration["native"])
+
+    def test_performance_package_has_explicit_zg042_owner_and_native_gate(self) -> None:
+        result = ci.classify_changed_paths(["zaaggenz_performance/policy.py"], ROOT)
+        self.assertEqual(["ZG-042"], result["direct_stable_ids"])
+        self.assertIn("zg042-performance.yml", result["native"])
 
     def test_packaging_change_runs_zg045_natively_without_inventing_downstream_consumers(self) -> None:
         result = ci.classify_changed_paths(["zaaggenz_environment/runtime.py"], ROOT)

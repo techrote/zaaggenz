@@ -1,0 +1,65 @@
+name: ZG-042 bounded long-form performance
+
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_performance/**'
+      - 'tests/performance/**'
+      - 'tools/benchmark_zg042.py'
+      - 'docs/performance/**'
+      - 'zaaggenz_jobs/**'
+      - 'zaaggenz_melody/**'
+      - 'zaaggenz_analysis/**'
+      - 'zaaggenz_components/**'
+      - 'zaaggenz_dsp/**'
+      - 'zaaggenz_layers/**'
+      - 'programme/ci_reverse_dependencies.json'
+      - '.github/workflows/zg042-performance.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  performance:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      NUMEXPR_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical/shared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: ZG-042 workload policy, chunking and adversarial boundaries
+        run: python -m unittest discover -s tests/performance -v
+      - name: Inherited scheduler, source, analysis, component, DSP and layer regressions
+        run: |
+          python -m unittest discover -s tests/jobs -v
+          python -m unittest discover -s tests/melody -v
+          python -m unittest discover -s tests/analysis -v
+          python -m unittest discover -s tests/components -v
+          python -m unittest discover -s tests/dsp -v
+          python -m unittest discover -s tests/layers -v
+      - name: Host-measured bounded workload benchmark
+        run: python tools/benchmark_zg042.py --out zg042-performance.json --sample-rate 8000 --analysis-seconds 0.25 --quality standard
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg042-performance-${{ matrix.os }}
+          path: zg042-performance.json
+          retention-days: 14

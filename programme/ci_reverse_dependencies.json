@@ -36,6 +36,7 @@
     "zg030-pockets.yml": "ZG-030",
     "zg031-textgesture.yml": "ZG-031",
     "zg032-vocal.yml": "ZG-032",
+    "zg042-performance.yml": "ZG-042",
     "zg045-environment.yml": "ZG-045"
   },
   "source_path_owners": {
@@ -81,6 +82,7 @@
     "web/vocal/**": ["ZG-032"],
     "zaaggenz_runtime/**": ["ZG-009", "ZG-015", "ZG-023", "ZG-032"],
     "zaaggenz_web_release/**": ["ZG-009", "ZG-015", "ZG-023", "ZG-032"],
+    "zaaggenz_performance/**": ["ZG-042"],
     "pyproject.toml": ["ZG-045"],
     "constraints/**": ["ZG-045"],
     "package.json": ["ZG-045"],
