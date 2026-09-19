@@ -1,22 +1,24 @@
 # ZG-042 bounded long-form workload policy
 
-Status: **post-merge corrective-active; implementation/evidence partial; not dependency-satisfying** (issue #43 reopened 2026-09-19)  
-Policy: `zaaggenz.workload-cost/1.0.0`
+Status: **bounded corrective implementation in review; #43 remains non-dependency-satisfying until final-head gates pass and the reviewed head merges**  
+Policy: `zaaggenz.workload-cost/1.1.0`
 
-## Current corrective hold — 2026-09-19
+## Corrective repair — 2026-09-19
 
-PR #210 established useful workload-cost metadata, BATCH-lane routing, benchmark tooling and explicit fail-closed boundaries for zero-phase/windowed processing. Independent post-merge review found that two stronger claims are not yet established: the long-form memory estimate is not conservative for the documented full-rate section plan, and explicit section continuation is not exact when a boundary cuts through state the ZG-029 runtime does not serialize (notably an unfinished glide).
+PR #210 established useful workload-cost metadata, BATCH-lane routing, benchmark tooling and explicit fail-closed boundaries for zero-phase/windowed processing. Independent post-merge review then reproduced four narrower defects: caller-owned execution inputs could change after admission, retained-output allocation happened before the first cancellation check, an unfinished glide could cross a section boundary without serializable continuation state, and the advertised 64-bar full-rate plan exceeded its memory reservation.
 
-Until issue #43 is repaired and reclosed:
+The 1.1.0 corrective keeps the useful #210 architecture but tightens the execution contract:
 
-- admission and execution must use the same immutable bounded snapshot of section/nested inputs; caller mutation or one-shot iterator exhaustion cannot change the admitted workload;
-- the estimator must cover actual object lifetimes, retained diagnostics and overlapping section temporaries, or implementation lifetimes must be shortened to fit the reservation;
-- the documented 64-bar / 48 kHz / 200 BPM section plan must be measured against its reservation, not only projected from reduced-rate CI;
-- cancellation must be checked before large retained-output allocations as well as between sections;
-- section boundaries must be rejected unless every in-progress state is representable by the continuation contract, or that state must be explicitly versioned and serialized;
-- whole-vs-section evidence must include a cut through an unfinished glide, in addition to phase/tail/release cases.
+- `submit_persistent_sections()` deep-snapshots the bounded section sequence, nested recipe/progression inputs and runtime specification once **before admission**; the exact same snapshot is later executed. Caller mutation cannot enlarge or change admitted work, and one-shot iterators are consumed only once.
+- Persistent sequences are capped at 4,096 explicit sections before execution. This is a request-domain bound, not silent coarsening.
+- The authoritative sequence reservation is now the peak one-section DSP working set + retained mix/BODY/AUX/SUB/pre-master PCM + 32 MiB fixed orchestration/snapshot headroom + 1 MiB per retained section diagnostic/snapshot allowance.
+- A completed section's full render result is released after its retained products, continuation state and copied diagnostics are extracted, before the next section renderer is entered. The estimator no longer assumes a lifetime pattern the implementation violates.
+- Cancellation is checked after preflight and **before retained PCM allocation**, before each section, and after each section boundary.
+- ZG-029 runtime state remains version 1.0.0. ZG-042 does not widen or reinterpret that accepted ownership contract merely to make chunking convenient. Instead, preflight rejects a repeated-target boundary that would split an unfinished glide whose remaining trajectory ZG-029 does not serialize. Explicit role reset remains a valid boundary.
+- The existing exact phase/release/tail test remains, and a new adversarial fixture cuts a 1,500-sample glide after 1,000 samples and proves rejection occurs before any PCM render.
+- Source SYNTHLINE/exciter arbitrary slicing, zero-phase crossover chunking and analysis-window chunking remain fail-closed exactly as before.
 
-`programme/task_state.json` is authoritative and currently marks ZG-042 partial/not dependency-satisfying. ZG-044/ZG-045 must not consume the current memory/exact-chunking claims as accepted release evidence.
+No recovered source/audio/provenance, source-preserving note semantics, tuning, crossover/DSP algorithm, final-master policy or artistic default is changed. No accelerator is required and no hidden quality tier is introduced.
 
 ## Purpose
 
@@ -28,7 +30,7 @@ The production authorities remain:
 - ZG-008 for source-preserving note rendering and its explicit `standard` / `high` phase-vocoder FFT choice;
 - ZG-012/ZG-013 for bounded STFT/component analysis;
 - ZG-016/ZG-021 for zero-phase multiband/effect-delta processing;
-- ZG-029 ownership 1.1.0 for persistent BODY/AUX/SUB state and section transitions.
+- ZG-029 ownership 1.1.0 for persistent BODY/AUX/SUB ownership and section transitions.
 
 ZG-042 adds conservative **preflight estimates and execution policy** around those accepted implementations.
 
@@ -45,29 +47,43 @@ ZG-042 adds conservative **preflight estimates and execution policy** around tho
 | band processing | whole-signal zero-phase crossover/effect-delta working arrays | exact |
 | persistent layer render | source bus, BODY/AUX/SUB working/retained PCM and state | exact |
 
-These estimates are intended as conservative admission metadata, not claims of exact RSS. **The current persistent-sequence estimate undercounts a reproduced full-rate accepted path; treat it as provisional until #43 is reclosed.** The benchmark records the estimate alongside elapsed time, Python traced peak and sampled RSS where the host exposes it.
+`persistent_sequence_memory_bound()` is the authority for an accepted multi-section persistent sequence. It adds retained sequence products and explicit orchestration/snapshot/diagnostic headroom to the largest section's real persistent-layer estimate. `estimate_persistent_sequence()` and `recommended_section_bars()` both call that same bound, so planning and admission cannot silently use different arithmetic.
 
 `admission_memory()` applies the estimate to the real ZG-004 `SchedulerLimits`. Caller overrides may reserve **more**, never less. Preview must fit the interactive reserve; background work must fit the background lane and per-job bound.
 
-For long persistent arrangements, `recommended_section_bars()` accounts for both one-section working memory and retained output. A 64-bar 48 kHz plan that is too large as one job is sectioned rather than silently reducing sample rate, quality or layer count.
+For 64 bars at 48 kHz / 200 BPM under default limits, the corrected conservative planner recommends at most **20 bars per section**, producing the explicit plan `20 + 20 + 20 + 4`. The benchmark executes this product-scale plan and requires its measured Python allocation peak to remain at or below the exact scheduler reservation. Failure of that inequality fails the benchmark and therefore CI; this is no longer a projection-only claim.
+
+RSS is still reported as host context, not compared directly with the reservation because process RSS includes interpreter/libraries and pre-existing process state outside the job's declared incremental working set.
+
+## Immutable admission snapshot
+
+Admission and execution are bound to one immutable logical request:
+
+1. the iterable is consumed once with the 4,096-section cap;
+2. every `LayerSection` is rebuilt from a detached `Contract` document plus copied progression/frame/reset data;
+3. the `LayerRuntimeSpec` is deep-copied, including nested transform claims;
+4. estimation and representability checks run against that snapshot;
+5. the scheduled closure captures and executes only that snapshot.
+
+A mutable caller list may be appended to after submission and the original recipe dictionaries may be edited; neither mutation changes the queued workload. A one-shot iterator is valid because no later execution pass attempts to consume it again.
 
 ## Chunk/equivalence policy
 
 Chunking is allowed only where state/support makes equivalence explicit.
 
-### Provisional exactness claim: persistent BODY/AUX/SUB section state
+### Persistent BODY/AUX/SUB section state
 
-`render_persistent_sections()` is an exact persistent-layer **submix** path:
+`render_persistent_sections()` is an exact persistent-layer **submix** path only at representable boundaries:
 
 - SYNTHLINE and exciter must be muted; arbitrary source-phrase chunking is not claimed;
 - each section carries its real ZG-029 `LayerRuntimeState`;
 - every continuation after the first is authorised by a content-bound `LayerSectionTransition`;
-- oscillator phase, previous frequency and release/tail state cross the boundary explicitly; **unfinished glide trajectory is not currently serialized, so boundaries through an active glide are unsafe and must be rejected or given a versioned continuation state under #43;**
+- oscillator phase, last target frequency and release/tail state cross the boundary explicitly;
+- an in-progress glide trajectory is **not** serialized by ZG-029 v1 state, so a repeated-target split that would require that hidden continuation fails preflight before retained PCM allocation or section rendering;
+- an explicit reset can intentionally terminate the prior role state at the boundary;
 - BODY/AUX/SUB/pre-master and final output are concatenated only after each section executes its declared master.
 
-The regression suite compares a whole two-frame render with two explicit sections containing a release gap and a glide into the second target. PCM and final state must agree within the documented float32 assembly tolerance.
-
-`submit_persistent_sections()` always submits as ZG-004 `BATCH`, not `RENDER`. Long offline construction therefore cannot occupy the interactive worker lane reserved for preview. It uses the authoritative sequence estimate for scheduler admission and checks cancellation/progress between sections.
+The positive equivalence fixture compares a whole two-frame render with two explicit sections through oscillator phase, release gap and a completed glide. PCM and final state must agree within the documented float32 assembly tolerance. The adversarial unfinished-glide fixture proves that a boundary whose missing state would change PCM cannot be represented and is rejected rather than mislabeled exact.
 
 ### Not exact: zero-phase crossovers
 
@@ -85,13 +101,13 @@ These workloads remain `whole-signal-window-support` under v1. Existing ZG-012 m
 
 ZG-008 source-derived pitch warping, phase-vocoder state, glides and tails are phrase-owned. ZG-042 does not slice those paths at arbitrary samples. Long-form sequencing should compose accepted phrases/sections rather than treating the renderer as a stateless block processor.
 
-## Threads and responsiveness
+## Threads, cancellation and responsiveness
 
 The default scheduler continues to own one numerical thread per native pool. ZG-042 does not create a second BLAS/OpenMP policy.
 
 Long-form section rendering uses the background `BATCH` lane. The ZG-042 test and benchmark both exercise preview while background work exists; interactive preview admission remains mechanically isolated by the accepted ZG-004 lane and memory-reserve contract.
 
-Cancellation is cooperative at every explicit section boundary. This is not a claim that an already-running individual section is preemptible inside arbitrary native DSP.
+Cancellation is cooperative. It is checked before retained sequence arrays are allocated and at every explicit section boundary. This is not a claim that an already-running individual native DSP call is asynchronously preemptible.
 
 ## Reproducible benchmark
 
@@ -109,22 +125,28 @@ The benchmark actually executes:
 - short/medium/long multiresolution analysis;
 - component tracking;
 - multiband processing;
-- persistent 4-, 16- and 64-bar section renders;
-- a preview while a real long-form BATCH render occupies/queues background work.
+- reduced-rate persistent 4-, 16- and 64-bar section renders for routine host comparison;
+- a preview while a real long-form BATCH render occupies/queues background work;
+- the accepted **64-bar / 48 kHz / 200 BPM** persistent plan under default scheduler limits.
 
-It records platform/Python/CPU, process numerical-runtime/thread environment, elapsed time, conservative memory/work estimate, Python allocation peak, sampled RSS where available, and the measured top three costs.
+It records platform/Python/CPU, process numerical-runtime/thread environment, elapsed time, authoritative memory/work estimate, Python allocation peak, sampled RSS where available, and the measured top three reduced-fixture costs. The full-rate evidence additionally records the explicit section plan, exact admission reservation and `tracemalloc_within_reservation`; the tool exits unsuccessfully if the measured traced peak exceeds the reservation.
 
-The CI command uses an explicitly reduced **measurement fixture** so cross-platform validation stays bounded. That fixture is not a product quality tier and changes no default. The report also includes a 64-bar / 48 kHz / 200 BPM planning projection and the default-scheduler recommended section size without executing that expensive projection in CI.
+The routine CI analysis/note fixtures remain intentionally reduced so cross-platform validation stays bounded. That does not alter product quality. The full-rate persistent memory case is separately executed because it is the acceptance boundary that exposed the #210 defect.
 
 Benchmark timings are host observations, not universal realtime guarantees and not acceptance thresholds. A slower runner is not a reason to reduce audio quality.
 
 ## Acceptance interpretation
 
-ZG-042 is satisfied when:
+ZG-042 can return to accepted/dependency-satisfied only when the exact reviewed head proves all of the following on required CI:
 
-1. the measured report identifies dominant costs with reproducible host/environment metadata;
-2. every expensive workload exposes a bounded preflight estimate before scheduler admission;
-3. long-form persistent work uses the background lane with section cancellation/progress boundaries, leaving preview mechanically available;
-4. exact stateful section equivalence is tested;
-5. unsafe zero-phase/window/source chunking is shown non-equivalent or unsupported and fails closed;
-6. no default quality, protected source semantics, tuning, phase/tail ownership, master policy or provenance changes merely for performance.
+1. admission and execution use the same bounded detached request snapshot;
+2. caller mutation and one-shot iterators cannot invalidate memory admission;
+3. the corrected multi-section memory bound is authoritative for both recommendation and execution;
+4. the product-scale 64-bar / 48 kHz / 200 BPM accepted plan executes with measured Python allocation at or below its reservation;
+5. cancellation precedes retained allocation and is checked at each section boundary;
+6. representable stateful boundaries retain exact PCM/state evidence while an unfinished-glide cut fails before rendering;
+7. unsafe source, zero-phase and window/history chunking remains fail-closed;
+8. ZG-004 lane isolation, explicit quality policy, no-accelerator rule and all protected source/audio/provenance/default semantics remain intact;
+9. final-head ZG-042 Ubuntu/Windows plus ZG-004, ZG-029, programme-state and reverse-dependency gates pass.
+
+Until those final-head gates pass and the corrective head is merged, `programme/task_state.json` correctly keeps ZG-042 partial and non-dependency-satisfying.
