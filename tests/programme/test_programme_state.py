@@ -39,14 +39,21 @@ class ProgrammeStateTests(unittest.TestCase):
         self.assertFalse(row["dependency_satisfied"])
 
     def test_accepted_implementation_can_be_blocked_from_completion(self) -> None:
-        row = self.state["tasks"]["ZG-028"]
+        candidate = copy.deepcopy(self.state)
+        row = candidate["tasks"]["ZG-028"]
         self.assertEqual("accepted", row["implementation"])
         self.assertEqual("accepted", row["evidence"])
+        # Reproduce the historical corrective-blocker state synthetically.  The
+        # live row is now reaccepted after #118/#138; this test is about the
+        # evidence-state rule, not about keeping a repaired task stale forever.
+        row["dependency_satisfied"] = False
+        row["blockers"] = [{"ref": "issue:#118", "kind": "corrective"}]
+        ps.validate_state(candidate, root=ROOT)
         self.assertFalse(row["dependency_satisfied"])
         refs = {b["ref"] for b in row["blockers"]}
         self.assertIn("issue:#118", refs)
-        self.assertNotIn("issue:#138", refs)
         self.assertIn("issue:#138:corrective-repair", row["evidence_refs"])
+        self.assertIn("issue:#118:corrective-repair", row["evidence_refs"])
 
     def test_blocked_task_requires_a_blocker(self) -> None:
         bad = copy.deepcopy(self.state)
@@ -73,10 +80,12 @@ class ProgrammeStateTests(unittest.TestCase):
 
     def test_closed_issue_without_evidence_does_not_become_satisfied(self) -> None:
         candidate = copy.deepcopy(self.state)
-        row = candidate["tasks"]["ZG-041"]
+        # ZG-043 is intentionally not started and has no accepted evidence.
+        # Closing its GitHub mirror must not manufacture dependency readiness.
+        row = candidate["tasks"]["ZG-043"]
         row["github_issue"]["state"] = "closed"
-        row["blockers"] = []
         ps.validate_state(candidate, root=ROOT)
+        self.assertEqual("none", row["evidence"])
         self.assertFalse(row["dependency_satisfied"])
 
     def test_open_issue_can_carry_accepted_dependency_evidence(self) -> None:
@@ -118,6 +127,16 @@ class ProgrammeStateTests(unittest.TestCase):
         self.assertEqual(performance["blockers"], [])
         self.assertIn("pr:#213", performance["evidence_refs"])
         self.assertIn("issue:#43:corrective-reacceptance", performance["evidence_refs"])
+
+    def test_repaired_zg028_and_integrated_zg041_are_dependency_satisfying(self) -> None:
+        linked = self.state["tasks"]["ZG-028"]
+        integrated = self.state["tasks"]["ZG-041"]
+        self.assertTrue(linked["dependency_satisfied"])
+        self.assertEqual(linked["blockers"], [])
+        self.assertIn("issue:#118:corrective-repair", linked["evidence_refs"])
+        self.assertTrue(integrated["dependency_satisfied"])
+        self.assertEqual(integrated["blockers"], [])
+        self.assertIn("pr:#215", integrated["evidence_refs"])
 
     def test_unknown_task_and_wrong_issue_mapping_fail(self) -> None:
         bad = copy.deepcopy(self.state)

@@ -1,0 +1,87 @@
+name: ZG-041 Compose Research integration
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_runtime/**'
+      - 'web/timeline/**'
+      - 'tests/runtime/**'
+      - 'docs/runtime/**'
+      - 'programme/task_state.json'
+      - '.github/workflows/zg041-compose-research.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  workspace-contract:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Capture exact tracked source
+        run: git archive --format=zip --output=verification-source.zip HEAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zg041-source-${{ matrix.os }}
+          path: verification-source.zip
+          retention-days: 7
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical and shared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Unified runtime and workspace boundary tests
+        run: python -m unittest discover -s tests/runtime -p 'test_*.py' -v
+      - name: Compose and research owner regressions
+        run: |
+          python -m unittest discover -s tests/timeline -p 'test_*.py' -v
+          python -m unittest discover -s tests/listening -p 'test_*.py' -v
+          python -m unittest discover -s tests/inspector -p 'test_*.py' -v
+          python -m unittest discover -s tests/vocal -p 'test_*.py' -v
+  browser-evidence:
+    needs: workspace-contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical and browser dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt playwright==1.57.0
+      - name: Install Chromium with Linux dependencies
+        run: python -m playwright install --with-deps chromium
+      - name: Compose Research switching and preserved session
+        run: python tests/runtime/browser_zg041.py --out zg041-browser
+      - name: Cross-workspace source and stale-result proof
+        run: python tests/runtime/browser.py --out runtime-browser
+      - name: Mature Compose save reopen and named-output transport
+        run: python tests/timeline/browser.py --out timeline-browser --sample-rate 12000
+      - name: Matched blinded ABX transport and recorded observations
+        run: python tests/listening/browser.py --out listening-browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg041-browser-evidence
+          path: |
+            zg041-browser/
+            runtime-browser/
+            timeline-browser/
+            listening-browser/

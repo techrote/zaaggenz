@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse,webbrowser
 from .server import ZaaggenzServer
 
-WORKSPACES={'compose':'/timeline','listening':'/listen','inspector':'/inspector','vocal':'/vocal','legacy':'/'}
+WORKSPACES={'compose':'/timeline','research':'/research','listening':'/listen','inspector':'/inspector','vocal':'/vocal','legacy':'/'}
 
 def run(*,default_workspace='compose',default_open=False):
     p=argparse.ArgumentParser(description=__doc__)
