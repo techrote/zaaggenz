@@ -1,13 +1,13 @@
 # ZG-042 bounded long-form workload policy
 
-Status: **bounded corrective implementation in review; #43 remains non-dependency-satisfying until final-head gates pass and the reviewed head merges**  
+Status: **corrective reacceptance evidence complete on PR #213; accepted/dependency-satisfying state restored by the reviewed head**  
 Policy: `zaaggenz.workload-cost/1.1.0`
 
 ## Corrective repair — 2026-09-19
 
 PR #210 established useful workload-cost metadata, BATCH-lane routing, benchmark tooling and explicit fail-closed boundaries for zero-phase/windowed processing. Independent post-merge review then reproduced four narrower defects: caller-owned execution inputs could change after admission, retained-output allocation happened before the first cancellation check, an unfinished glide could cross a section boundary without serializable continuation state, and the advertised 64-bar full-rate plan exceeded its memory reservation.
 
-The 1.1.0 corrective keeps the useful #210 architecture but tightens the execution contract:
+PR #213 keeps the useful #210 architecture but tightens the execution contract:
 
 - `submit_persistent_sections()` deep-snapshots the bounded section sequence, nested recipe/progression inputs and runtime specification once **before admission**; the exact same snapshot is later executed. Caller mutation cannot enlarge or change admitted work, and one-shot iterators are consumed only once.
 - Persistent sequences are capped at 4,096 explicit sections before execution. This is a request-domain bound, not silent coarsening.
@@ -19,6 +19,8 @@ The 1.1.0 corrective keeps the useful #210 architecture but tightens the executi
 - Source SYNTHLINE/exciter arbitrary slicing, zero-phase crossover chunking and analysis-window chunking remain fail-closed exactly as before.
 
 No recovered source/audio/provenance, source-preserving note semantics, tuning, crossover/DSP algorithm, final-master policy or artistic default is changed. No accelerator is required and no hidden quality tier is introduced.
+
+The first complete corrective implementation head (`4c8c81fb28df37acc056e2c2c9434a7086304b91`) passed ZG-042 on Ubuntu and Windows in workflow run `35442284120`, including inherited scheduler/source/analysis/component/DSP/layer regressions and the full-rate benchmark. It also passed the reverse-dependency dispatcher (`35442284283`) and the dispatched ZG-045 canonical-environment run (`35442305676`). The final programme-evidence head is required to repeat those gates before merge.
 
 ## Purpose
 
@@ -52,6 +54,8 @@ ZG-042 adds conservative **preflight estimates and execution policy** around tho
 `admission_memory()` applies the estimate to the real ZG-004 `SchedulerLimits`. Caller overrides may reserve **more**, never less. Preview must fit the interactive reserve; background work must fit the background lane and per-job bound.
 
 For 64 bars at 48 kHz / 200 BPM under default limits, the corrected conservative planner recommends at most **20 bars per section**, producing the explicit plan `20 + 20 + 20 + 4`. The benchmark executes this product-scale plan and requires its measured Python allocation peak to remain at or below the exact scheduler reservation. Failure of that inequality fails the benchmark and therefore CI; this is no longer a projection-only claim.
+
+On the first complete #213 implementation head, the reservation for that plan was **267,321,344 bytes**. Ubuntu measured a Python traced peak of **230,619,115 bytes** and Windows measured **230,602,495 bytes**, both below the admitted bound. These are host observations from workflow run `35442284120`, not universal RSS guarantees.
 
 RSS is still reported as host context, not compared directly with the reservation because process RSS includes interpreter/libraries and pre-existing process state outside the job's declared incremental working set.
 
@@ -137,7 +141,7 @@ Benchmark timings are host observations, not universal realtime guarantees and n
 
 ## Acceptance interpretation
 
-ZG-042 can return to accepted/dependency-satisfied only when the exact reviewed head proves all of the following on required CI:
+ZG-042 corrective reacceptance requires the exact reviewed head to prove all of the following on required CI:
 
 1. admission and execution use the same bounded detached request snapshot;
 2. caller mutation and one-shot iterators cannot invalidate memory admission;
@@ -149,4 +153,4 @@ ZG-042 can return to accepted/dependency-satisfied only when the exact reviewed 
 8. ZG-004 lane isolation, explicit quality policy, no-accelerator rule and all protected source/audio/provenance/default semantics remain intact;
 9. final-head ZG-042 Ubuntu/Windows plus ZG-004, ZG-029, programme-state and reverse-dependency gates pass.
 
-Until those final-head gates pass and the corrective head is merged, `programme/task_state.json` correctly keeps ZG-042 partial and non-dependency-satisfying.
+PR #213 restores ZG-042 to accepted/dependency-satisfying in `programme/task_state.json`. Issue #43 is closed only after that exact final head passes its gates, the PR is merged, and the merge is verified on `main`.
