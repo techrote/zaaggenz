@@ -31,7 +31,7 @@ The stable `ZG-001…ZG-045` atlas, `programme/tasks.json`, `programme/dependenc
 
 ## Current programme snapshot
 
-This summary is descriptive; the JSON state is authoritative.
+This summary is descriptive for the original 2026-09-15 reconciliation; later dated sections record subsequent evidence changes. The JSON state is always authoritative.
 
 - **ZG-001:** baseline recovery/provenance is accepted. The original owner-supplied ZIP SHA-256 is `90be319a4660a637077df935a8ebcbd1bb4c3a629e28e2f6d4bfe62d88dfe8a8`; the compact recovered runtime payload SHA-256 is `eaf5d3ab822dfa121cd3b795d62619af9e62c041fb02de19f8dbeafb0014c919`. Source recovery is **not** a current blocker.
 - **ZG-002…ZG-021:** accepted implementation/evidence is currently dependency-satisfying according to `task_state.json`; corrective follow-ups may still harden individual boundaries without automatically erasing accepted prerequisite evidence.
@@ -83,7 +83,7 @@ Independent review of the newly merged ZG-040/PR #211 and ZG-042/PR #210 found m
 
 ### ZG-040 / #41
 
-The merged scaffold remains useful, but dependency acceptance is revoked pending bounded corrections for:
+The merged scaffold remained useful, but dependency acceptance was revoked pending bounded corrections for:
 
 - authentication of statistical outcomes/item identity against trusted ZG-015 evidence;
 - duplicate/relabelled physical-item prevention in crossed inference;
@@ -92,11 +92,11 @@ The merged scaffold remains useful, but dependency acceptance is revoked pending
 - method/estimand/endpoint/confirmatory compatibility;
 - bounded randomisation/bootstrap memory/work execution.
 
-Live state is therefore `implementation=partial`, `evidence=partial`, `research=active`, `dependency_satisfied=false`; issue #41 is reopened. Formal downstream studies requiring ZG-040 must wait for reacceptance.
+At the rollback point, live state was `implementation=partial`, `evidence=partial`, `research=active`, `dependency_satisfied=false`; issue #41 was reopened. This paragraph is historical and is superseded for live status by the corrective-reacceptance section below and `programme/task_state.json`.
 
 ### ZG-042 / #43
 
-The workload policy/benchmark/BATCH-lane work remains useful, but dependency acceptance is revoked pending bounded corrections for:
+The workload policy/benchmark/BATCH-lane work remained useful, but dependency acceptance was revoked pending bounded corrections for:
 
 - immutable admission/execution input ownership;
 - conservative accounting of real long-form object lifetimes and retained products;
@@ -105,8 +105,16 @@ The workload policy/benchmark/BATCH-lane work remains useful, but dependency acc
 - unfinished-glide boundary rejection or a versioned continuation-state extension;
 - full-rate evidence for the documented section plan.
 
-Live state is therefore `implementation=partial`, `evidence=partial`, `dependency_satisfied=false`; issue #43 is reopened. ZG-044/ZG-045 may not use the disputed bound/exactness claims as accepted release evidence.
+At the rollback point, live state was `implementation=partial`, `evidence=partial`, `dependency_satisfied=false`; issue #43 was reopened. ZG-042 was subsequently reaccepted through PR #213 and issue #43 corrective evidence; `programme/task_state.json` is authoritative.
 
 ### Workflow consequence
 
 A previously accepted/merged parent can be downgraded when later adversarial review reproduces a material failure. The original PR and green CI remain historical evidence; readiness is changed explicitly in `task_state.json`. Agents must re-read the live state before starting dependent work and before merge. Reacceptance requires adversarial regressions for the reproduced failures and a fresh final-head/reverse-dependency gate.
+
+## Corrective reacceptance — ZG-040 / #41 — 2026-09-19
+
+PR #214 implements the bounded repair path recorded above without changing the planned DAG, recovered source, rendered audio, ZG-015 blinding/provenance contract or artistic defaults. The corrected public ZG-040 surface adds content-addressed prospective evidence plans tied to exact trusted ZG-015 trial/result identities, physical-item identity enforcement, one-shot-safe amendment/deviation ownership, executable planned-cell missingness/stopping, method/estimand compatibility checks, and bounded batched paired resampling with progress/cancellation.
+
+Adversarial regressions reproduce the original failures: decorative result-hash tampering, item relabelling, single-use audit iterators, 100-participant plans completed from eight observed participants, vanished missing cells, incompatible method/estimand declarations, the 1,792-pair randomisation allocation case, and unbounded counterbalance materialisation. Synthetic calibration remains explicitly non-participant evidence.
+
+The reviewed state for the final PR head is `implementation=accepted`, `evidence=accepted`, `research=accepted`, `dependency_satisfied=true`, with no ZG-040 blocker and evidence references to PR #211, the rollback review, PR #214 and the #41 corrective-reacceptance record. This reacceptance is valid only when the exact final head passes the required ZG-040 Ubuntu/Windows, inherited ZG-015/QC, programme-state and reverse-dependency gates. Issue #41 is closed only after those exact-head gates pass and the merge is verified on `main`.
