@@ -51,7 +51,7 @@ class WorkloadPolicyTests(unittest.TestCase):
     def test_preview_reservation_fits_the_reserved_interactive_lane(self):
         limits = SchedulerLimits()
         estimate = estimate_workload(
-            "preview", frames=48000, sample_rate_hz=48000
+            "preview", frames=48000, sample_rate_hz=48000, quality="standard"
         )
         reserved = admission_memory(
             estimate, job_class=JobClass.PREVIEW, limits=limits
