@@ -20,7 +20,7 @@ class ReverseDependencyCI(unittest.TestCase):
 
     def test_complete_current_workflow_audit(self) -> None:
         _, _, audits = ci.build_audit(ROOT)
-        self.assertEqual(37, len(audits))
+        self.assertEqual(38, len(audits))
         self.assertIn("zg001-recovery.yml", audits)
         self.assertTrue(audits["zg002-contracts.yml"].always_native)
         self.assertIn("zg024a-lab.yml", audits)
@@ -30,6 +30,7 @@ class ReverseDependencyCI(unittest.TestCase):
         self.assertIn("zg030-pockets.yml", audits)
         self.assertIn("zg032-vocal.yml", audits)
         self.assertIn("zg040-studies.yml", audits)
+        self.assertIn("zg041-compose-research.yml", audits)
         self.assertIn("zg042-performance.yml", audits)
         self.assertIn("zg045-environment.yml", audits)
 
@@ -105,6 +106,14 @@ class ReverseDependencyCI(unittest.TestCase):
         result = ci.classify_changed_paths(["zaaggenz_studies/model.py"], ROOT)
         self.assertEqual(["ZG-040"], result["direct_stable_ids"])
         self.assertIn("zg040-studies.yml", result["native"])
+
+    def test_compose_research_integration_has_explicit_zg041_owner_and_native_gate(self) -> None:
+        result = ci.classify_changed_paths(["web/timeline/index.html"], ROOT)
+        self.assertIn("ZG-041", result["direct_stable_ids"])
+        self.assertIn("zg041-compose-research.yml", result["native"])
+        runtime = ci.classify_changed_paths(["zaaggenz_runtime/server.py"], ROOT)
+        self.assertIn("ZG-041", runtime["direct_stable_ids"])
+        self.assertIn("zg041-compose-research.yml", runtime["native"])
 
     def test_performance_package_has_explicit_zg042_owner_and_native_gate(self) -> None:
         result = ci.classify_changed_paths(["zaaggenz_performance/policy.py"], ROOT)

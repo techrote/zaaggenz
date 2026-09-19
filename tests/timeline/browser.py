@@ -135,7 +135,9 @@ def main():
                 page.wait_for_timeout(150);expect(page.locator('#play')).to_be_disabled()
                 assert page.locator('#waveform').get_attribute('data-revision')==''
             # Legacy controls remain accessible, not replaced by this optional authoring view.
-            page.locator('a.legacy').click();expect(page.locator('a[href="/timeline"]')).to_be_visible()
+            # ZG-041 adds a second explicit workspace link; target the recovered
+            # full-instrument link rather than relying on legacy-link cardinality.
+            page.locator('a.legacy[href="/"]').click();expect(page.locator('a[href="/timeline"]')).to_be_visible()
             assert not errors,errors
             browser.close()
         report={'method':'zg009-browser-v1','sample_rate_hz':args.sample_rate,'browser':'Chromium',
