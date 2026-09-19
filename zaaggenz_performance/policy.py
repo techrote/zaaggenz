@@ -245,10 +245,14 @@ def _layer_estimate(frames, sample_rate_hz, channels):
 
 
 def estimate_workload(workload, *, frames, sample_rate_hz, channels=1, quality="exact", tracker_spec=None):
-    if workload == "preview":
-        return _note_estimate(frames, sample_rate_hz, channels, "standard" if quality == "exact" else quality, True)
-    if workload == "note-render":
-        return _note_estimate(frames, sample_rate_hz, channels, "standard" if quality == "exact" else quality, False)
+    if workload in ("preview", "note-render"):
+        if quality == "exact":
+            raise PerformanceError(
+                f"{workload} requires explicit quality='standard' or quality='high'; no implicit tier is selected"
+            )
+        return _note_estimate(
+            frames, sample_rate_hz, channels, quality, workload == "preview"
+        )
     if quality != "exact":
         raise PerformanceError(f"{workload} has no quality tier; use quality='exact'")
     if workload == "multiresolution-analysis":
@@ -270,7 +274,9 @@ def bar_frame_count(bar_count, sample_rate_hz, bpm, beats_per_bar=4):
     if type(bpm) not in (int, float) or type(bpm) is bool or not math.isfinite(float(bpm)) or not 20 <= float(bpm) <= 400:
         raise PerformanceError("bpm must be finite in 20..400")
     _dims(0, sample_rate_hz, 1)
-    return int(round(bar_count * beats_per_bar * 60.0 * sample_rate_hz / float(bpm)))
+    frames = int(round(bar_count * beats_per_bar * 60.0 * sample_rate_hz / float(bpm)))
+    _dims(frames, sample_rate_hz, 1)
+    return frames
 
 
 def estimate_longform_bars(bar_count, *, sample_rate_hz, bpm, beats_per_bar=4):
