@@ -22,6 +22,7 @@ from .policy import (
 )
 
 MAX_PERSISTENT_SECTIONS = 4096
+MAX_MUTED_ROLES = 16
 
 
 @dataclass(frozen=True)
@@ -96,6 +97,29 @@ def _snapshot_sections(sections):
     if not snapshot:
         raise PerformanceError("at least one LayerSection is required")
     return tuple(snapshot)
+
+
+def _snapshot_muted_roles(muted_roles):
+    try:
+        iterator = iter(muted_roles)
+    except TypeError as exc:
+        raise PerformanceError("muted_roles must be an iterable of role names") from exc
+    snapshot = []
+    for index, role in enumerate(iterator):
+        if index >= MAX_MUTED_ROLES:
+            raise PerformanceError(
+                f"muted_roles exceeds the {MAX_MUTED_ROLES}-entry bound"
+            )
+        if not isinstance(role, str) or not role:
+            raise PerformanceError("muted_roles must contain non-empty role names")
+        snapshot.append(role)
+    frozen = tuple(snapshot)
+    if not {"synthline", "exciter"} <= frozenset(frozen):
+        raise PerformanceError(
+            "exact ZG-042 section chunking is limited to the persistent-layer submix; "
+            "SYNTHLINE/exciter must be muted rather than arbitrarily chunked"
+        )
+    return frozen
 
 
 def section_frame_count(recipe):
@@ -330,8 +354,9 @@ def render_persistent_sections(sections, runtime_spec, *,
                                muted_roles=("synthline", "exciter"), job_context=None):
     snapshot = _snapshot_sections(sections)
     runtime_snapshot = deepcopy(runtime_spec)
+    muted_snapshot = _snapshot_muted_roles(muted_roles)
     return _render_persistent_sections_snapshot(
-        snapshot, runtime_snapshot, muted_roles=muted_roles, job_context=job_context
+        snapshot, runtime_snapshot, muted_roles=muted_snapshot, job_context=job_context
     )
 
 
@@ -343,6 +368,7 @@ def submit_persistent_sections(scheduler, revision_id, sections, runtime_spec, *
     # then executed, so caller mutation and one-shot iterators cannot change admitted work.
     snapshot = _snapshot_sections(sections)
     runtime_snapshot = deepcopy(runtime_spec)
+    muted_snapshot = _snapshot_muted_roles(muted_roles)
     estimate = _estimate_persistent_sequence_snapshot(snapshot)
     _validate_representable_boundaries(snapshot, runtime_snapshot)
     reserved = admission_memory(
@@ -352,7 +378,7 @@ def submit_persistent_sections(scheduler, revision_id, sections, runtime_spec, *
 
     def execute(ctx):
         return _render_persistent_sections_snapshot(
-            snapshot, runtime_snapshot, muted_roles=muted_roles, job_context=ctx
+            snapshot, runtime_snapshot, muted_roles=muted_snapshot, job_context=ctx
         )
 
     return scheduler.submit(
