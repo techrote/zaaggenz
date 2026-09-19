@@ -1,7 +1,22 @@
 # ZG-042 bounded long-form workload policy
 
-Status: implementation/evidence contract for ZG-042 / issue #43  
+Status: **post-merge corrective-active; implementation/evidence partial; not dependency-satisfying** (issue #43 reopened 2026-09-19)  
 Policy: `zaaggenz.workload-cost/1.0.0`
+
+## Current corrective hold — 2026-09-19
+
+PR #210 established useful workload-cost metadata, BATCH-lane routing, benchmark tooling and explicit fail-closed boundaries for zero-phase/windowed processing. Independent post-merge review found that two stronger claims are not yet established: the long-form memory estimate is not conservative for the documented full-rate section plan, and explicit section continuation is not exact when a boundary cuts through state the ZG-029 runtime does not serialize (notably an unfinished glide).
+
+Until issue #43 is repaired and reclosed:
+
+- admission and execution must use the same immutable bounded snapshot of section/nested inputs; caller mutation or one-shot iterator exhaustion cannot change the admitted workload;
+- the estimator must cover actual object lifetimes, retained diagnostics and overlapping section temporaries, or implementation lifetimes must be shortened to fit the reservation;
+- the documented 64-bar / 48 kHz / 200 BPM section plan must be measured against its reservation, not only projected from reduced-rate CI;
+- cancellation must be checked before large retained-output allocations as well as between sections;
+- section boundaries must be rejected unless every in-progress state is representable by the continuation contract, or that state must be explicitly versioned and serialized;
+- whole-vs-section evidence must include a cut through an unfinished glide, in addition to phase/tail/release cases.
+
+`programme/task_state.json` is authoritative and currently marks ZG-042 partial/not dependency-satisfying. ZG-044/ZG-045 must not consume the current memory/exact-chunking claims as accepted release evidence.
 
 ## Purpose
 
@@ -30,7 +45,7 @@ ZG-042 adds conservative **preflight estimates and execution policy** around tho
 | band processing | whole-signal zero-phase crossover/effect-delta working arrays | exact |
 | persistent layer render | source bus, BODY/AUX/SUB working/retained PCM and state | exact |
 
-These estimates are deliberately conservative admission metadata, not claims of exact RSS. The benchmark records the estimate alongside elapsed time, Python traced peak and sampled RSS where the host exposes it.
+These estimates are intended as conservative admission metadata, not claims of exact RSS. **The current persistent-sequence estimate undercounts a reproduced full-rate accepted path; treat it as provisional until #43 is reclosed.** The benchmark records the estimate alongside elapsed time, Python traced peak and sampled RSS where the host exposes it.
 
 `admission_memory()` applies the estimate to the real ZG-004 `SchedulerLimits`. Caller overrides may reserve **more**, never less. Preview must fit the interactive reserve; background work must fit the background lane and per-job bound.
 
@@ -40,14 +55,14 @@ For long persistent arrangements, `recommended_section_bars()` accounts for both
 
 Chunking is allowed only where state/support makes equivalence explicit.
 
-### Exact: persistent BODY/AUX/SUB section state
+### Provisional exactness claim: persistent BODY/AUX/SUB section state
 
 `render_persistent_sections()` is an exact persistent-layer **submix** path:
 
 - SYNTHLINE and exciter must be muted; arbitrary source-phrase chunking is not claimed;
 - each section carries its real ZG-029 `LayerRuntimeState`;
 - every continuation after the first is authorised by a content-bound `LayerSectionTransition`;
-- oscillator phase, previous frequency, glide state and release/tail state therefore cross the boundary explicitly;
+- oscillator phase, previous frequency and release/tail state cross the boundary explicitly; **unfinished glide trajectory is not currently serialized, so boundaries through an active glide are unsafe and must be rejected or given a versioned continuation state under #43;**
 - BODY/AUX/SUB/pre-master and final output are concatenated only after each section executes its declared master.
 
 The regression suite compares a whole two-frame render with two explicit sections containing a release gap and a glide into the second target. PCM and final state must agree within the documented float32 assembly tolerance.

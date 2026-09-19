@@ -48,6 +48,8 @@ Stable IDs are authoritative; actual issue numbers are in [`programme/issue_map.
 
 The planned DAG and the current state are deliberately separate. [`programme/task_state.json`](../../programme/task_state.json) records orthogonal implementation, evidence, research, owner-gate and blocker state plus the explicit `dependency_satisfied` decision for each stable task. GitHub issue open/closed is mirrored there for navigation only; it is not used to compute readiness. Validate and derive readiness with `python tools/validate_programme_state.py --validate` / `--report`. Accepted corrective debt does not automatically revoke prerequisite evidence; a task is withheld only when the state record explicitly says its acceptance/gate is not dependency-satisfying.
 
+**Post-merge review update — 2026-09-19:** ZG-040/#41 and ZG-042/#43 were downgraded from accepted/dependency-satisfying to partial/not-satisfying after independent adversarial reproductions. Their merged PRs remain historical evidence, but downstream tasks must consume the live state, not the earlier completion comments. ZG-040 currently blocks confirmatory study-family work that depends on its evidence-integrity guarantees; ZG-042 currently blocks release-validation reliance on its memory-bound/exact-section guarantees.
+
 | ID | Task | Milestone | Hard prerequisites |
 |---|---|---|---|
 | **ZG-001** | Recover the verified baseline and freeze musical compatibility | M0 | — |
@@ -127,6 +129,7 @@ These levels ignore write conflicts. `render-integration`, `frontend-integration
 6. Formal research freezes design/stimuli before confirmatory outcomes are inspected; null/inconclusive outcomes are valid completions.
 7. Third-party reference recordings remain private unless redistribution rights are separately established.
 8. Batch research/analysis work may share immutable caches but must not starve live preview or mutate current Compose state.
+9. Post-merge adversarial review may revoke `dependency_satisfied`; downstream agents must re-read live state before starting and before merging, even when the parent issue/PR was previously closed green.
 
 ## Important blockers and non-blockers
 
@@ -136,7 +139,7 @@ These levels ignore write conflicts. `render-integration`, `frontend-integration
 
 **Musical bottleneck:** tuning/time/note contracts precede harmonic and phrase coordination; full SYNTHLINE remains explicit through every combined render.
 
-**Research bottleneck:** immutable level-matched stimuli and the ZG-040 study scaffold precede confirmatory collection.
+**Research bottleneck:** immutable level-matched stimuli plus a **reaccepted** ZG-040 study scaffold precede confirmatory collection. Current ZG-040 post-merge correctives cover authenticated observation/item identity, amendment/deviation iterator safety, executable stopping/missingness, method/estimand compatibility and bounded resampling.
 
 **Not blockers for Compose:** success of expectation/participation hypotheses, participant studies, DDSP/ML, GPUs, named traditional grammar packs, or a runtime vector database.
 
