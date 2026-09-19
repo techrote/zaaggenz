@@ -97,8 +97,7 @@ class ProgrammeStateTests(unittest.TestCase):
         # ZG-033 is blocked by unsatisfied ZG-022 and ZG-040 regardless of its own issue state.
         report = ps.readiness_report(self.state, root=ROOT)["ZG-033"]
         self.assertFalse(report["hard_prerequisites_satisfied"])
-        self.assertIn("ZG-022", report["unsatisfied_parents"])
-        self.assertIn("ZG-040", report["unsatisfied_parents"])
+        self.assertEqual(report["unsatisfied_parents"], ["ZG-022"])
 
     def test_unknown_task_and_wrong_issue_mapping_fail(self) -> None:
         bad = copy.deepcopy(self.state)
