@@ -33,8 +33,8 @@ BLOCKER_PREFIX = {
     "external": "external:",
 }
 BLOCKER_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/-]*")
-ISSUE_EVIDENCE_RE = re.compile(r"issue:#\\d+(?::[A-Za-z0-9][A-Za-z0-9._/-]*)*")
-PR_EVIDENCE_RE = re.compile(r"pr:#\\d+(?::[A-Za-z0-9][A-Za-z0-9._/-]*)*")
+ISSUE_EVIDENCE_RE = re.compile(r"issue:#\d+(?::[A-Za-z0-9][A-Za-z0-9._/-]*)*")
+PR_EVIDENCE_RE = re.compile(r"pr:#\d+(?::[A-Za-z0-9][A-Za-z0-9._/-]*)*")
 COMMIT_EVIDENCE_RE = re.compile(r"commit:[0-9a-fA-F]{7,64}")
 
 
@@ -92,7 +92,7 @@ def _validate_blocker_ref(
         errors.append(f"{sid}: malformed blocker identity {ref!r}")
         return
     if kind == "dependency":
-        if not re.fullmatch(r"ZG-\\d{3}", token):
+        if not re.fullmatch(r"ZG-\d{3}", token):
             errors.append(f"{sid}: dependency blocker must name stable task ID: {ref!r}")
         elif token not in known_tasks:
             errors.append(f"{sid}: dependency blocker names unknown task {token}")
