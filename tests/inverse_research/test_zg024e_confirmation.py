@@ -13,6 +13,7 @@ from research.zg024e.confirmation import (
     SELECTION_FREEZE_COMMIT,
     confirmation_fixture,
 )
+from tools.inverse_feasibility_confirmation import _confirmation_portable_row
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -56,6 +57,48 @@ class ZG024eConfirmationFreezeTests(unittest.TestCase):
                 self.assertEqual(36, large.budget.max_evaluations)
                 self.assertEqual(small.plan.to_dict(), large.plan.to_dict())
                 self.assertEqual(small.objective.to_dict(), large.objective.to_dict())
+
+    def test_portable_projection_keeps_exact_pcm_equivalence_platform_local(self):
+        row = {
+            "fixture": "portable-test",
+            "seed": "53",
+            "family": "diagnostic",
+            "method_id": SELECTED_METHOD,
+            "method_key": SELECTED_METHOD + "@36",
+            "declared_budget": 36,
+            "consumed_evaluations": 36,
+            "eligible_candidates": 2,
+            "final_available": True,
+            "best_fit_score": 0.25,
+            "best_holdout_score": 0.30,
+            "parameter_error": 0.1,
+            "stage_consumption": {"AB": 24, "C": 12},
+            "promotion_stages": [{
+                "stage": "C-final",
+                "eligible_count": 2,
+                "pareto_count": 2,
+                "retained_count": 2,
+                "retained_cap": 4,
+                "equivalence_group_sizes": [2],
+            }],
+            "final_retained_count": 2,
+            "pareto_count": 2,
+            "promotion_ineligible_violations": 0,
+            "gate_rejections": {},
+            "stop_reason": None,
+            "physical_render_calls": 72,
+            "render_cache_hits": 0,
+        }
+        portable = _confirmation_portable_row(row)
+        self.assertEqual(
+            "full-evidence-only-environment-exact",
+            portable["exact_output_equivalence"],
+        )
+        self.assertNotIn(
+            "equivalence_group_sizes",
+            portable["promotion_stages"][0],
+        )
+        self.assertEqual(2, portable["promotion_stages"][0]["retained_count"])
 
     def test_unknown_fixture_seed_and_budget_fail_closed(self):
         with self.assertRaises(ValueError):
