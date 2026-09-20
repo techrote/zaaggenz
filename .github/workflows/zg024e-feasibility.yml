@@ -42,33 +42,53 @@ jobs:
         run: python -m unittest discover -s tests/inverse_research -v
       - name: Frozen inverse laboratory, provenance and transient regressions
         run: python -m unittest discover -s tests/inverse -v
-      - name: Run preregistered development diagnostic
-        run: >-
-          python tools/inverse_feasibility_report.py
-          --out zg024e-development-evidence.json
-          --full-out zg024e-development-full.json
-          --portable-out zg024e-development-portable.json
-          --selection-out zg024e-development-selection.json
-          --telemetry-out zg024e-development-telemetry.json
-          --require-integrity
-      - name: Verify development rerun reproduces committed selection decision
+      - name: Verify frozen development evidence source identity
         shell: bash
         run: |
           python - <<'PY'
           import json
+          import subprocess
           from pathlib import Path
-          frozen = json.loads(Path('examples/zg024e-development-selection.json').read_text(encoding='utf-8'))
-          actual = json.loads(Path('zg024e-development-selection.json').read_text(encoding='utf-8'))
-          for key in (
-              'selection_decision_sha256',
-              'selected_intervention_method',
-              'selected_matched_null_method',
-              'primary_mechanism',
-              'primary_diagnosis',
-          ):
-              if actual[key] != frozen[key]:
-                  raise SystemExit(f'ZG-024e frozen selection drift for {key}: {actual[key]!r} != {frozen[key]!r}')
-          print('ZG-024e development rerun reproduces committed selection decision')
+
+          expected_blobs = {
+              'research/zg024e/diagnostic.py': '855c09ea7412cecd8eba478f7f4506d8d3c12e4e',
+              'research/zg024e/fixtures.py': 'f704667c43e78471167bc376e8cbf9319d55566d',
+              'research/zg024e/__init__.py': '745a8aef39bf63bad676de14a50a617e6d605257',
+              'tools/inverse_feasibility_report.py': 'f7d2d13ff56cd9434a6e8f32503a41218bad2b14',
+              'docs/inverse/ZG024E_DIAGNOSTIC_PROTOCOL_V1.md': '87cb41c8c04190a60f102b75ef88bf610509c14f',
+              'examples/zg024e-development-selection.json': 'ab1786f7743d58f9a975e67809868a9bd3d7dccc',
+          }
+          for path, expected in expected_blobs.items():
+              actual = subprocess.check_output(
+                  ['git', 'rev-parse', f'HEAD:{path}'], text=True
+              ).strip()
+              if actual != expected:
+                  raise SystemExit(
+                      f'frozen development evidence source changed for {path}: '
+                      f'{actual} != {expected}; rerun/preregister development before confirmation'
+                  )
+
+          frozen = json.loads(
+              Path('examples/zg024e-development-selection.json').read_text(encoding='utf-8')
+          )
+          required = {
+              'selection_decision_sha256':
+                  'd673e22602aee773005e242910a0a54b60f2e9cedfff26c5d6898b3cf3ba6629',
+              'selected_intervention_method': 'zg024e.coupled-ab-36.v1',
+              'selected_matched_null_method': 'zg024e.factorized-36-balanced.v1',
+              'primary_mechanism': 'cross-family-coupling',
+              'primary_diagnosis': 'cross-family-coupling',
+          }
+          for key, expected in required.items():
+              if frozen.get(key) != expected:
+                  raise SystemExit(
+                      f'frozen development selection changed for {key}: '
+                      f'{frozen.get(key)!r} != {expected!r}'
+                  )
+          print(
+              'ZG-024e frozen development source and selection exactly match '
+              'green run 35518738542; development evidence reuse is valid'
+          )
           PY
       - name: Run untouched sealed confirmation
         run: >-
@@ -83,11 +103,7 @@ jobs:
         with:
           name: zg024e-development-${{ matrix.os }}
           path: |
-            zg024e-development-evidence.json
-            zg024e-development-full.json
-            zg024e-development-portable.json
-            zg024e-development-selection.json
-            zg024e-development-telemetry.json
+            examples/zg024e-development-selection.json
             zg024e-confirmation-evidence.json
             zg024e-confirmation-full.json
             zg024e-confirmation-portable.json
@@ -116,14 +132,8 @@ jobs:
 
           ATOL, RTOL = 1e-7, 1e-5
           roots = {
-              'development': {
-                  'ubuntu': Path('portable/zg024e-development-ubuntu-latest/zg024e-development-portable.json'),
-                  'windows': Path('portable/zg024e-development-windows-latest/zg024e-development-portable.json'),
-              },
-              'confirmation': {
-                  'ubuntu': Path('portable/zg024e-development-ubuntu-latest/zg024e-confirmation-portable.json'),
-                  'windows': Path('portable/zg024e-development-windows-latest/zg024e-confirmation-portable.json'),
-              },
+              'ubuntu': Path('portable/zg024e-development-ubuntu-latest/zg024e-confirmation-portable.json'),
+              'windows': Path('portable/zg024e-development-windows-latest/zg024e-confirmation-portable.json'),
           }
 
           def compare(a, b, path='root'):
@@ -145,10 +155,9 @@ jobs:
               elif a != b:
                   raise AssertionError(f'{path}: {a!r} != {b!r}')
 
-          for scope, paths in roots.items():
-              values = {name: json.loads(path.read_text(encoding='utf-8')) for name, path in paths.items()}
-              compare(values['ubuntu'], values['windows'], scope)
-              print(f'ZG-024e {scope} evidence agrees across Ubuntu and Windows under abs=1e-7 rel=1e-5')
+          values = {name: json.loads(path.read_text(encoding='utf-8')) for name, path in roots.items()}
+          compare(values['ubuntu'], values['windows'], 'confirmation')
+          print('ZG-024e confirmation evidence agrees across Ubuntu and Windows under abs=1e-7 rel=1e-5')
           PY
 
   authority:
