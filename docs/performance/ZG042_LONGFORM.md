@@ -1,6 +1,6 @@
 # ZG-042 bounded long-form workload policy
 
-Status: **corrective reacceptance evidence complete on PR #213; accepted/dependency-satisfying state restored by the reviewed head**  
+Status: **corrective reacceptance complete on PR #213; accepted/dependency-satisfying state retained while #220 hardens executable process-memory evidence**  
 Policy: `zaaggenz.workload-cost/1.1.0`
 
 ## Corrective repair — 2026-09-19
@@ -19,6 +19,23 @@ PR #213 keeps the useful #210 architecture but tightens the execution contract:
 - Source SYNTHLINE/exciter arbitrary slicing, zero-phase crossover chunking and analysis-window chunking remain fail-closed exactly as before.
 
 No recovered source/audio/provenance, source-preserving note semantics, tuning, crossover/DSP algorithm, final-master policy or artistic default is changed. No accelerator is required and no hidden quality tier is introduced.
+
+## Native/process-memory acceptance hardening — 2026-09-20
+
+Issue #220 does **not** revoke the PR #213 reacceptance. Its accepted full-rate Ubuntu evidence already recorded both Python traced allocation and process-RSS growth below the same authoritative reservation. The follow-up closes a narrower regression-detection gap: before #220, only the Python `tracemalloc` peak was executable as a pass/fail condition even though sampled RSS was recorded.
+
+Benchmark evidence version `1.2.0` retains `tracemalloc` as an independent gate and adds a second process/native-memory gate on Linux and Windows:
+
+- Linux reads current resident set from `/proc/self/statm`;
+- Windows reads current process working set through the platform `GetProcessMemoryInfo(...).WorkingSetSize` API;
+- no third-party package is added for measurement;
+- the measurement apparatus is started before the pre-job RSS baseline is sampled, so the sampler thread itself is not charged to workload growth;
+- process evidence is the non-negative sampled growth `max(0, sampled_peak_rss - pre_job_baseline_rss)`, not total interpreter RSS;
+- the accepted full-rate plan requires both the Python traced peak and that sampled RSS growth to be at or below the exact scheduler reservation;
+- failure to obtain the required process metric on Linux/Windows fails the full-rate benchmark rather than fabricating zero or silently passing;
+- unsupported platforms record the process metric as unavailable and do not pretend it is comparable; the existing `tracemalloc` gate still applies there.
+
+This is sampled validation of the conservative job reservation, **not** kernel-enforced RSS limiting and not a claim that the sampled growth captures every instantaneous native peak. ZG-004 scheduler admission remains declaration/reservation policy; #220 adds evidence that the accepted implementation stays within that declaration on the supported CI platforms.
 
 The first complete corrective implementation head (`4c8c81fb28df37acc056e2c2c9434a7086304b91`) passed ZG-042 on Ubuntu and Windows in workflow run `35442284120`, including inherited scheduler/source/analysis/component/DSP/layer regressions and the full-rate benchmark. It also passed the reverse-dependency dispatcher (`35442284283`) and the dispatched ZG-045 canonical-environment run (`35442305676`). The final programme-evidence head is required to repeat those gates before merge.
 
@@ -53,11 +70,11 @@ ZG-042 adds conservative **preflight estimates and execution policy** around tho
 
 `admission_memory()` applies the estimate to the real ZG-004 `SchedulerLimits`. Caller overrides may reserve **more**, never less. Preview must fit the interactive reserve; background work must fit the background lane and per-job bound.
 
-For 64 bars at 48 kHz / 200 BPM under default limits, the corrected conservative planner recommends at most **20 bars per section**, producing the explicit plan `20 + 20 + 20 + 4`. The benchmark executes this product-scale plan and requires its measured Python allocation peak to remain at or below the exact scheduler reservation. Failure of that inequality fails the benchmark and therefore CI; this is no longer a projection-only claim.
+For 64 bars at 48 kHz / 200 BPM under default limits, the corrected conservative planner recommends at most **20 bars per section**, producing the explicit plan `20 + 20 + 20 + 4`. The benchmark executes this product-scale plan. Python traced allocation must remain at or below the exact scheduler reservation. On Linux and Windows, sampled process-RSS **growth above the pre-job baseline** must independently remain at or below that same reservation. Either failed inequality fails the benchmark and therefore CI.
 
-On the first complete #213 implementation head, the reservation for that plan was **267,321,344 bytes**. Ubuntu measured a Python traced peak of **230,619,115 bytes** and Windows measured **230,602,495 bytes**, both below the admitted bound. These are host observations from workflow run `35442284120`, not universal RSS guarantees.
+On the first complete #213 implementation head, the reservation for that plan was **267,321,344 bytes**. Ubuntu measured a Python traced peak of **230,619,115 bytes** and Windows measured **230,602,495 bytes**, both below the admitted bound in workflow run `35442284120`. The final #213 reacceptance record separately captured Ubuntu `tracemalloc` **230,616,273 bytes** and process-RSS delta **228,659,200 bytes**, also below the same reservation. Those values remain historical host observations; #220 does not rewrite them into universal thresholds.
 
-RSS is still reported as host context, not compared directly with the reservation because process RSS includes interpreter/libraries and pre-existing process state outside the job's declared incremental working set.
+Total process RSS is still not compared directly with the reservation because interpreter, libraries, caches and pre-existing process state are outside the job's declared incremental working set. The executable native/process gate uses only the sampled RSS growth above the immediate pre-job baseline.
 
 ## Immutable admission snapshot
 
@@ -133,11 +150,13 @@ The benchmark actually executes:
 - a preview while a real long-form BATCH render occupies/queues background work;
 - the accepted **64-bar / 48 kHz / 200 BPM** persistent plan under default scheduler limits.
 
-It records platform/Python/CPU, process numerical-runtime/thread environment, elapsed time, authoritative memory/work estimate, Python allocation peak, sampled RSS where available, and the measured top three reduced-fixture costs. The full-rate evidence additionally records the explicit section plan, exact admission reservation and `tracemalloc_within_reservation`; the tool exits unsuccessfully if the measured traced peak exceeds the reservation.
+It records platform/Python/CPU, process numerical-runtime/thread environment, elapsed time, authoritative memory/work estimate, Python allocation peak, process-RSS source/baseline/sampled peak/final value/growth where supported, and the measured top three reduced-fixture costs. The full-rate evidence additionally records the explicit section plan, exact admission reservation, `tracemalloc_within_reservation`, `process_rss_within_reservation`, whether process RSS is required on that platform, and the combined acceptance decision.
+
+On Linux and Windows the full-rate tool exits unsuccessfully if either the measured Python traced peak or sampled process-RSS growth exceeds the reservation, or if the required process RSS metric is unavailable. Other platforms record process RSS as unsupported rather than zero and retain the Python traced-memory gate.
 
 The routine CI analysis/note fixtures remain intentionally reduced so cross-platform validation stays bounded. That does not alter product quality. The full-rate persistent memory case is separately executed because it is the acceptance boundary that exposed the #210 defect.
 
-Benchmark timings are host observations, not universal realtime guarantees and not acceptance thresholds. A slower runner is not a reason to reduce audio quality.
+Benchmark timings and RSS samples are host observations, not universal realtime guarantees, hard kernel memory limits or product-quality thresholds. A slower runner is not a reason to reduce audio quality.
 
 ## Acceptance interpretation
 
@@ -146,7 +165,7 @@ ZG-042 corrective reacceptance requires the exact reviewed head to prove all of 
 1. admission and execution use the same bounded detached request snapshot;
 2. caller mutation and one-shot iterators cannot invalidate memory admission;
 3. the corrected multi-section memory bound is authoritative for both recommendation and execution;
-4. the product-scale 64-bar / 48 kHz / 200 BPM accepted plan executes with measured Python allocation at or below its reservation;
+4. the product-scale 64-bar / 48 kHz / 200 BPM accepted plan executes with measured Python allocation at or below its reservation and, on Linux/Windows, sampled process-RSS growth above its pre-job baseline independently at or below the same reservation;
 5. cancellation precedes retained allocation and is checked at each section boundary;
 6. representable stateful boundaries retain exact PCM/state evidence while an unfinished-glide cut fails before rendering;
 7. unsafe source, zero-phase and window/history chunking remains fail-closed;
