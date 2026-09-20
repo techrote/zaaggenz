@@ -84,6 +84,8 @@ class _CompiledSection:
 
 
 def _rat(value):
+    if isinstance(value, Fraction):
+        return f"{value.numerator}/{value.denominator}"
     value = fraction(value)
     return f"{value.numerator}/{value.denominator}"
 
