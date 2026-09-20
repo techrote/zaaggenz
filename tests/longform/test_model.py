@@ -74,13 +74,14 @@ class LongformModelTests(unittest.TestCase):
             LongformDocument(data)
 
     def test_total_sample_bound_rejects_unbounded_construction(self):
-        data = stress_64bar_example().to_dict()
-        # At 192 kHz the existing arrangement would exceed the explicit 5M-frame
-        # authoring envelope. A caller must split it into explicit export parts.
-        data["base_project"]["revisions"][0]["recipe"]["source"]["params"]["sr"] = 192000
-        # The project revision hash deliberately no longer matches and must fail
-        # before any attempt to allocate a giant render.
-        with self.assertRaises(LongformError):
+        data = small_test_example().to_dict()
+        # Keep the embedded Project completely valid. Instead make one legal
+        # motif-repetition request extremely long at the minimum accepted tempo;
+        # the long-form wrapper must reject it before allocating proportional PCM.
+        section = data["sections"][0]
+        section["repeats"] = 64
+        section["tempo_segments"] = [{"beat": "0/1", "bpm": "20/1"}]
+        with self.assertRaisesRegex(LongformError, "exceeds 5000000 samples"):
             LongformDocument(data)
 
 
