@@ -469,6 +469,14 @@ def _portable_row(row):
     }
 
 
+def _report_identity_row(row):
+    # Host wall-clock is telemetry, not research evidence identity. All other
+    # environment-specific result/candidate identities remain bound here.
+    value = dict(row)
+    value.pop("search_seconds", None)
+    return value
+
+
 def build_development_report(*, on_selection=None):
     started = time.perf_counter()
     rows, full, pending = [], [], []
@@ -561,8 +569,40 @@ def build_development_report(*, on_selection=None):
         "integrity": integrity,
         "portable": portable,
     }
-    report["portable_sha256"] = digest(portable)
-    report["evidence_sha256"] = digest(report)
+    # The preregistered matrix is intentionally larger than the canonical
+    # single-object node bound. Hash each bounded row first, then compose those
+    # identities. This preserves the safety bound instead of weakening it.
+    portable_identity = {
+        "kind": "ZG024eDevelopmentPortableEvidenceIdentity",
+        "version": "1.0.0",
+        "design_sha256": portable["design_sha256"],
+        "selection_decision_sha256": selection["selection_decision_sha256"],
+        "development_row_sha256s": [
+            digest(row) for row in portable["development"]
+        ],
+        "sentinel_row_sha256s": [
+            digest(row) for row in portable["sentinels"]
+        ],
+        "integrity": integrity,
+    }
+    report["portable_sha256"] = digest(portable_identity)
+    evidence_identity = {
+        "kind": "ZG024eDevelopmentEvidenceIdentity",
+        "version": "1.0.0",
+        "design_sha256": report["design_sha256"],
+        "design_freeze_commit": DESIGN_FREEZE_COMMIT,
+        "research_implementation_sha256": digest(report["research_implementation"]),
+        "selection_decision_sha256": selection["selection_decision_sha256"],
+        "development_row_sha256s": [
+            digest(_report_identity_row(row)) for row in rows
+        ],
+        "sentinel_row_sha256s": [
+            digest(_report_identity_row(row)) for row in sentinel_rows
+        ],
+        "integrity": integrity,
+        "portable_sha256": report["portable_sha256"],
+    }
+    report["evidence_sha256"] = digest(evidence_identity)
     telemetry = {
         "kind": "ZG024eDevelopmentTelemetry",
         "version": "1.0.0",
