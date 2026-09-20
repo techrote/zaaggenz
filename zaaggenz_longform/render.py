@@ -207,6 +207,10 @@ def _compile_phrase(document, section, motif, tuning):
             )
 
     end = motif_length * section["repeats"]
+    section_seed = int.from_bytes(
+        hashlib.sha256(section["id"].encode("utf-8")).digest()[:8],
+        "big",
+    )
     phrase = make_phrase_plan(
         tuning["id"],
         events,
@@ -214,7 +218,7 @@ def _compile_phrase(document, section, motif, tuning):
         end_beat=_rat(end),
         gestures=gestures,
         bass_role=section["bass_role"],
-        seed=section["id"],
+        seed=section_seed,
     )
     return phrase, tuple(rows)
 
