@@ -3,8 +3,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 
-from zaaggenz_contracts import envelope
-from zaaggenz_contracts.legacy import freeze_legacy
+from zaaggenz_contracts.legacy import envelope, freeze_legacy
 from zaaggenz_contracts.music import beat_to_sample
 from zaaggenz_grammar import starter_grammars
 from zaaggenz_harmony import SonorityTone, VoiceSpec, VoicingConstraints
