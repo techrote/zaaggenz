@@ -5,6 +5,8 @@ Numbers describe only the executing host/configuration. The tool never changes p
 from __future__ import annotations
 
 import argparse
+import ctypes
+import gc
 import json
 import os
 import platform
@@ -12,6 +14,7 @@ import sys
 import threading
 import time
 import tracemalloc
+from ctypes import wintypes
 from pathlib import Path
 
 import numpy as np
@@ -39,33 +42,185 @@ from zaaggenz_performance import (
 )
 
 
-def _rss_bytes():
-    # Linux gives a cheap process RSS sample. Other platforms still report
-    # tracemalloc and the authoritative workload estimate.
-    statm = Path("/proc/self/statm")
-    if statm.is_file():
-        try:
-            pages = int(statm.read_text().split()[1])
-            return pages * os.sysconf("SC_PAGE_SIZE")
-        except (OSError, ValueError, IndexError):
-            return None
+PROCESS_RSS_REQUIRED_SYSTEMS = frozenset({"Linux", "Windows"})
+RSS_SAMPLE_INTERVAL_SECONDS = 0.01
+
+
+def _process_rss_source():
+    system = platform.system()
+    if system == "Linux":
+        return "linux-proc-self-statm"
+    if system == "Windows":
+        return "windows-psapi-working-set"
     return None
 
 
-def _measure(name, estimate, fn):
-    before = _rss_bytes()
-    peak_rss = [before or 0]
+def _linux_rss_bytes():
+    statm = Path("/proc/self/statm")
+    if not statm.is_file():
+        return None
+    try:
+        pages = int(statm.read_text().split()[1])
+        return pages * os.sysconf("SC_PAGE_SIZE")
+    except (OSError, ValueError, IndexError):
+        return None
+
+
+def _windows_rss_bytes():
+    if platform.system() != "Windows":
+        return None
+
+    class PROCESS_MEMORY_COUNTERS_EX(ctypes.Structure):
+        _fields_ = [
+            ("cb", wintypes.DWORD),
+            ("PageFaultCount", wintypes.DWORD),
+            ("PeakWorkingSetSize", ctypes.c_size_t),
+            ("WorkingSetSize", ctypes.c_size_t),
+            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+            ("PagefileUsage", ctypes.c_size_t),
+            ("PeakPagefileUsage", ctypes.c_size_t),
+            ("PrivateUsage", ctypes.c_size_t),
+        ]
+
+    try:
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        psapi = ctypes.WinDLL("psapi", use_last_error=True)
+        get_current_process = kernel32.GetCurrentProcess
+        get_current_process.restype = wintypes.HANDLE
+        get_process_memory_info = psapi.GetProcessMemoryInfo
+        get_process_memory_info.argtypes = [
+            wintypes.HANDLE,
+            ctypes.POINTER(PROCESS_MEMORY_COUNTERS_EX),
+            wintypes.DWORD,
+        ]
+        get_process_memory_info.restype = wintypes.BOOL
+        counters = PROCESS_MEMORY_COUNTERS_EX()
+        counters.cb = ctypes.sizeof(counters)
+        if not get_process_memory_info(
+            get_current_process(), ctypes.byref(counters), counters.cb
+        ):
+            return None
+        return int(counters.WorkingSetSize)
+    except (AttributeError, OSError, ValueError):
+        return None
+
+
+def _rss_bytes():
+    system = platform.system()
+    if system == "Linux":
+        return _linux_rss_bytes()
+    if system == "Windows":
+        return _windows_rss_bytes()
+    return None
+
+
+def _process_rss_evidence(
+    *,
+    source,
+    baseline_bytes,
+    sampled_peak_bytes,
+    final_bytes,
+    required_for_acceptance,
+):
+    values = [
+        value
+        for value in (baseline_bytes, sampled_peak_bytes, final_bytes)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0
+    ]
+    if not isinstance(baseline_bytes, int) or isinstance(baseline_bytes, bool):
+        peak = max(values) if values else None
+        return {
+            "source": source,
+            "available": False,
+            "required_for_acceptance": bool(required_for_acceptance),
+            "baseline_bytes": None,
+            "sampled_peak_bytes": peak,
+            "final_bytes": final_bytes if isinstance(final_bytes, int) else None,
+            "growth_bytes": None,
+            "sample_interval_seconds": RSS_SAMPLE_INTERVAL_SECONDS,
+            "semantics": "sampled-process-rss-growth-above-pre-job-baseline",
+        }
+
+    peak = max(values) if values else baseline_bytes
+    growth = max(0, peak - baseline_bytes)
+    return {
+        "source": source,
+        "available": True,
+        "required_for_acceptance": bool(required_for_acceptance),
+        "baseline_bytes": baseline_bytes,
+        "sampled_peak_bytes": peak,
+        "final_bytes": final_bytes if isinstance(final_bytes, int) else None,
+        "growth_bytes": growth,
+        "sample_interval_seconds": RSS_SAMPLE_INTERVAL_SECONDS,
+        "semantics": "sampled-process-rss-growth-above-pre-job-baseline",
+    }
+
+
+def _memory_acceptance(reserved_memory_bytes, tracemalloc_peak_bytes, process_rss):
+    if type(reserved_memory_bytes) is not int or reserved_memory_bytes <= 0:
+        raise ValueError("reserved_memory_bytes must be a positive integer")
+    if type(tracemalloc_peak_bytes) is not int or tracemalloc_peak_bytes < 0:
+        raise ValueError("tracemalloc_peak_bytes must be a non-negative integer")
+
+    traced_ok = tracemalloc_peak_bytes <= reserved_memory_bytes
+    required = bool(process_rss.get("required_for_acceptance"))
+    growth = process_rss.get("growth_bytes")
+    process_ok = (
+        growth <= reserved_memory_bytes
+        if isinstance(growth, int) and not isinstance(growth, bool) and growth >= 0
+        else None
+    )
+    accepted = traced_ok and (process_ok is True if required else True)
+    return {
+        "tracemalloc_within_reservation": traced_ok,
+        "process_rss_within_reservation": process_ok,
+        "process_rss_required_for_acceptance": required,
+        "accepted": accepted,
+    }
+
+
+def _measure(
+    name,
+    estimate,
+    fn,
+    *,
+    rss_reader=None,
+    rss_source=None,
+    rss_required=None,
+):
+    if rss_reader is None:
+        rss_reader = _rss_bytes
+    if rss_source is None:
+        rss_source = _process_rss_source()
+    if rss_required is None:
+        rss_required = platform.system() in PROCESS_RSS_REQUIRED_SYSTEMS
+
+    # Reduce unreachable Python objects before taking the process baseline, then
+    # start the measurement apparatus before the baseline so the sampler/thread
+    # itself is not charged to the workload's RSS growth.
+    gc.collect()
+    peak_rss = [None]
     stop = threading.Event()
+    ready = threading.Event()
 
     def sample():
-        while not stop.wait(0.01):
-            value = _rss_bytes()
+        ready.set()
+        while not stop.wait(RSS_SAMPLE_INTERVAL_SECONDS):
+            value = rss_reader()
             if value is not None:
-                peak_rss[0] = max(peak_rss[0], value)
+                peak_rss[0] = value if peak_rss[0] is None else max(peak_rss[0], value)
 
     sampler = threading.Thread(target=sample, daemon=True)
     tracemalloc.start()
     sampler.start()
+    if not ready.wait(1):
+        raise RuntimeError("RSS sampler did not start")
+    before = rss_reader()
+    if before is not None:
+        peak_rss[0] = before
     start_threads = threading.active_count()
     t0 = time.perf_counter()
     try:
@@ -76,9 +231,16 @@ def _measure(name, estimate, fn):
         sampler.join(1)
         _, traced_peak = tracemalloc.get_traced_memory()
         tracemalloc.stop()
-    after = _rss_bytes()
+    after = rss_reader()
     if after is not None:
-        peak_rss[0] = max(peak_rss[0], after)
+        peak_rss[0] = after if peak_rss[0] is None else max(peak_rss[0], after)
+    process_rss = _process_rss_evidence(
+        source=rss_source,
+        baseline_bytes=before,
+        sampled_peak_bytes=peak_rss[0],
+        final_bytes=after,
+        required_for_acceptance=rss_required,
+    )
     return result, {
         "name": name,
         "elapsed_ms": elapsed,
@@ -87,9 +249,10 @@ def _measure(name, estimate, fn):
         "quality": estimate.quality,
         "chunk_mode": estimate.chunk_mode,
         "tracemalloc_peak_bytes": traced_peak,
-        "rss_before_bytes": before,
-        "rss_after_bytes": after,
-        "rss_sampled_peak_bytes": peak_rss[0] or None,
+        "rss_before_bytes": process_rss["baseline_bytes"],
+        "rss_after_bytes": process_rss["final_bytes"],
+        "rss_sampled_peak_bytes": process_rss["sampled_peak_bytes"],
+        "process_rss": process_rss,
         "python_threads_start": start_threads,
         "python_threads_end": threading.active_count(),
     }
@@ -342,13 +505,25 @@ def main():
     full_measurement["bars"] = 64
     full_measurement["section_plan_bars"] = list(plan)
     full_measurement["reserved_memory_bytes"] = full_reserved
-    full_measurement["tracemalloc_within_reservation"] = (
-        full_measurement["tracemalloc_peak_bytes"] <= full_reserved
+    acceptance = _memory_acceptance(
+        full_reserved,
+        full_measurement["tracemalloc_peak_bytes"],
+        full_measurement["process_rss"],
     )
-    if not full_measurement["tracemalloc_within_reservation"]:
+    full_measurement.update(acceptance)
+    if not acceptance["accepted"]:
         raise RuntimeError(
-            "full-rate accepted plan exceeded its authoritative memory reservation: "
-            f"{full_measurement['tracemalloc_peak_bytes']} > {full_reserved}"
+            "full-rate accepted plan exceeded or could not prove its authoritative "
+            "memory reservation: "
+            + json.dumps(
+                {
+                    "reserved_memory_bytes": full_reserved,
+                    "tracemalloc_peak_bytes": full_measurement["tracemalloc_peak_bytes"],
+                    "process_rss": full_measurement["process_rss"],
+                    "acceptance": acceptance,
+                },
+                sort_keys=True,
+            )
         )
 
     full_rate_evidence = {
@@ -365,7 +540,7 @@ def main():
     ranked = sorted(measurements, key=lambda item: item["elapsed_ms"], reverse=True)
     report = {
         "kind": "ZG042PerformanceBenchmark",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "scope": "host-measured; not a universal realtime guarantee",
         "configuration": {
             "sample_rate_hz": sr,
