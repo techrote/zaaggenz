@@ -28,6 +28,7 @@
     "zg024a-lab.yml": "ZG-024",
     "zg024b-strategies.yml": "ZG-024",
     "zg024d-staged.yml": "ZG-024",
+    "zg024e-feasibility.yml": "ZG-024",
     "zg025-phrase.yml": "ZG-025",
     "zg026-meter.yml": "ZG-026",
     "zg027-gesture.yml": "ZG-027",
@@ -43,55 +44,170 @@
     "zg045-environment.yml": "ZG-045"
   },
   "source_path_owners": {
-    "baseline/recovered_source/**": ["ZG-001"],
-    "zaaggenz_contracts/**": ["ZG-002"],
-    "requirements-contracts.txt": ["ZG-002"],
-    "zaaggenz_project/**": ["ZG-003"],
-    "zaaggenz_jobs/**": ["ZG-004"],
-    "requirements-jobs.txt": ["ZG-004"],
-    "web/jobs_transport.mjs": ["ZG-004"],
-    "zaaggenz_qc/**": ["ZG-005"],
-    "zaaggenz_reference/**": ["ZG-006"],
-    "references/**": ["ZG-006"],
-    "zaaggenz_tuning/**": ["ZG-007", "ZG-020"],
-    "zaaggenz_melody/**": ["ZG-008"],
-    "zaaggenz_timeline/**": ["ZG-009"],
-    "web/timeline/**": ["ZG-009", "ZG-041"],
-    "zaaggenz_harmony/**": ["ZG-010"],
-    "zaaggenz_grammar/**": ["ZG-011"],
-    "zaaggenz_analysis/**": ["ZG-012"],
-    "zaaggenz_components/**": ["ZG-013"],
-    "zaaggenz_descriptors/**": ["ZG-014"],
-    "zaaggenz_listening/**": ["ZG-015"],
-    "web/listening/**": ["ZG-015"],
-    "zaaggenz_dsp/**": ["ZG-016", "ZG-019", "ZG-021"],
-    "zaaggenz_spectral/**": ["ZG-017", "ZG-018", "ZG-019", "ZG-021"],
-    "zaaggenz_zaag/**": ["ZG-022"],
-    "zaaggenz_inspector/**": ["ZG-023"],
-    "web/inspector/**": ["ZG-023"],
-    "zaaggenz_inverse/**": ["ZG-024"],
-    "research/zg024b/**": ["ZG-024"],
-    "research/zg024d/**": ["ZG-024"],
-    "zaaggenz_phrase/**": ["ZG-025"],
-    "zaaggenz_meter/**": ["ZG-026"],
-    "zaaggenz_gesture/**": ["ZG-027"],
-    "zaaggenz_linked/**": ["ZG-028"],
-    "zaaggenz_layers/**": ["ZG-029"],
-    "zaaggenz_layers/pockets.py": ["ZG-030"],
-    "zaaggenz_layers/integration.py": ["ZG-030"],
-    "zaaggenz_layers/__init__.py": ["ZG-030"],
-    "zaaggenz_textgesture/**": ["ZG-031"],
-    "zaaggenz_vocal/**": ["ZG-032"],
-    "web/vocal/**": ["ZG-032"],
-    "zaaggenz_runtime/**": ["ZG-009", "ZG-015", "ZG-023", "ZG-032", "ZG-041"],
-    "zaaggenz_web_release/**": ["ZG-009", "ZG-015", "ZG-023", "ZG-032"],
-    "zaaggenz_studies/**": ["ZG-040"],
-    "zaaggenz_performance/**": ["ZG-042"],
-    "zaaggenz_longform/**": ["ZG-043"],
-    "pyproject.toml": ["ZG-045"],
-    "constraints/**": ["ZG-045"],
-    "package.json": ["ZG-045"],
-    "zaaggenz_environment/**": ["ZG-045"]
+    "baseline/recovered_source/**": [
+      "ZG-001"
+    ],
+    "zaaggenz_contracts/**": [
+      "ZG-002"
+    ],
+    "requirements-contracts.txt": [
+      "ZG-002"
+    ],
+    "zaaggenz_project/**": [
+      "ZG-003"
+    ],
+    "zaaggenz_jobs/**": [
+      "ZG-004"
+    ],
+    "requirements-jobs.txt": [
+      "ZG-004"
+    ],
+    "web/jobs_transport.mjs": [
+      "ZG-004"
+    ],
+    "zaaggenz_qc/**": [
+      "ZG-005"
+    ],
+    "zaaggenz_reference/**": [
+      "ZG-006"
+    ],
+    "references/**": [
+      "ZG-006"
+    ],
+    "zaaggenz_tuning/**": [
+      "ZG-007",
+      "ZG-020"
+    ],
+    "zaaggenz_melody/**": [
+      "ZG-008"
+    ],
+    "zaaggenz_timeline/**": [
+      "ZG-009"
+    ],
+    "web/timeline/**": [
+      "ZG-009",
+      "ZG-041"
+    ],
+    "zaaggenz_harmony/**": [
+      "ZG-010"
+    ],
+    "zaaggenz_grammar/**": [
+      "ZG-011"
+    ],
+    "zaaggenz_analysis/**": [
+      "ZG-012"
+    ],
+    "zaaggenz_components/**": [
+      "ZG-013"
+    ],
+    "zaaggenz_descriptors/**": [
+      "ZG-014"
+    ],
+    "zaaggenz_listening/**": [
+      "ZG-015"
+    ],
+    "web/listening/**": [
+      "ZG-015"
+    ],
+    "zaaggenz_dsp/**": [
+      "ZG-016",
+      "ZG-019",
+      "ZG-021"
+    ],
+    "zaaggenz_spectral/**": [
+      "ZG-017",
+      "ZG-018",
+      "ZG-019",
+      "ZG-021"
+    ],
+    "zaaggenz_zaag/**": [
+      "ZG-022"
+    ],
+    "zaaggenz_inspector/**": [
+      "ZG-023"
+    ],
+    "web/inspector/**": [
+      "ZG-023"
+    ],
+    "zaaggenz_inverse/**": [
+      "ZG-024"
+    ],
+    "research/zg024b/**": [
+      "ZG-024"
+    ],
+    "research/zg024d/**": [
+      "ZG-024"
+    ],
+    "zaaggenz_phrase/**": [
+      "ZG-025"
+    ],
+    "zaaggenz_meter/**": [
+      "ZG-026"
+    ],
+    "zaaggenz_gesture/**": [
+      "ZG-027"
+    ],
+    "zaaggenz_linked/**": [
+      "ZG-028"
+    ],
+    "zaaggenz_layers/**": [
+      "ZG-029"
+    ],
+    "zaaggenz_layers/pockets.py": [
+      "ZG-030"
+    ],
+    "zaaggenz_layers/integration.py": [
+      "ZG-030"
+    ],
+    "zaaggenz_layers/__init__.py": [
+      "ZG-030"
+    ],
+    "zaaggenz_textgesture/**": [
+      "ZG-031"
+    ],
+    "zaaggenz_vocal/**": [
+      "ZG-032"
+    ],
+    "web/vocal/**": [
+      "ZG-032"
+    ],
+    "zaaggenz_runtime/**": [
+      "ZG-009",
+      "ZG-015",
+      "ZG-023",
+      "ZG-032",
+      "ZG-041"
+    ],
+    "zaaggenz_web_release/**": [
+      "ZG-009",
+      "ZG-015",
+      "ZG-023",
+      "ZG-032"
+    ],
+    "zaaggenz_studies/**": [
+      "ZG-040"
+    ],
+    "zaaggenz_performance/**": [
+      "ZG-042"
+    ],
+    "zaaggenz_longform/**": [
+      "ZG-043"
+    ],
+    "pyproject.toml": [
+      "ZG-045"
+    ],
+    "constraints/**": [
+      "ZG-045"
+    ],
+    "package.json": [
+      "ZG-045"
+    ],
+    "zaaggenz_environment/**": [
+      "ZG-045"
+    ],
+    "research/zg024e/**": [
+      "ZG-024"
+    ]
   },
   "validation_only_paths": [
     "programme/dependency_graph.json",
