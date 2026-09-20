@@ -1,5 +1,7 @@
 # ZaagGen DEVmain continuation — handoff record (2026-09-13)
 
+> **Historical dated handoff.** This records the exact continuation state at the 2026-09-13 pause and is preserved as restart provenance. It is superseded as a live programme-status source; current readiness is `programme/task_state.json`. The task/issue instructions below remain evidence of what was next at that pause, not current dispatch authority.
+
 This file records the repository work completed during the current continuation session and the exact state at pause. It is intended as a restart point for a fresh agent/chat. Do not reinterpret it as a new programme specification; issue bodies, accepted contracts and the programme graph remain authoritative.
 
 ## Accepted work completed during this continuation

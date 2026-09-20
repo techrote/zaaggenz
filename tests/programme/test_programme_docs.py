@@ -21,29 +21,116 @@ class ProgrammeDocsTests(unittest.TestCase):
         self.assertEqual([], pd.audit_texts(self.docs, self.baseline, self.state))
         pd.check(ROOT)
 
-    def test_stale_bootstrap_live_claim_is_rejected(self) -> None:
+    def test_root_readme_stale_zg001_gate_is_rejected(self) -> None:
         docs = dict(self.docs)
-        docs["overview"] += "\nThe **actual v1.2.1 source/archive still has to be recovered before work.\n"
+        docs["readme"] += (
+            "\nThe first implementation gate is **ZG-001**: recover and provenance-check the source.\n"
+        )
         errors = pd.audit_texts(docs, self.baseline, self.state)
-        self.assertTrue(any("stale live bootstrap claim" in e for e in errors))
+        self.assertTrue(any("readme: stale live ZG-001" in error for error in errors))
 
-    def test_missing_state_authority_pointer_is_rejected(self) -> None:
+    def test_deployment_stale_zg001_gate_is_rejected(self) -> None:
         docs = dict(self.docs)
-        docs["requirements"] = docs["requirements"].replace("task_state.json", "task-status.json")
+        docs["deployment"] += (
+            "\nThe actual v1.2.1 source/archive still has to be recovered before implementation.\n"
+        )
         errors = pd.audit_texts(docs, self.baseline, self.state)
-        self.assertIn("requirements: missing task_state.json authority pointer", errors)
+        self.assertTrue(any("deployment: stale live ZG-001" in error for error in errors))
 
-    def test_latest_inverse_handoff_pointer_is_required(self) -> None:
+    def test_historical_status_documents_require_explicit_non_live_boundary(self) -> None:
         docs = dict(self.docs)
-        docs["rag"] = docs["rag"].replace("ZG024_RESEARCH_HANDOFF_2.md", "ZG024_RESEARCH_HANDOFF_OLD.md")
+        docs["research_scratchpad"] = docs["research_scratchpad"].replace(
+            "Historical pre-G0 research workpad", "Pre-G0 research workpad"
+        ).replace(
+            "It is superseded as a live programme-status source; ", ""
+        )
         errors = pd.audit_texts(docs, self.baseline, self.state)
-        self.assertTrue(any("ZG024_RESEARCH_HANDOFF_2.md" in e for e in errors))
+        self.assertIn(
+            "research_scratchpad: missing explicit historical/non-live-status boundary",
+            errors,
+        )
+
+    def test_zg040_current_blocker_claim_is_rejected_when_reaccepted(self) -> None:
+        docs = dict(self.docs)
+        docs["overview"] += "\nZG-040 currently blocks confirmatory study-family work.\n"
+        errors = pd.audit_texts(docs, self.baseline, self.state)
+        self.assertIn(
+            "overview: ZG-040 is dependency-satisfying but prose calls it a current blocker",
+            errors,
+        )
+
+    def test_zg042_current_blocker_claim_is_rejected_when_reaccepted(self) -> None:
+        docs = dict(self.docs)
+        docs["overview"] += "\nZG-042 currently blocks release-validation work.\n"
+        errors = pd.audit_texts(docs, self.baseline, self.state)
+        self.assertIn(
+            "overview: ZG-042 is dependency-satisfying but prose calls it a current blocker",
+            errors,
+        )
+
+    def test_status_authority_pointer_is_required_where_status_is_reported(self) -> None:
+        docs = dict(self.docs)
+        docs["deployment"] = docs["deployment"].replace("task_state.json", "task-status.json")
+        errors = pd.audit_texts(docs, self.baseline, self.state)
+        self.assertIn("deployment: missing task_state.json authority pointer", errors)
+
+    def test_current_inverse_terminal_evidence_is_required(self) -> None:
+        for required in pd.ZG024_REQUIRED_RAG:
+            with self.subTest(required=required):
+                docs = dict(self.docs)
+                docs["rag"] = docs["rag"].replace(required, "REMOVED_CURRENT_INVERSE_AUTHORITY.md")
+                errors = pd.audit_texts(docs, self.baseline, self.state)
+                self.assertIn(f"rag: missing current inverse authority pointer {required}", errors)
+
+    def test_rag_cannot_revert_to_handoff_1_2_as_terminal_current_state(self) -> None:
+        docs = dict(self.docs)
+        docs["rag"] += (
+            "\nThe latest accepted serial ZG-024 handoffs are "
+            "ZG024_RESEARCH_HANDOFF_1.md and ZG024_RESEARCH_HANDOFF_2.md.\n"
+        )
+        errors = pd.audit_texts(docs, self.baseline, self.state)
+        self.assertIn("rag: stale Handoff-1/2-only terminal research claim present", errors)
+
+    def test_rag_must_preserve_parent_incomplete_and_no_promotion_interpretation(self) -> None:
+        docs = dict(self.docs)
+        docs["rag"] = docs["rag"].replace(
+            "**no production optimizer was promoted**", "a production optimizer was selected"
+        )
+        docs["rag"] = docs["rag"].replace(
+            "Parent ZG-024 / #25 remains research-active",
+            "Parent ZG-024 / #25 is complete",
+        )
+        errors = pd.audit_texts(docs, self.baseline, self.state)
+        self.assertIn("rag: missing no-production-optimizer interpretation for ZG-024", errors)
+        self.assertIn("rag: missing current parent ZG-024 research-active interpretation", errors)
+
+    def test_runtime_requires_research_hub_and_single_session_authority(self) -> None:
+        docs = dict(self.docs)
+        docs["runtime"] = docs["runtime"].replace("`/research`", "`/experiment`")
+        errors = pd.audit_texts(docs, self.baseline, self.state)
+        self.assertIn("runtime: missing accepted non-destructive Research hub", errors)
+
+        docs = dict(self.docs)
+        docs["runtime"] = docs["runtime"].replace(
+            "exactly one `RuntimeSession`", "several `RuntimeSession` instances"
+        )
+        errors = pd.audit_texts(docs, self.baseline, self.state)
+        self.assertIn("runtime: missing single authoritative RuntimeSession ownership", errors)
+
+    def test_runtime_requires_separate_trusted_listening_capability(self) -> None:
+        docs = dict(self.docs)
+        docs["runtime"] = docs["runtime"].replace(
+            "Trusted Listening authority remains a separate server-held capability",
+            "Trusted Listening authority shares the ordinary session capability",
+        )
+        errors = pd.audit_texts(docs, self.baseline, self.state)
+        self.assertIn("runtime: missing separate trusted Listening capability boundary", errors)
 
     def test_baseline_hash_disagreement_is_rejected(self) -> None:
         docs = dict(self.docs)
         docs["context"] = docs["context"].replace(pd.RUNTIME_SHA, "0" * 64)
         errors = pd.audit_texts(docs, self.baseline, self.state)
-        self.assertTrue(any("context missing accepted runtime payload" in e for e in errors))
+        self.assertTrue(any("context missing accepted runtime payload" in error for error in errors))
 
     def test_zg001_must_remain_accepted_in_live_state(self) -> None:
         state = copy.deepcopy(self.state)
