@@ -67,7 +67,7 @@ def main():
     source_rows=[];hashes=[];source_audio={}
     for recipe in FAMILIES:
         rendered=render_family_source(recipe,sr);hashes.append(rendered.diagnostics['output_pcm_sha256']);source_audio[recipe.id]=rendered.audio;source_rows.append({'id':recipe.id,'classification':recipe.classification,'recipe_sha256':recipe.sha256,'render':rendered.diagnostics,'descriptors':_descriptor(rendered.audio,sr,float(rendered.source_params['f0_hz'])),'documentation':{'useful_pitch_range_hz':list(recipe.useful_pitch_range_hz),'tuning_guidance':recipe.tuning_guidance,'phase_policy':recipe.expert.phase_policy,'tail_policy':recipe.expert.tail_policy,'quality_cost':recipe.expert.quality_cost,'limitations':list(recipe.limitations)}})
-    arrangements=[]
+    arrangements=[];listening_exports=[]
     manifests=example_manifests(sr)
     for manifest in manifests:
         if args.skip_long and manifest.bars>4:arrangements.append({'id':manifest.id,'manifest_sha256':manifest.sha256,'bars':manifest.bars,'skipped_audio_at_this_evidence_tier':True});continue
