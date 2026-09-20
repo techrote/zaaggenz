@@ -285,7 +285,51 @@ def _freeze_selection(rows):
             "the ZG-024e confirmation module exists"
         ),
     }
-    record["selection_sha256"] = digest(record)
+    # The selection decision identity deliberately excludes raw floating-point fit
+    # medians. Cross-platform evidence compares those numerics under the frozen
+    # tolerance policy; forcing them into a byte-exact hash would falsely turn a
+    # tolerated numerical difference into a different causal decision identity.
+    decision_identity = {
+        "kind": record["kind"],
+        "version": record["version"],
+        "child_issue": record["child_issue"],
+        "parent_issue": record["parent_issue"],
+        "design_freeze_commit": record["design_freeze_commit"],
+        "design_sha256": record["design_sha256"],
+        "development_fixtures": record["development_fixtures"],
+        "search_seeds": record["search_seeds"],
+        "selected_intervention_method": record["selected_intervention_method"],
+        "selected_matched_null_method": record["selected_matched_null_method"],
+        "primary_mechanism": record["primary_mechanism"],
+        "primary_diagnosis": record["primary_diagnosis"],
+        "method_discrete_summary": {
+            method: {
+                "eligible_final_cases": summary["eligible_final_cases"],
+                "starvation_stop_cases": summary["starvation_stop_cases"],
+                "promotion_ineligible_violations": summary["promotion_ineligible_violations"],
+            }
+            for method, summary in record["method_summaries"].items()
+        },
+        "mechanism_discrete_summary": {
+            name: {
+                "intervention_method": item["intervention_method"],
+                "matched_null_method": item["matched_null_method"],
+                "eligible_case_gain": item["eligible_case_gain"],
+                "fit_pairs_both_finite": item["fit_pairs_both_finite"],
+                "additional_fit_regressions_over_10_percent": item[
+                    "additional_fit_regressions_over_10_percent"
+                ],
+                "promotion_ineligible_violations": item[
+                    "promotion_ineligible_violations"
+                ],
+                "development_supported": item["development_supported"],
+            }
+            for name, item in record["mechanisms"].items()
+        },
+        "selection_policy": record["selection_policy"],
+        "disclosure_boundary": record["disclosure_boundary"],
+    }
+    record["selection_decision_sha256"] = digest(decision_identity)
     return record
 
 
