@@ -571,9 +571,12 @@ class LongformDocument:
             raise LongformError(f"motifs must contain 1..{MAX_MOTIFS} entries")
         motif_lengths = {}
         for motif in motifs:
-            if motif.get("id") in motif_lengths:
+            if not isinstance(motif, dict) or "id" not in motif:
+                raise LongformError("motif must contain an id and the exact long-form motif fields")
+            motif_id = motif["id"]
+            if motif_id in motif_lengths:
                 raise LongformError("duplicate motif id")
-            motif_lengths[motif["id"]] = _validate_motif(motif, grammar_ids)
+            motif_lengths[motif_id] = _validate_motif(motif, grammar_ids)
 
         runtime_spec_from_dict(document["layer_runtime"])
         voicing_constraints_from_dict(document["voicing"])
