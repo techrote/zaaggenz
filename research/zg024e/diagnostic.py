@@ -242,9 +242,33 @@ class DiagnosticResult:
             "selection": "fit-only eligibility/objective/Pareto promotion; truth and holdout absent",
         }
 
+    def identity_dict(self):
+        # The complete result can exceed the canonical JSON node bound at the
+        # preregistered 36-evaluation budget. Preserve a tamper-evident identity by
+        # hashing bounded candidate records individually and composing their hashes
+        # with compact lineage/promotion/checkpoint identities.
+        return {
+            "kind": "ZG024eDiagnosticResultIdentity",
+            "version": VERSION,
+            "run_id": self.run_id,
+            "evaluator_search_id": self.evaluator_search_id,
+            "strategy_sha256": self.strategy.sha256,
+            "research_implementation_sha256": research_implementation_sha256(),
+            "candidate_sha256s": [candidate.sha256 for candidate in self.candidates],
+            "lineage_sha256": digest(list(self.lineage)),
+            "promotions_sha256": digest(list(self.promotions)),
+            "ranked_candidate_ids": list(self.ranked_candidate_ids),
+            "pareto_candidate_ids": list(self.pareto_candidate_ids),
+            "final_retained_candidate_ids": list(self.final_retained_candidate_ids),
+            "checkpoint_sha256": self.checkpoint.sha256,
+            "stage_consumption": dict(self.stage_consumption),
+            "proposal_attempts": self.proposal_attempts,
+            "stop_reason": self.stop_reason,
+        }
+
     @property
     def sha256(self):
-        return digest(self.to_dict())
+        return digest(self.identity_dict())
 
     def audit_selection(self, *, all_candidates=False):
         ids = tuple(c.id for c in self.candidates) if all_candidates else self.final_retained_candidate_ids
