@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 from zaaggenz_contracts.legacy import adapt_parameters
 from zaaggenz_zaag import (LOCKED_BLOOM,FAMILIES,candidates,contrasts,registry_payload,registry_sha256,
-    render_family_source,example_manifests,render_arrangement,build_owner_audition_pack)
+    render_family_source,family_demo_manifest,example_manifests,render_arrangement,build_owner_audition_pack)
 
 ROOT=Path(__file__).resolve().parents[2]
 
@@ -42,6 +42,27 @@ class ZaagFamilyTests(unittest.TestCase):
             self.assertEqual(a.diagnostics['recipe_sha256'],recipe.sha256);hashes.append(a.diagnostics['output_pcm_sha256'])
         self.assertEqual(len(set(hashes)),len(hashes))
 
+    def test_replacement_candidates_use_six_distinct_character_profiles_and_are_not_waveform_degenerate(self):
+        rendered=[render_family_source(recipe,12000) for recipe in candidates()]
+        profiles=[x.diagnostics['character_profile'] for x in rendered]
+        self.assertEqual(set(profiles),{'bark','snarl','chop','split','crush','rip'})
+        maximum=0.
+        for i,left in enumerate(rendered):
+            a=left.audio.astype(np.float64);a-=np.mean(a)
+            for right in rendered[i+1:]:
+                b=right.audio.astype(np.float64);b-=np.mean(b);n=min(len(a),len(b))
+                denom=np.linalg.norm(a[:n])*np.linalg.norm(b[:n])
+                corr=0. if denom==0 else abs(float(np.dot(a[:n],b[:n])/denom))
+                maximum=max(maximum,corr)
+        self.assertLess(maximum,.97)
+
+    def test_each_candidate_has_a_reproducible_melodic_demo(self):
+        for recipe in candidates():
+            manifest=family_demo_manifest(recipe.id,12000)
+            self.assertEqual(manifest.bars,1);self.assertEqual(len(manifest.events),8)
+            a=render_arrangement(manifest);b=render_arrangement(manifest)
+            np.testing.assert_array_equal(a.audio,b.audio)
+
     def test_three_examples_reproduce_and_reuse_each_family_source_once(self):
         manifests=example_manifests(12000);self.assertEqual([x.bars for x in manifests],[1,4,16])
         for manifest in manifests:
@@ -55,6 +76,8 @@ class ZaagFamilyTests(unittest.TestCase):
     def test_owner_audition_is_level_matched_multi_endpoint_and_pending(self):
         pack=build_owner_audition_pack(12000,-14.)
         self.assertEqual(len(pack.items),9);self.assertEqual(pack.manifest['status'],'pending-owner')
+        self.assertEqual(pack.manifest['audition_revision'],'zg022-brutal-family-redesign-229-v1')
+        self.assertEqual(set(pack.manifest['candidate_intents']),{x.id for x in candidates()})
         self.assertEqual({x['id'] for x in pack.manifest['endpoints']},{'bounce','melodic_identity','source_character','usefulness'})
         self.assertFalse(pack.manifest['anchor_audio_included']);self.assertTrue(pack.manifest['rejected_variants_retained_as_evidence'])
         self.assertIn('Explicit owner approval',pack.manifest['decision_policy'])

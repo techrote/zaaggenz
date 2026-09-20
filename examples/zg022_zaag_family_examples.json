@@ -8,12 +8,12 @@
   },
   "registry_expectation": {
     "candidate_ids": [
-      "zaag.relaxed-punch",
-      "zaag.vowel-sway",
-      "zaag.upper-bounce",
-      "zaag.complementary-pulse",
-      "zaag.grit-skip",
-      "zaag.harmonic-turn"
+      "zaag.bloom-bark",
+      "zaag.formant-snarl",
+      "zaag.upper-chop",
+      "zaag.split-maul",
+      "zaag.crushed-teeth",
+      "zaag.harmonic-rip"
     ],
     "contrast_ids": [
       "contrast.piep",
@@ -27,42 +27,63 @@
     {
       "id": "zg022-one-shot",
       "bars": 1,
-      "bpm": 190.0,
+      "bpm": 190,
       "generator": "one_shot_manifest",
-      "primary_family": "zaag.relaxed-punch",
-      "purpose": "single-note source character and attack/tail check"
+      "primary_family": "zaag.bloom-bark",
+      "purpose": "single-note brutal source character and attack/tail check"
     },
     {
       "id": "zg022-four-bar-bounce",
       "bars": 4,
-      "bpm": 190.0,
+      "bpm": 190,
       "generator": "four_bar_manifest",
-      "primary_family": "zaag.upper-bounce",
+      "primary_family": "zaag.upper-chop",
       "event_count": 32,
-      "degree_pattern": [0, 3, 5, 7, 5, 3, 10, 7],
-      "purpose": "bouncy melodic identity with repeated source reuse"
+      "degree_pattern": [
+        0,
+        3,
+        5,
+        7,
+        5,
+        3,
+        10,
+        7
+      ],
+      "purpose": "hard upper-band bounce/chop with repeated source reuse"
     },
     {
       "id": "zg022-sixteen-bar-turn",
       "bars": 16,
-      "bpm": 190.0,
+      "bpm": 190,
       "generator": "sixteen_bar_manifest",
       "event_count": 64,
       "section_families": [
-        "zaag.harmonic-turn",
-        "zaag.vowel-sway",
-        "zaag.complementary-pulse",
-        "zaag.grit-skip"
+        "zaag.harmonic-rip",
+        "zaag.formant-snarl",
+        "zaag.split-maul",
+        "zaag.crushed-teeth"
       ],
-      "section_roots_degrees": [0, -2, 0, -3],
-      "purpose": "explicit harmonic/source-family progression without hidden chord inference"
+      "section_roots_degrees": [
+        0,
+        -2,
+        0,
+        -3
+      ],
+      "purpose": "explicit progression through four structurally different brutal source families"
     }
   ],
   "audition": {
     "status": "pending-owner",
-    "target_rms_dbfs": -14.0,
-    "endpoints": ["bounce", "melodic_identity", "source_character", "usefulness"],
+    "target_rms_dbfs": -14,
+    "endpoints": [
+      "bounce",
+      "melodic_identity",
+      "source_character",
+      "usefulness"
+    ],
     "preference_inference_from_descriptors": false,
-    "rejected_variants_retained": true
+    "rejected_variants_retained": true,
+    "revision": "owner-rejected-v1-replaced-by-brutal-family-redesign-229",
+    "per_family_demo": true
   }
 }

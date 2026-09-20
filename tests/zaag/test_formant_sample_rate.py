@@ -9,7 +9,7 @@ from zaaggenz_zaag import ZaagFamilyError, family, render_family_source
 
 class FormantSampleRateContractTests(unittest.TestCase):
     def setUp(self):
-        self.base = family('zaag.vowel-sway')
+        self.base = family('zaag.formant-snarl')
 
     def recipe(self, start_hz, end_hz, *, motion=None, boost_db=None):
         expert = replace(

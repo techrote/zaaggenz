@@ -50,11 +50,13 @@ def build_owner_audition_pack(sample_rate_hz=48000,target_rms_dbfs=-14.):
         raw=render_family_source(recipe,sample_rate_hz,beats=1).audio;matched,gain=_match(raw,target_rms_dbfs);key=recipe.id;audio[key]=matched
         items.append(AuditionItem(key,recipe.id,recipe.classification,gain,_db(_rms(matched)),float(np.max(np.abs(matched),initial=0.)),hashlib.sha256(matched.astype('<f4').tobytes()).hexdigest()))
     order=deterministic_order(tuple(audio))
-    manifest={'kind':'ZaagOwnerAuditionPack','version':'1.0.0','status':'pending-owner','sample_rate_hz':sample_rate_hz,
+    manifest={'kind':'ZaagOwnerAuditionPack','version':'1.1.0','status':'pending-owner','audition_revision':'zg022-brutal-family-redesign-229-v1','sample_rate_hz':sample_rate_hz,
               'target_rms_dbfs':float(target_rms_dbfs),'matching':'whole-item RMS target with peak-safe gain reduction only; no compression or normalization',
               'protected_anchor':LOCKED_BLOOM.to_dict(),'anchor_audio_included':False,
               'anchor_note':'locked_bloom remains available in the recovered product; this generated pack does not rebuild it from remembered parameters.',
-              'order':list(order),'items':[x.to_dict() for x in items],'endpoints':[{'id':x,'scale':[1,7]} for x in ENDPOINTS],
+              'order':list(order),'items':[x.to_dict() for x in items],'candidate_intents':{r.id:r.intent for r in FAMILIES if r.classification=='candidate'},
+              'companion_files_note':'Evidence tooling emits one-bar melodic demos for every candidate in addition to these matched one-beat source items.',
+              'endpoints':[{'id':x,'scale':[1,7]} for x in ENDPOINTS],
               'questions':['Rate bounce separately from melodic identity.','Rate recognisable source character separately from usefulness.','Optional free-text reason for reject/keep.'],
               'decision_policy':'No acoustic descriptor or aggregate score changes defaults. Explicit owner approval is required.',
               'owner_decisions':[],'rejected_variants_retained_as_evidence':True}

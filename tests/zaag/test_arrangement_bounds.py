@@ -21,7 +21,7 @@ from zaaggenz_zaag.arrange import (
 from zaaggenz_zaag.model import ZaagFamilyError
 
 
-def _event(beat=0.0,duration=0.25,family_id='zaag.vowel-sway',degrees=(0,),gain_db=-6.0):
+def _event(beat=0.0,duration=0.25,family_id='zaag.formant-snarl',degrees=(0,),gain_db=-6.0):
     return {'beat':beat,'duration_beats':duration,'family_id':family_id,'degrees':list(degrees),'gain_db':gain_db}
 
 
@@ -71,7 +71,7 @@ class ArrangementAdmissionBoundsTests(unittest.TestCase):
         with self.assertRaises(ZaagFamilyError):_manifest((_event(degrees=(0,)*(MAX_EVENT_POLYPHONY+1)),))
 
     def test_family_degree_bounds_are_checked_before_exponentiation(self):
-        # Vowel Sway's declared .5..2.0 range maps exactly to -12..+12 in 12-EDO.
+        # Formant Snarl's declared .5..2.0 range maps exactly to -12..+12 in 12-EDO.
         _manifest((_event(degrees=(-12,12)),))
         for degree in (-13,13,10**1000,-(10**1000)):
             with self.subTest(degree=str(degree)[:20]):

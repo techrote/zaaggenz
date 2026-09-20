@@ -70,6 +70,73 @@ def _complementary(x,sr,bpm,recipe):
     db=e.complementary_depth_db*m*shape;gl=np.power(10.,db/20.);gu=np.power(10.,-db/20.)
     return low*gl+upper*gu
 
+CHARACTER_PROFILES={
+    'zaag.bloom-bark':'bark',
+    'zaag.formant-snarl':'snarl',
+    'zaag.upper-chop':'chop',
+    'zaag.split-maul':'split',
+    'zaag.crushed-teeth':'crush',
+    'zaag.harmonic-rip':'rip',
+}
+
+def _highpass_delta(x,sr,hz):return np.asarray(x,dtype=np.float64)-_lp(x,sr,hz)
+
+def _character_profile(x,sr,bpm,recipe):
+    """Apply the explicit ZG-022 replacement-family character mechanism.
+
+    These are deliberately orthogonal, deterministic offline transforms chosen
+    after the original owner pack was rejected as six near-neighbour dull twangs.
+    They are not preference scores and they do not touch locked_bloom.
+    """
+    mode=CHARACTER_PROFILES.get(recipe.id)
+    y=np.asarray(x,dtype=np.float64)
+    if mode is None:return y,'contrast-reference'
+    t=np.arange(len(y),dtype=np.float64)/float(sr);beats=t*float(bpm)/60.
+    if mode=='bark':
+        edge=_highpass_delta(y,sr,500.)
+        z=np.tanh(8.*(y+1.8*edge+.12))-math.tanh(.96)
+        bite=_highpass_delta(z,sr,900.)
+        bloom=.55+.8*(1.-np.exp(-t/.025))
+        return .32*y+bloom*(.62*z+1.15*bite),mode
+    if mode=='snarl':
+        phase=np.linspace(0.,1.,len(y),endpoint=False,dtype=np.float64)
+        cross=.5-.5*np.cos(np.pi*phase)
+        r1=_band_peak(y,sr,900.,7.);r2=_band_peak(y,sr,3200.,8.)
+        resonance=(1.-cross)*r1+cross*r2
+        z=np.tanh(12.*(y+4.*resonance)+.25)-math.tanh(.25)
+        return .16*y+.82*z+.85*_highpass_delta(z,sr,1200.),mode
+    if mode=='chop':
+        low=_lp(y,sr,500.);upper=y-low
+        gate=np.where(np.sin(2.*np.pi*beats/.125)>=0.,1.,.03)
+        ring=np.sin(2.*np.pi*310.*t)
+        z=.65*low+gate*(1.9*upper+.55*y*ring)
+        z=np.tanh(8.*z)
+        return .18*y+.68*z+1.1*_highpass_delta(z,sr,800.),mode
+    if mode=='split':
+        low=_lp(y,sr,420.);upper=y-low
+        shape=np.where(np.sin(2.*np.pi*beats/.5)>=0.,1.,-1.)
+        ring=np.sin(2.*np.pi*(220.+40.*np.sin(2.*np.pi*beats))*t)
+        a=np.tanh(9.*low)*np.where(shape>0.,1.5,.22)
+        b=np.tanh(11.*(upper+.3*y*ring))*np.where(shape<0.,1.6,.16)
+        combined=a+b
+        return .12*y+combined+.8*_highpass_delta(combined,sr,1000.),mode
+    if mode=='crush':
+        upper=_highpass_delta(y,sr,350.)
+        z=np.tanh(15.*(y+2.4*upper))
+        hold=3;held=np.repeat(z[::hold],hold)[:len(z)]
+        levels=15.;quantized=np.round(np.clip(held,-1.,1.)*levels)/levels
+        return .08*y+.7*quantized+_highpass_delta(quantized,sr,1200.),mode
+    if mode=='rip':
+        z=y.copy()
+        for delay48,coef in ((11,.95),(23,-.9),(43,.75),(79,-.65)):
+            delay=max(1,round(sr*delay48/48000.))
+            z+=coef*np.pad(y,(delay,0))[:len(y)]
+        ring=np.sin(2.*np.pi*(270.+90.*np.sin(2.*np.pi*beats/.75))*t)
+        z=z+.9*z*ring
+        z=np.tanh(10.*z)
+        return .12*y+.7*z+1.2*_highpass_delta(z,sr,700.),mode
+    raise ZaagFamilyError('unknown ZG-022 character profile '+str(mode))
+
 def _grit(x,recipe):
     m=recipe.macros.grit;e=recipe.expert
     y=np.asarray(x,dtype=np.float64)
@@ -91,10 +158,11 @@ def render_family_source(recipe,sample_rate_hz=48000,*,beats=1):
     y=_vowel_motion(base,sample_rate_hz,float(params['bpm']),recipe)
     y=_upper_bounce(y,sample_rate_hz,float(params['bpm']),recipe)
     y=_complementary(y,sample_rate_hz,float(params['bpm']),recipe)
+    y,character_profile=_character_profile(y,sample_rate_hz,float(params['bpm']),recipe)
     y=_grit(y,recipe)
     if not np.isfinite(y).all():raise ZaagFamilyError('family processing produced nonfinite samples')
-    diagnostics={'method':'zg.zaag-family-source.v1','recipe_id':recipe.id,'recipe_sha256':recipe.sha256,'sample_rate_hz':sample_rate_hz,
+    diagnostics={'method':'zg.zaag-family-source.v2','recipe_id':recipe.id,'recipe_sha256':recipe.sha256,'sample_rate_hz':sample_rate_hz,
                  'samples':len(y),'base_pcm_sha256':_sha(base),'output_pcm_sha256':_sha(y),'base_rms':_rms(base),'output_rms':_rms(y),
                  'peak':float(np.max(np.abs(y),initial=0.)),'normalization':'none','phase_policy':recipe.expert.phase_policy,'tail_policy':recipe.expert.tail_policy,
-                 'motion_order':['vowel','upper-bounce','complementary','grit'],'quality_cost':recipe.expert.quality_cost,'formant':formant}
+                 'motion_order':['vowel','upper-bounce','complementary','character-profile','grit'],'character_profile':character_profile,'quality_cost':recipe.expert.quality_cost,'formant':formant}
     return ZaagSourceRender(np.asarray(y,dtype=np.float32),recipe.id,recipe.sha256,params,diagnostics)
