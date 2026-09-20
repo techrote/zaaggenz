@@ -141,7 +141,7 @@ class ProgrammeStateTests(unittest.TestCase):
     def test_zg024_uses_semantic_research_blocker_and_current_evidence(self) -> None:
         row = self.state["tasks"]["ZG-024"]
         self.assertEqual(
-            [{"ref": "research:ZG-024-eligible-candidate-heldout-generalisation", "kind": "research"}],
+            [{"ref": "research:ZG-024-coupled-search-heldout-generalisation", "kind": "research"}],
             row["blockers"],
         )
         for ref in (
@@ -154,6 +154,11 @@ class ProgrammeStateTests(unittest.TestCase):
             "docs:docs/inverse/ZG024_STAGED_PROTOCOL_V2.md",
             "docs:docs/inverse/ZG024_STAGED_RESULT.md",
             "docs:docs/inverse/ZG024_LINEAGE_RECONCILIATION.md",
+            "issue:#227:diagnostic-mixed-no-go",
+            "pr:#228",
+            "docs:docs/inverse/ZG024E_DIAGNOSTIC_PROTOCOL_V1.md",
+            "docs:docs/inverse/ZG024E_DIAGNOSTIC_RESULT.md",
+            "docs:docs/inverse/ZG024_RESEARCH_HANDOFF_3.md",
             "issue:#25:remaining-research-blocker",
         ):
             self.assertIn(ref, row["evidence_refs"])
