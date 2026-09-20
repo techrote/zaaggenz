@@ -121,6 +121,28 @@ def _promotion_summary(result):
     ]
 
 
+def _baseline_result_sha256(result):
+    # ZG-024b's historical StrategyResult.sha256 hashes the entire serialized
+    # result. At the new 36-evaluation ZG-024e control budget that object exceeds
+    # the accepted canonical JSON node bound. Keep ZG-024b and the canonicalizer
+    # unchanged; compose a bounded research identity from independently hashed
+    # candidate records plus compact lineage/checkpoint identities.
+    return digest({
+        "kind": "ZG024eBaselineResultIdentity",
+        "version": "1.0.0",
+        "run_id": result.run_id,
+        "evaluator_search_id": result.evaluator_search_id,
+        "strategy_sha256": result.strategy.sha256,
+        "candidate_sha256s": [candidate.sha256 for candidate in result.candidates],
+        "lineage_sha256": digest(list(result.lineage)),
+        "ranked_candidate_ids": list(result.ranked_candidate_ids),
+        "pareto_candidate_ids": list(result.pareto_candidate_ids),
+        "checkpoint_sha256": result.checkpoint.sha256,
+        "declared_budget": result.declared_budget,
+        "proposal_attempts": result.proposal_attempts,
+    })
+
+
 def _run_fit(fixture, method, *, diagnostic):
     fit, audit = fixture.experiment()
     started = time.perf_counter()
@@ -155,7 +177,7 @@ def _run_fit(fixture, method, *, diagnostic):
         "physical_render_calls": fit.render_calls,
         "render_cache_hits": fit.render_hits,
         "search_seconds": elapsed,
-        "result_sha256": result.sha256,
+        "result_sha256": result.sha256 if diagnostic else _baseline_result_sha256(result),
         "environment_sha256": fit.environment_sha256,
     }
     detail = {
