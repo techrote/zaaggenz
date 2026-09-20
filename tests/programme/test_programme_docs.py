@@ -23,7 +23,7 @@ class ProgrammeDocsTests(unittest.TestCase):
 
     def test_root_readme_stale_zg001_gate_is_rejected(self) -> None:
         docs = dict(self.docs)
-        docs["readme"] += "\nZG-001 remains the first hard gate until recovery.\n"
+        docs["readme"] += (\n            "\nThe first implementation gate is **ZG-001**: recover and provenance-check the source.\n"\n        )
         errors = pd.audit_texts(docs, self.baseline, self.state)
         self.assertTrue(any("readme: stale live ZG-001" in error for error in errors))
 

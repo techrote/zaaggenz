@@ -67,6 +67,7 @@ RUNTIME_SHA = "eaf5d3ab822dfa121cd3b795d62619af9e62c041fb02de19f8dbeafb0014c919"
 STALE_BOOTSTRAP_PATTERNS = (
     re.compile(r"actual v1\.2\.1 source/archive still has to be recovered", re.IGNORECASE),
     re.compile(r"ZG-001[^\n]{0,100}remains the first hard gate", re.IGNORECASE),
+    re.compile(r"first implementation gate is[^\n]{0,40}ZG-001[^\n]{0,120}recover", re.IGNORECASE),
     re.compile(r"production-source import still requires provenance/recovery under ZG-001", re.IGNORECASE),
     re.compile(r"must establish the actual code baseline before implementation", re.IGNORECASE),
 )
