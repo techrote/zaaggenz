@@ -133,17 +133,17 @@ class ArrangementRender:
 def _event(beat,duration,family_id,degrees,gain_db=0.):return {'beat':float(beat),'duration_beats':float(duration),'family_id':family_id,'degrees':list(degrees),'gain_db':float(gain_db)}
 
 
-def one_shot_manifest(sr=48000):return ArrangementManifest('zg022-one-shot',1,190.,sr,(_event(0,.75,'zaag.relaxed-punch',(0,),-3.),),'Single source-preserving Relaxed Punch note.')
+def one_shot_manifest(sr=48000):return ArrangementManifest('zg022-one-shot',1,190.,sr,(_event(0,.75,'zaag.bloom-bark',(0,),-3.),),'Single source-preserving Bloom Bark note.')
 
 
 def four_bar_manifest(sr=48000):
     events=[];pattern=(0,3,5,7,5,3,10,7)
-    for i in range(32):events.append(_event(i*.5,.45,'zaag.upper-bounce',(pattern[i%len(pattern)],),-7. if i%4 else -4.5))
-    return ArrangementManifest('zg022-four-bar-bounce',4,190.,sr,tuple(events),'Four-bar half-beat source-derived upper-bounce phrase with a stable melodic return.')
+    for i in range(32):events.append(_event(i*.5,.45,'zaag.upper-chop',(pattern[i%len(pattern)],),-7. if i%4 else -4.5))
+    return ArrangementManifest('zg022-four-bar-bounce',4,190.,sr,tuple(events),'Four-bar half-beat source-derived Upper Chop phrase with a stable melodic return.')
 
 
 def sixteen_bar_manifest(sr=48000):
-    events=[];roots=(0,-2,0,-3);families=('zaag.harmonic-turn','zaag.vowel-sway','zaag.complementary-pulse','zaag.grit-skip')
+    events=[];roots=(0,-2,0,-3);families=('zaag.harmonic-rip','zaag.formant-snarl','zaag.split-maul','zaag.crushed-teeth')
     for bar in range(16):
         root=roots[(bar//4)%len(roots)];fid=families[(bar//4)%len(families)]
         chord=(root,root+3,root+7) if bar%4 in (1,3) else (root,)
@@ -152,6 +152,16 @@ def sixteen_bar_manifest(sr=48000):
         events.append(_event(bar*4+2.,.45,fid,(root+10,),-9.))
         events.append(_event(bar*4+3.,.75,fid,(root+5,),-8.))
     return ArrangementManifest('zg022-sixteen-bar-turn',16,190.,sr,tuple(events),'Sixteen-bar harmonic/source-family turn: explicit roots/intervals, no hidden chord inference.')
+
+
+def family_demo_manifest(family_id,sr=48000):
+    recipe=family(family_id)
+    if recipe.classification!='candidate':raise ZaagFamilyError('family demo requires a candidate family')
+    pattern=(0,3,5,7,5,3,-2,0);events=[]
+    for i,degree in enumerate(pattern):
+        events.append(_event(i*.5,.42,family_id,(degree,),-7. if i%4 else -4.5))
+    return ArrangementManifest('zg022-family-demo-'+family_id.replace('.','-'),1,190.,sr,tuple(events),
+        'One-bar matched melodic identity demo for '+recipe.label+'.')
 
 
 def example_manifests(sr=48000):return (one_shot_manifest(sr),four_bar_manifest(sr),sixteen_bar_manifest(sr))
