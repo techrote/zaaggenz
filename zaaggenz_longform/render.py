@@ -319,9 +319,9 @@ def compile_sections(document):
                 nominal,
             )
         )
-    # This is the accepted ZG-042 preflight: it snapshots all sections, verifies
-    # one sample rate, accounts retained products and rejects unsupported
-    # continuation boundaries such as unfinished glides before PCM rendering.
+    # Reuse the accepted ZG-042 sequence-memory authority here. The subsequent
+    # render_persistent_sections() call independently performs its stricter
+    # continuation/unfinished-glide preflight before retained PCM allocation.
     estimate_persistent_sequence(tuple(row.layer_section for row in compiled))
     return tuple(compiled)
 
