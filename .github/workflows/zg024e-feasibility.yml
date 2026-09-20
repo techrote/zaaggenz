@@ -1,0 +1,176 @@
+name: ZG-024e feasibility and generalisation diagnostic
+on:
+  pull_request:
+    paths:
+      - 'research/zg024e/**'
+      - 'tests/inverse_research/test_zg024e_*.py'
+      - 'tools/inverse_feasibility_report.py'
+      - 'tools/inverse_feasibility_confirmation.py'
+      - 'docs/inverse/ZG024E_*'
+      - 'examples/zg024e*'
+      - 'programme/task_state.json'
+      - 'programme/ci_reverse_dependencies.json'
+      - 'docs/zaaggenz/RAG_INDEX.md'
+      - '.github/workflows/zg024e-feasibility.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  development-diagnostic:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      PYTHONUTF8: '1'
+      PYTHONHASHSEED: '0'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Materialize authenticated unmodified baseline
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install declared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: ZG-024 research and diagnostic tests
+        run: python -m unittest discover -s tests/inverse_research -v
+      - name: Frozen inverse laboratory, provenance and transient regressions
+        run: python -m unittest discover -s tests/inverse -v
+      - name: Verify frozen development evidence source identity
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import subprocess
+          from pathlib import Path
+
+          expected_blobs = {
+              'research/zg024e/diagnostic.py': '855c09ea7412cecd8eba478f7f4506d8d3c12e4e',
+              'research/zg024e/fixtures.py': 'f704667c43e78471167bc376e8cbf9319d55566d',
+              'research/zg024e/__init__.py': '745a8aef39bf63bad676de14a50a617e6d605257',
+              'tools/inverse_feasibility_report.py': 'f7d2d13ff56cd9434a6e8f32503a41218bad2b14',
+              'docs/inverse/ZG024E_DIAGNOSTIC_PROTOCOL_V1.md': '87cb41c8c04190a60f102b75ef88bf610509c14f',
+              'examples/zg024e-development-selection.json': 'ab1786f7743d58f9a975e67809868a9bd3d7dccc',
+          }
+          for path, expected in expected_blobs.items():
+              actual = subprocess.check_output(
+                  ['git', 'rev-parse', f'HEAD:{path}'], text=True
+              ).strip()
+              if actual != expected:
+                  raise SystemExit(
+                      f'frozen development evidence source changed for {path}: '
+                      f'{actual} != {expected}; rerun/preregister development before confirmation'
+                  )
+
+          frozen = json.loads(
+              Path('examples/zg024e-development-selection.json').read_text(encoding='utf-8')
+          )
+          required = {
+              'selection_decision_sha256':
+                  'd673e22602aee773005e242910a0a54b60f2e9cedfff26c5d6898b3cf3ba6629',
+              'selected_intervention_method': 'zg024e.coupled-ab-36.v1',
+              'selected_matched_null_method': 'zg024e.factorized-36-balanced.v1',
+              'primary_mechanism': 'cross-family-coupling',
+              'primary_diagnosis': 'cross-family-coupling',
+          }
+          for key, expected in required.items():
+              if frozen.get(key) != expected:
+                  raise SystemExit(
+                      f'frozen development selection changed for {key}: '
+                      f'{frozen.get(key)!r} != {expected!r}'
+                  )
+          print(
+              'ZG-024e frozen development source and selection exactly match '
+              'green run 35518738542; development evidence reuse is valid'
+          )
+          PY
+      - name: Run untouched sealed confirmation
+        run: >-
+          python tools/inverse_feasibility_confirmation.py
+          --out zg024e-confirmation-evidence.json
+          --full-out zg024e-confirmation-full.json
+          --portable-out zg024e-confirmation-portable.json
+          --telemetry-out zg024e-confirmation-telemetry.json
+          --require-integrity
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg024e-development-${{ matrix.os }}
+          path: |
+            examples/zg024e-development-selection.json
+            zg024e-confirmation-evidence.json
+            zg024e-confirmation-full.json
+            zg024e-confirmation-portable.json
+            zg024e-confirmation-telemetry.json
+          retention-days: 14
+          compression-level: 9
+
+  portability:
+    needs: development-diagnostic
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: zg024e-development-*
+          path: portable
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Compare Ubuntu and Windows portable evidence under frozen tolerance policy
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          import math
+          from pathlib import Path
+
+          ATOL, RTOL = 1e-7, 1e-5
+          roots = {
+              'ubuntu': Path('portable/zg024e-development-ubuntu-latest/zg024e-confirmation-portable.json'),
+              'windows': Path('portable/zg024e-development-windows-latest/zg024e-confirmation-portable.json'),
+          }
+
+          def compare(a, b, path='root'):
+              if type(a) is not type(b):
+                  raise AssertionError(f'{path}: type mismatch {type(a).__name__} != {type(b).__name__}')
+              if isinstance(a, dict):
+                  if set(a) != set(b):
+                      raise AssertionError(f'{path}: key mismatch')
+                  for key in sorted(a):
+                      compare(a[key], b[key], f'{path}.{key}')
+              elif isinstance(a, list):
+                  if len(a) != len(b):
+                      raise AssertionError(f'{path}: list length {len(a)} != {len(b)}')
+                  for index, (left, right) in enumerate(zip(a, b)):
+                      compare(left, right, f'{path}[{index}]')
+              elif isinstance(a, float):
+                  if not math.isclose(a, b, abs_tol=ATOL, rel_tol=RTOL):
+                      raise AssertionError(f'{path}: {a!r} != {b!r}')
+              elif a != b:
+                  raise AssertionError(f'{path}: {a!r} != {b!r}')
+
+          values = {name: json.loads(path.read_text(encoding='utf-8')) for name, path in roots.items()}
+          compare(values['ubuntu'], values['windows'], 'confirmation')
+          print('ZG-024e confirmation evidence agrees across Ubuntu and Windows under abs=1e-7 rel=1e-5')
+          PY
+
+  authority:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with: {persist-credentials: false}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Programme state
+        run: python tools/validate_programme_state.py --validate
+      - name: Programme documentation
+        run: python tools/check_programme_docs.py --check
+      - name: Reverse-dependency ownership
+        run: python tools/ci_reverse_dependencies.py --audit

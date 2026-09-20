@@ -83,7 +83,11 @@ Read the current lineage in this order:
 7. `docs/inverse/TRANSIENT_V4_EVIDENCE_MIGRATION.md` — migration of frozen research evidence to the accepted transient-v4 semantics;
 8. `docs/inverse/ZG024_STAGED_PROTOCOL_V2.md` — frozen staged-search protocol;
 9. `docs/inverse/ZG024_STAGED_RESULT.md` — accepted mixed/no-go outcome from completed #92 / PR #195; **no production optimizer was promoted**;
-10. `docs/inverse/ZG024_LINEAGE_RECONCILIATION.md` — authoritative accepted/superseded PR and branch disposition;
-11. `programme/task_state.json` plus parent issue #25's latest blocker record — current readiness authority.
+10. `docs/inverse/ZG024E_DIAGNOSTIC_PROTOCOL_V1.md` — preregistered eligible-starvation/generalisation causal diagnostic;
+11. `examples/zg024e-development-selection.json` — development-only frozen choice of coupled A+B search and its matched factorized null;
+12. `docs/inverse/ZG024E_DIAGNOSTIC_RESULT.md` — untouched confirmation result: coupling reduces the targeted structural/spectral starvation but fails overall availability and held-out generalisation, so no production optimizer is promoted;
+13. `docs/inverse/ZG024_RESEARCH_HANDOFF_3.md` — current evidence boundary and next-pass hypotheses;
+14. `docs/inverse/ZG024_LINEAGE_RECONCILIATION.md` — authoritative accepted/superseded PR and branch disposition;
+15. `programme/task_state.json` plus parent issue #25's latest blocker record — current readiness authority.
 
-Do **not** restart #87, #92 or #134: those child issues are completed evidence/history. Parent ZG-024 / #25 remains research-active because the current evidence does not yet establish reliable eligible-candidate availability plus held-out improvement across fresh structural/spectral and mixed-texture cases without holdout feedback or weakened safety gates.
+Do **not** restart #87, #92 or #134: those child issues are completed evidence/history. ZG-024e / #227 is also terminal research history once PR #228 is merged; do not repeat its disclosed confirmation fixtures as a fresh test set. Parent ZG-024 / #25 remains research-active: coupling now explains part of the eligible-parent starvation, but untouched confirmation did not improve eligible availability over its matched null and regressed held-out performance against the best flat controls. The current blocker is therefore narrower: `research:ZG-024-coupled-search-heldout-generalisation`.

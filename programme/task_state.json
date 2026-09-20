@@ -1,53 +1,726 @@
 {
   "format_version": 1,
-  "snapshot_date": "2026-09-19",
+  "snapshot_date": "2026-09-20",
   "authority": "accepted-evidence-v1",
   "note": "GitHub issue state is an informational mirror only. dependency_satisfied is an evidence/gate decision and is never derived from issue open/closed state.",
   "tasks": {
-    "ZG-001": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#2:accepted-completion-record"],"github_issue":{"number":2,"state":"closed"}},
-    "ZG-002": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#3:accepted-completion-record"],"github_issue":{"number":3,"state":"closed"}},
-    "ZG-003": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#4:accepted-completion-record"],"github_issue":{"number":4,"state":"closed"}},
-    "ZG-004": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#5:accepted-completion-record"],"github_issue":{"number":5,"state":"closed"}},
-    "ZG-005": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#6:accepted-completion-record"],"github_issue":{"number":6,"state":"closed"}},
-    "ZG-006": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#7:accepted-completion-record"],"github_issue":{"number":7,"state":"closed"}},
-    "ZG-007": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#8:accepted-completion-record"],"github_issue":{"number":8,"state":"closed"}},
-    "ZG-008": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#9:accepted-completion-record"],"github_issue":{"number":9,"state":"closed"}},
-    "ZG-009": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#10:accepted-completion-record"],"github_issue":{"number":10,"state":"closed"}},
-    "ZG-010": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#11:accepted-completion-record"],"github_issue":{"number":11,"state":"closed"}},
-    "ZG-011": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#12:accepted-completion-record"],"github_issue":{"number":12,"state":"closed"}},
-    "ZG-012": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#13:accepted-completion-record"],"github_issue":{"number":13,"state":"closed"}},
-    "ZG-013": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#14:accepted-completion-record"],"github_issue":{"number":14,"state":"closed"}},
-    "ZG-014": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#15:accepted-completion-record"],"github_issue":{"number":15,"state":"closed"}},
-    "ZG-015": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#16:accepted-completion-record"],"github_issue":{"number":16,"state":"closed"}},
-    "ZG-016": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#17:accepted-completion-record"],"github_issue":{"number":17,"state":"closed"}},
-    "ZG-017": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#18:accepted-completion-record"],"github_issue":{"number":18,"state":"closed"}},
-    "ZG-018": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#19:accepted-completion-record"],"github_issue":{"number":19,"state":"closed"}},
-    "ZG-019": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#20:accepted-completion-record"],"github_issue":{"number":20,"state":"closed"}},
-    "ZG-020": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#21:accepted-completion-record"],"github_issue":{"number":21,"state":"closed"}},
-    "ZG-021": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#22:accepted-completion-record"],"github_issue":{"number":22,"state":"closed"}},
-    "ZG-022": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"pending","blockers":[{"ref":"owner-gate:ZG-022-listening-default-approval","kind":"owner_gate"}],"dependency_satisfied":false,"evidence_refs":["issue:#23:merged-implementation-evidence"],"github_issue":{"number":23,"state":"open"}},
-    "ZG-023": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#24:accepted-completion-record"],"github_issue":{"number":24,"state":"closed"}},
-    "ZG-024": {"implementation":"partial","evidence":"partial","research":"active","owner_gate":"not_applicable","blockers":[{"ref":"research:ZG-024-eligible-candidate-heldout-generalisation","kind":"research"}],"dependency_satisfied":false,"evidence_refs":["pr:#84","pr:#86","docs:docs/inverse/ZG024_RESEARCH_HANDOFF_1.md","docs:docs/inverse/ZG024_RESEARCH_HANDOFF_2.md","issue:#134:corrective-repair","pr:#187","docs:docs/inverse/CANDIDATE_PROVENANCE.md","issue:#87:corrective-repair","pr:#194","docs:docs/inverse/TRANSIENT_PRESERVATION_GATE.md","docs:docs/inverse/TRANSIENT_V4_EVIDENCE_MIGRATION.md","issue:#92:accepted-mixed-no-go","pr:#195","docs:docs/inverse/ZG024_STAGED_PROTOCOL_V2.md","docs:docs/inverse/ZG024_STAGED_RESULT.md","docs:docs/inverse/ZG024_LINEAGE_RECONCILIATION.md","issue:#25:remaining-research-blocker"],"github_issue":{"number":25,"state":"open"}},
-    "ZG-025": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#26:accepted-completion-record"],"github_issue":{"number":26,"state":"closed"}},
-    "ZG-026": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#27:accepted-completion-record"],"github_issue":{"number":27,"state":"closed"}},
-    "ZG-027": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#28:accepted-completion-record"],"github_issue":{"number":28,"state":"closed"}},
-    "ZG-028": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["pr:#72","commit:79c576c193bf34b8cb505aa75236b622f96246f1","issue:#29:accepted-completion-record","issue:#138:corrective-repair","pr:#151","issue:#118:corrective-repair","pr:#180"],"github_issue":{"number":29,"state":"closed"}},
-    "ZG-029": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["pr:#206","pr:#208","issue:#202:corrective-repair","pr:#209","issue:#202:final-completion","docs:docs/zaaggenz/ZG029_LAYER_OWNERSHIP_ADR.md","docs:docs/zaaggenz/ZG029_CORRECTIVE_RUNTIME_EVIDENCE.md"],"github_issue":{"number":30,"state":"closed"}},
-    "ZG-030": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["pr:#207","issue:#31:accepted-completion-record"],"github_issue":{"number":31,"state":"closed"}},
-    "ZG-031": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#32:accepted-completion-record"],"github_issue":{"number":32,"state":"closed"}},
-    "ZG-032": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#33:accepted-completion-record"],"github_issue":{"number":33,"state":"closed"}},
-    "ZG-033": {"implementation":"not_started","evidence":"none","research":"planned","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":34,"state":"open"}},
-    "ZG-034": {"implementation":"not_started","evidence":"none","research":"planned","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":35,"state":"open"}},
-    "ZG-035": {"implementation":"not_started","evidence":"none","research":"planned","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":36,"state":"open"}},
-    "ZG-036": {"implementation":"not_started","evidence":"none","research":"planned","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":37,"state":"open"}},
-    "ZG-037": {"implementation":"not_started","evidence":"none","research":"planned","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":38,"state":"open"}},
-    "ZG-038": {"implementation":"not_started","evidence":"none","research":"planned","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":39,"state":"open"}},
-    "ZG-039": {"implementation":"not_started","evidence":"none","research":"planned","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":40,"state":"open"}},
-    "ZG-040": {"implementation":"accepted","evidence":"accepted","research":"accepted","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["pr:#211","issue:#41:accepted-completion-record","issue:#41:post-merge-review","pr:#214","issue:#41:corrective-reacceptance","docs:docs/studies/README.md"],"github_issue":{"number":41,"state":"closed"}},
-    "ZG-041": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["issue:#95:runtime-reconciliation","issue:#102:web-release-repair","issue:#201:protocol-identity-corrective","pr:#215","docs:docs/runtime/ZG041_COMPOSE_RESEARCH.md"],"github_issue":{"number":42,"state":"closed"}},
-    "ZG-042": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["pr:#210","issue:#43:accepted-completion-record","issue:#43:post-merge-review","pr:#213","issue:#43:corrective-reacceptance","docs:docs/performance/ZG042_LONGFORM.md"],"github_issue":{"number":43,"state":"closed"}},
-    "ZG-043": {"implementation":"accepted","evidence":"accepted","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":true,"evidence_refs":["pr:#226","issue:#44:implementation-evidence","docs:docs/longform/README.md","docs:docs/longform/VERIFICATION.md"],"github_issue":{"number":44,"state":"closed"}},
-    "ZG-044": {"implementation":"not_started","evidence":"none","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":45,"state":"open"}},
-    "ZG-045": {"implementation":"not_started","evidence":"none","research":"not_applicable","owner_gate":"not_applicable","blockers":[],"dependency_satisfied":false,"evidence_refs":[],"github_issue":{"number":46,"state":"open"}}
+    "ZG-001": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#2:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 2,
+        "state": "closed"
+      }
+    },
+    "ZG-002": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#3:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 3,
+        "state": "closed"
+      }
+    },
+    "ZG-003": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#4:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 4,
+        "state": "closed"
+      }
+    },
+    "ZG-004": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#5:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 5,
+        "state": "closed"
+      }
+    },
+    "ZG-005": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#6:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 6,
+        "state": "closed"
+      }
+    },
+    "ZG-006": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#7:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 7,
+        "state": "closed"
+      }
+    },
+    "ZG-007": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#8:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 8,
+        "state": "closed"
+      }
+    },
+    "ZG-008": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#9:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 9,
+        "state": "closed"
+      }
+    },
+    "ZG-009": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#10:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 10,
+        "state": "closed"
+      }
+    },
+    "ZG-010": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#11:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 11,
+        "state": "closed"
+      }
+    },
+    "ZG-011": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#12:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 12,
+        "state": "closed"
+      }
+    },
+    "ZG-012": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#13:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 13,
+        "state": "closed"
+      }
+    },
+    "ZG-013": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#14:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 14,
+        "state": "closed"
+      }
+    },
+    "ZG-014": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#15:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 15,
+        "state": "closed"
+      }
+    },
+    "ZG-015": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#16:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 16,
+        "state": "closed"
+      }
+    },
+    "ZG-016": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#17:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 17,
+        "state": "closed"
+      }
+    },
+    "ZG-017": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#18:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 18,
+        "state": "closed"
+      }
+    },
+    "ZG-018": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#19:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 19,
+        "state": "closed"
+      }
+    },
+    "ZG-019": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#20:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 20,
+        "state": "closed"
+      }
+    },
+    "ZG-020": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#21:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 21,
+        "state": "closed"
+      }
+    },
+    "ZG-021": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#22:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 22,
+        "state": "closed"
+      }
+    },
+    "ZG-022": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "pending",
+      "blockers": [
+        {
+          "ref": "owner-gate:ZG-022-listening-default-approval",
+          "kind": "owner_gate"
+        }
+      ],
+      "dependency_satisfied": false,
+      "evidence_refs": [
+        "issue:#23:merged-implementation-evidence"
+      ],
+      "github_issue": {
+        "number": 23,
+        "state": "open"
+      }
+    },
+    "ZG-023": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#24:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 24,
+        "state": "closed"
+      }
+    },
+    "ZG-024": {
+      "implementation": "partial",
+      "evidence": "partial",
+      "research": "active",
+      "owner_gate": "not_applicable",
+      "blockers": [
+        {
+          "ref": "research:ZG-024-coupled-search-heldout-generalisation",
+          "kind": "research"
+        }
+      ],
+      "dependency_satisfied": false,
+      "evidence_refs": [
+        "pr:#84",
+        "pr:#86",
+        "docs:docs/inverse/ZG024_RESEARCH_HANDOFF_1.md",
+        "docs:docs/inverse/ZG024_RESEARCH_HANDOFF_2.md",
+        "issue:#134:corrective-repair",
+        "pr:#187",
+        "docs:docs/inverse/CANDIDATE_PROVENANCE.md",
+        "issue:#87:corrective-repair",
+        "pr:#194",
+        "docs:docs/inverse/TRANSIENT_PRESERVATION_GATE.md",
+        "docs:docs/inverse/TRANSIENT_V4_EVIDENCE_MIGRATION.md",
+        "issue:#92:accepted-mixed-no-go",
+        "pr:#195",
+        "docs:docs/inverse/ZG024_STAGED_PROTOCOL_V2.md",
+        "docs:docs/inverse/ZG024_STAGED_RESULT.md",
+        "docs:docs/inverse/ZG024_LINEAGE_RECONCILIATION.md",
+        "issue:#25:remaining-research-blocker",
+        "issue:#227:diagnostic-mixed-no-go",
+        "pr:#228",
+        "docs:docs/inverse/ZG024E_DIAGNOSTIC_PROTOCOL_V1.md",
+        "docs:docs/inverse/ZG024E_DIAGNOSTIC_RESULT.md",
+        "docs:docs/inverse/ZG024_RESEARCH_HANDOFF_3.md"
+      ],
+      "github_issue": {
+        "number": 25,
+        "state": "open"
+      }
+    },
+    "ZG-025": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#26:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 26,
+        "state": "closed"
+      }
+    },
+    "ZG-026": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#27:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 27,
+        "state": "closed"
+      }
+    },
+    "ZG-027": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#28:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 28,
+        "state": "closed"
+      }
+    },
+    "ZG-028": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "pr:#72",
+        "commit:79c576c193bf34b8cb505aa75236b622f96246f1",
+        "issue:#29:accepted-completion-record",
+        "issue:#138:corrective-repair",
+        "pr:#151",
+        "issue:#118:corrective-repair",
+        "pr:#180"
+      ],
+      "github_issue": {
+        "number": 29,
+        "state": "closed"
+      }
+    },
+    "ZG-029": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "pr:#206",
+        "pr:#208",
+        "issue:#202:corrective-repair",
+        "pr:#209",
+        "issue:#202:final-completion",
+        "docs:docs/zaaggenz/ZG029_LAYER_OWNERSHIP_ADR.md",
+        "docs:docs/zaaggenz/ZG029_CORRECTIVE_RUNTIME_EVIDENCE.md"
+      ],
+      "github_issue": {
+        "number": 30,
+        "state": "closed"
+      }
+    },
+    "ZG-030": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "pr:#207",
+        "issue:#31:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 31,
+        "state": "closed"
+      }
+    },
+    "ZG-031": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#32:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 32,
+        "state": "closed"
+      }
+    },
+    "ZG-032": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#33:accepted-completion-record"
+      ],
+      "github_issue": {
+        "number": 33,
+        "state": "closed"
+      }
+    },
+    "ZG-033": {
+      "implementation": "not_started",
+      "evidence": "none",
+      "research": "planned",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": false,
+      "evidence_refs": [],
+      "github_issue": {
+        "number": 34,
+        "state": "open"
+      }
+    },
+    "ZG-034": {
+      "implementation": "not_started",
+      "evidence": "none",
+      "research": "planned",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": false,
+      "evidence_refs": [],
+      "github_issue": {
+        "number": 35,
+        "state": "open"
+      }
+    },
+    "ZG-035": {
+      "implementation": "not_started",
+      "evidence": "none",
+      "research": "planned",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": false,
+      "evidence_refs": [],
+      "github_issue": {
+        "number": 36,
+        "state": "open"
+      }
+    },
+    "ZG-036": {
+      "implementation": "not_started",
+      "evidence": "none",
+      "research": "planned",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": false,
+      "evidence_refs": [],
+      "github_issue": {
+        "number": 37,
+        "state": "open"
+      }
+    },
+    "ZG-037": {
+      "implementation": "not_started",
+      "evidence": "none",
+      "research": "planned",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": false,
+      "evidence_refs": [],
+      "github_issue": {
+        "number": 38,
+        "state": "open"
+      }
+    },
+    "ZG-038": {
+      "implementation": "not_started",
+      "evidence": "none",
+      "research": "planned",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": false,
+      "evidence_refs": [],
+      "github_issue": {
+        "number": 39,
+        "state": "open"
+      }
+    },
+    "ZG-039": {
+      "implementation": "not_started",
+      "evidence": "none",
+      "research": "planned",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": false,
+      "evidence_refs": [],
+      "github_issue": {
+        "number": 40,
+        "state": "open"
+      }
+    },
+    "ZG-040": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "accepted",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "pr:#211",
+        "issue:#41:accepted-completion-record",
+        "issue:#41:post-merge-review",
+        "pr:#214",
+        "issue:#41:corrective-reacceptance",
+        "docs:docs/studies/README.md"
+      ],
+      "github_issue": {
+        "number": 41,
+        "state": "closed"
+      }
+    },
+    "ZG-041": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "issue:#95:runtime-reconciliation",
+        "issue:#102:web-release-repair",
+        "issue:#201:protocol-identity-corrective",
+        "pr:#215",
+        "docs:docs/runtime/ZG041_COMPOSE_RESEARCH.md"
+      ],
+      "github_issue": {
+        "number": 42,
+        "state": "closed"
+      }
+    },
+    "ZG-042": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "pr:#210",
+        "issue:#43:accepted-completion-record",
+        "issue:#43:post-merge-review",
+        "pr:#213",
+        "issue:#43:corrective-reacceptance",
+        "docs:docs/performance/ZG042_LONGFORM.md"
+      ],
+      "github_issue": {
+        "number": 43,
+        "state": "closed"
+      }
+    },
+    "ZG-043": {
+      "implementation": "accepted",
+      "evidence": "accepted",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": true,
+      "evidence_refs": [
+        "pr:#226",
+        "issue:#44:implementation-evidence",
+        "docs:docs/longform/README.md",
+        "docs:docs/longform/VERIFICATION.md"
+      ],
+      "github_issue": {
+        "number": 44,
+        "state": "closed"
+      }
+    },
+    "ZG-044": {
+      "implementation": "not_started",
+      "evidence": "none",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": false,
+      "evidence_refs": [],
+      "github_issue": {
+        "number": 45,
+        "state": "open"
+      }
+    },
+    "ZG-045": {
+      "implementation": "not_started",
+      "evidence": "none",
+      "research": "not_applicable",
+      "owner_gate": "not_applicable",
+      "blockers": [],
+      "dependency_satisfied": false,
+      "evidence_refs": [],
+      "github_issue": {
+        "number": 46,
+        "state": "open"
+      }
+    }
   }
 }

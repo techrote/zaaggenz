@@ -65,3 +65,23 @@ This reconciliation changes documentation/tests only. It does not change source 
 ## Cleanup completion criterion
 
 After this document is accepted, the refs marked **safe to delete** may be deleted only with a normal remote-ref deletion operation. Do not force-move them, repoint them to `main`, or delete PR/issue discussion. If the execution environment cannot delete refs, leave #90 open and record that tooling blocker precisely rather than pretending the cleanup is complete.
+
+
+## ZG-024e eligible-starvation / held-out-generalisation diagnostic
+
+Child **#227** / PR **#228** is the next serial research pass after accepted #92 / PR #195. It is a child of stable programme ID ZG-024, not a new stable ID.
+
+The experiment was frozen in two repository-history steps before confirmation disclosure:
+
+- protocol/design freeze: `a7156aa6cb148582a943b8c0f211e5f603b1670b`;
+- development-selection freeze: `3364e563aa8094bc39655570d7197542fba2e6b5`;
+- frozen selection decision SHA-256: `d673e22602aee773005e242910a0a54b60f2e9cedfff26c5d6898b3cf3ba6629`;
+- selected intervention: `zg024e.coupled-ab-36.v1`;
+- matched null: `zg024e.factorized-36-balanced.v1`;
+- development diagnosis: `cross-family-coupling`.
+
+Untouched confirmation is **mixed/no-go**. Coupled A+B search clears the specifically targeted structural/spectral availability threshold on 2/3 seeds, improving on the complete starvation seen in ZG-024d. It does not generalise into a production candidate: overall confirmation availability is 6/9, exactly the same as the matched factorized null, below the frozen 7/9 bar and with zero eligible-case gain versus the required +2. All three comparable confirmation families regress beyond the frozen 1.10 held-out ratio against the best equal-budget flat control. Safety sentinels, promotion integrity and exact logical-budget accounting remain intact.
+
+One additional portability finding is deliberately retained rather than hidden. On `confirm2-identifiability-coupled` seed 4099, one drive/input-trim pair that Windows renders to byte-identical f32 PCM splits into two exact PCM identities on Ubuntu despite identical fit/holdout metrics within the portable tolerance. Exact PCM equivalence groups are therefore same-environment evidence only; full platform evidence retains them, while the tolerance-based portable projection compares the promotion counts/decisions and numeric measurements that are actually portable. Exact-output grouping never drives promotion or ranking.
+
+PR #228 does not modify production inverse defaults or `zaaggenz_inverse` search ownership. After merge, its branch is ordinary merged-work history and may be deleted without losing the protocol, frozen selection, result or PR discussion. Parent #25 remains open and dependency-unsatisfied with the narrower blocker `research:ZG-024-coupled-search-heldout-generalisation`.
