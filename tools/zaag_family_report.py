@@ -1,6 +1,6 @@
 """Generate ZG-022 engineering/audition evidence. Acoustic descriptors are never preference scores."""
 from __future__ import annotations
-import argparse,json,math,os,platform,sys,wave
+import argparse,hashlib,json,math,os,platform,sys,wave
 from dataclasses import replace
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
@@ -17,8 +17,26 @@ def _descriptor(audio,sr,f0=48.):
     harmonic=float(np.sum(p[mask])/total)
     return {'spectral_flatness':flat,'spectral_centroid_hz':centroid,'harmonic_band_power_fraction':harmonic,
             'interpretation':'engineering descriptor only; not preference, bounce or usefulness'}
+def _rms(audio):
+    a=np.asarray(audio,dtype=np.float64)
+    return float(np.sqrt(np.mean(a*a))) if a.size else 0.
+
+def _db(value):return 20.*math.log10(max(float(value),1e-15))
+
+def _listening_match(audio,target_dbfs=-14.,peak_limit=.98):
+    x=np.asarray(audio,dtype=np.float64);current=_db(_rms(x));scale=10**((float(target_dbfs)-current)/20.)
+    peak=float(np.max(np.abs(x),initial=0.))*scale
+    if peak>peak_limit and peak>0:scale*=peak_limit/peak
+    y=np.asarray(x*scale,dtype=np.float32)
+    return y,{'matching':'whole-item RMS target with peak-safe gain reduction only; no compression, clipping or upward peak normalization',
+              'target_rms_dbfs':float(target_dbfs),'gain_db':20.*math.log10(max(scale,1e-15)),
+              'achieved_rms_dbfs':_db(_rms(y)),'peak':float(np.max(np.abs(y),initial=0.)),
+              'float32_pcm_sha256':hashlib.sha256(y.astype('<f4').tobytes()).hexdigest()}
+
 def _wav(path,audio,sr):
-    a=np.asarray(audio,dtype=np.float32);peak=float(np.max(np.abs(a),initial=0.));scale=32767./max(1.,peak);pcm=np.clip(np.rint(a*scale),-32768,32767).astype('<i2')
+    a=np.asarray(audio,dtype=np.float32);peak=float(np.max(np.abs(a),initial=0.))
+    if peak>1.000001:raise ZaagFamilyError(f'listening WAV exceeds full scale before PCM16 encoding: peak={peak:g}')
+    pcm=np.clip(np.rint(a*32767.),-32768,32767).astype('<i2')
     path.parent.mkdir(parents=True,exist_ok=True)
     with wave.open(str(path),'wb') as f:f.setnchannels(1);f.setsampwidth(2);f.setframerate(sr);f.writeframes(pcm.tobytes())
 
@@ -54,13 +72,17 @@ def main():
     for manifest in manifests:
         if args.skip_long and manifest.bars>4:arrangements.append({'id':manifest.id,'manifest_sha256':manifest.sha256,'bars':manifest.bars,'skipped_audio_at_this_evidence_tier':True});continue
         render=render_arrangement(manifest);arrangements.append({'id':manifest.id,'manifest_sha256':manifest.sha256,'bars':manifest.bars,'render':render.diagnostics})
-        if args.audition_dir:_wav(args.audition_dir/f'{manifest.id}.wav',render.audio,sr)
+        if args.audition_dir:
+            matched,match=_listening_match(render.audio);_wav(args.audition_dir/f'{manifest.id}.wav',matched,sr)
+            listening_exports.append({'id':manifest.id,'kind':'arrangement','source_render_pcm_sha256':render.diagnostics['pcm_sha256'],**match})
     pack=build_owner_audition_pack(sr,-14.)
     if args.audition_dir:
         for item in pack.items:_wav(args.audition_dir/f'{item.family_id}.wav',pack.audio[item.id],sr)
         for recipe in candidates():
-            demo=render_arrangement(family_demo_manifest(recipe.id,sr))
-            _wav(args.audition_dir/f'{recipe.id}--melodic-demo.wav',demo.audio,sr)
+            demo=render_arrangement(family_demo_manifest(recipe.id,sr));matched,match=_listening_match(demo.audio)
+            _wav(args.audition_dir/f'{recipe.id}--melodic-demo.wav',matched,sr)
+            listening_exports.append({'id':recipe.id+'--melodic-demo','kind':'candidate-melodic-demo',
+                'family_id':recipe.id,'source_render_pcm_sha256':demo.diagnostics['pcm_sha256'],**match})
         (args.audition_dir/'audition-manifest.json').write_text(json.dumps(pack.manifest,indent=2)+'\n')
     formant_evidence=_formant_evidence()
     expected_candidates=suite['registry_expectation']['candidate_ids'];expected_contrasts=suite['registry_expectation']['contrast_ids']
@@ -77,7 +99,7 @@ def main():
     report={'scope':'ZG-022 deterministic engineering evidence and owner-audition preparation; no preference result is inferred','platform':platform.platform(),'python':sys.version,'sample_rate_hz':sr,
       'provenance':{'source_commit':os.environ.get('GITHUB_SHA'),'corrective_issue':229,'redesign_reason':'owner rejected prior pack as dull twangs with insufficient variation and insufficient brutal zaag character'},
       'protected_anchor':LOCKED_BLOOM.to_dict(),'baseline_contract_anchor_hash':baseline['preset_contracts']['locked_bloom_canonical_json_sha256'],
-      'registry_sha256':registry_sha256(),'registry':registry_payload(),'sources':source_rows,'candidate_separation':{'pairwise':pairwise,'max_abs_normalized_waveform_correlation':max_candidate_corr,'threshold':.97,'interpretation':'anti-degeneracy guard only; owner listening decides usefulness'},'arrangements':arrangements,'audition_manifest':pack.manifest,
+      'registry_sha256':registry_sha256(),'registry':registry_payload(),'sources':source_rows,'listening_exports':listening_exports,'candidate_separation':{'pairwise':pairwise,'max_abs_normalized_waveform_correlation':max_candidate_corr,'threshold':.97,'interpretation':'anti-degeneracy guard only; owner listening decides usefulness'},'arrangements':arrangements,'audition_manifest':pack.manifest,
       'formant_sample_rate_contract':formant_evidence,'example_suite':suite,'default_change':None,'owner_audition_completed':False,
       'preference_boundary':'flatness, clipping, harmonic concentration, roughness and other acoustic descriptors are descriptive only; owner ratings decide creative usefulness'}
     failures=[]
