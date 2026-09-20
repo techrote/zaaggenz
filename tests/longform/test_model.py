@@ -85,6 +85,7 @@ class LongformModelTests(unittest.TestCase):
         section = data["sections"][0]
         section["repeats"] = 64
         section["tempo_segments"] = [{"beat": "0/1", "bpm": "20/1"}]
+        section["automation"] = []
         with self.assertRaisesRegex(LongformError, "exceeds 5000000 samples"):
             LongformDocument(data)
 
