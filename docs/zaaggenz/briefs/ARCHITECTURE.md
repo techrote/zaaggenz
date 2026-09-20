@@ -63,11 +63,11 @@ Preview/render/analysis/search use bounded jobs with revision IDs, progress, can
 
 ## Unified local runtime and ownership
 
-The normal user-facing application is one loopback process/origin. `RuntimeSession` is the sole owner of the current immutable Compose timeline/project identity; Timeline, Listening, Inspector and Vocal routes are composable modules on that host rather than independent sidecar applications with unrelated sessions.
+The normal user-facing application is one loopback process/origin. `RuntimeSession` is the sole owner of the current immutable Compose timeline/project identity; Timeline, Listening, Inspector and Vocal routes are composable modules on that host rather than independent sidecar applications with unrelated sessions. ZG-041 adds `/research` as an explicit non-destructive hub over those accepted Research surfaces: it displays the same authoritative Compose identity and provides navigation, but owns no second `RuntimeSession`, project head or implicit apply path.
 
 One bounded `JobScheduler` is owned and shut down by the runtime. Timeline and Inspector receive that scheduler by injection but retain service-local job ownership: a shared queue does not confer cross-workspace status/result/cancel authority. Listening consumes completed Timeline-owned `RenderArtifact` objects. Inspector binds the same immutable artifact and compares both its complete source binding and the current authoritative Compose revision before publication/freeze/apply. Vocal capture/analysis remains session-local and any compiled timeline is proposal-only until an explicit Compose import/apply operation exists.
 
-The ordinary session capability may be shared by local Compose and non-trusted Research actions, but Listening participant authority and trusted archival/ABX authority remain separate. The trusted capability is server-held and is never returned by ordinary runtime/bootstrap surfaces. Existing loopback Host/Origin checks, CSP and request bounds remain in force on the composed host. See `docs/runtime/README.md` for the concrete ownership and verification contract.
+The ordinary session capability may be shared by local Compose and non-trusted Research actions, but the Research hub itself performs no state mutation. Listening participant authority and trusted archival/ABX authority remain separate. The trusted capability is server-held and is never returned by ordinary runtime/bootstrap surfaces. Existing loopback Host/Origin checks, CSP and request bounds remain in force on the composed host. See `docs/runtime/README.md` for the concrete ownership and verification contract.
 
 ## Extension policy
 

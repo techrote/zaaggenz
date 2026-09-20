@@ -23,7 +23,7 @@ This preserves the existing evidence contract while avoiding the opposite failur
 
 ## Audit inventory
 
-The authoritative machine-readable inventory is `programme/ci_reverse_dependencies.json`. It accounts for every checked-in accepted feature workflow from ZG-001 through the implemented ZG-032 surface, including both serial ZG-024 workflows, and every checked-in `zaaggenz_*` package.
+The authoritative machine-readable inventory is `programme/ci_reverse_dependencies.json`. It accounts for every currently mapped checked-in accepted feature workflow and every checked-in `zaaggenz_*` package. The inventory includes the ZG-001…ZG-032 implementation surface where workflows exist, all three current ZG-024 workflows (`zg024a-lab.yml`, `zg024b-strategies.yml`, `zg024d-staged.yml`), and later accepted owners ZG-040, ZG-041, ZG-042 and the ZG-045 canonical-environment workflow. This prose is descriptive; the machine map is the exact current inventory.
 
 `tools/ci_reverse_dependencies.py --audit` emits the current table of:
 
