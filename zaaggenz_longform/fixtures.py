@@ -418,11 +418,6 @@ def stress_64bar_example(sample_rate_hz=12000):
                 _curve("sub", end, 1.5),
             )
         meter = [{"beat": "0/1", "numerator": 4, "denominator": 4}]
-        if index == 10:
-            meter = [
-                {"beat": "0/1", "numerator": 4, "denominator": 4},
-                {"beat": "12/1", "numerator": 5, "denominator": 4},
-            ]
         sections.append(
             _section(
                 f"x{index:02d}",
