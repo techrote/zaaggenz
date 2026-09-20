@@ -7,7 +7,7 @@ on:
       - 'tools/inverse_feasibility_report.py'
       - 'tools/inverse_feasibility_confirmation.py'
       - 'docs/inverse/ZG024E_*'
-      - 'examples/zg024e_*'
+      - 'examples/zg024e*'
       - 'programme/task_state.json'
       - 'programme/ci_reverse_dependencies.json'
       - 'docs/zaaggenz/RAG_INDEX.md'
