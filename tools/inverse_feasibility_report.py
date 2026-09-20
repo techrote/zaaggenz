@@ -142,7 +142,7 @@ def _run_fit(fixture, method, *, diagnostic):
         "final_available": best is not None,
         "best_fit_score": None if best is None else best.score,
         "best_holdout_score": None,
-        "parameter_error": None if best is None else normalized_parameter_error(fixture, best),
+        "parameter_error": None,
         "best_candidate_id": None if best is None else best.id,
         "best_parameters": None if best is None else dict(best.to_dict()["parameters"]["values"]),
         "stage_consumption": dict(result.stage_consumption) if diagnostic else None,
@@ -334,9 +334,12 @@ def _freeze_selection(rows):
 
 
 def _audit_pending(pending):
-    for row, detail, result, best, audit in pending:
+    for fixture, row, detail, result, best, audit in pending:
         if best is None:
             continue
+        # Ground-truth distance and holdout are both diagnostics disclosed only
+        # after the development selection object has been frozen.
+        row["parameter_error"] = normalized_parameter_error(fixture, best)
         audited = audit.evaluate(best, result.audit_selection())
         row["best_holdout_score"] = audited["holdout"]["objectives"]["score"]
         detail["selected_audit"] = audited
@@ -482,7 +485,7 @@ def build_development_report(*, on_selection=None):
                 )
                 rows.append(row)
                 full.append(detail)
-                pending.append((row, detail, result, best, audit))
+                pending.append((fixture, row, detail, result, best, audit))
 
             for budget in (24, 36):
                 for method in BASELINES:
@@ -494,7 +497,7 @@ def build_development_report(*, on_selection=None):
                     )
                     rows.append(row)
                     full.append(detail)
-                    pending.append((row, detail, result, best, audit))
+                    pending.append((fixture, row, detail, result, best, audit))
 
     # This is the preregistered disclosure boundary. Nothing below this point may
     # alter the selected intervention or primary diagnosis.
