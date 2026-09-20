@@ -112,6 +112,31 @@ def _holdout_comparison(rows):
     return output
 
 
+def _confirmation_portable_row(row):
+    """Portable confirmation projection excludes environment-exact PCM equivalence.
+
+    Exact-output equivalence groups are retained in the full per-platform evidence.
+    They are derived from bit-identical f32 PCM asset hashes and therefore belong to
+    same-environment evidence identity, not the tolerance-based Windows/Ubuntu
+    portability surface. Promotion/selection never consumes those groups.
+    """
+    value = _portable_row(row)
+    stages = value.get("promotion_stages")
+    if stages is not None:
+        value["promotion_stages"] = [
+            {
+                key: item[key]
+                for key in (
+                    "stage", "eligible_count", "pareto_count",
+                    "retained_count", "retained_cap",
+                )
+            }
+            for item in stages
+        ]
+    value["exact_output_equivalence"] = "full-evidence-only-environment-exact"
+    return value
+
+
 def _availability(rows, method):
     return sum(
         row["final_available"] for row in rows
@@ -246,8 +271,8 @@ def build_confirmation_report():
         "selection_decision_sha256": SELECTION_DECISION_SHA256,
         "confirmation_names": list(CONFIRMATION_NAMES),
         "search_seeds": list(SEARCH_SEEDS),
-        "confirmation": [_portable_row(row) for row in rows],
-        "sentinels": [_portable_row(row) for row in sentinel_rows],
+        "confirmation": [_confirmation_portable_row(row) for row in rows],
+        "sentinels": [_confirmation_portable_row(row) for row in sentinel_rows],
         "holdout": holdout,
         "decision": decision,
     }
