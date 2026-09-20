@@ -125,26 +125,36 @@ def _process_rss_evidence(
     final_bytes,
     required_for_acceptance,
 ):
-    values = [
+    valid_baseline = (
+        isinstance(baseline_bytes, int)
+        and not isinstance(baseline_bytes, bool)
+        and baseline_bytes >= 0
+    )
+    post_values = [
         value
-        for value in (baseline_bytes, sampled_peak_bytes, final_bytes)
+        for value in (sampled_peak_bytes, final_bytes)
         if isinstance(value, int) and not isinstance(value, bool) and value >= 0
     ]
-    if not isinstance(baseline_bytes, int) or isinstance(baseline_bytes, bool):
-        peak = max(values) if values else None
+    if not valid_baseline or not post_values:
+        visible_values = ([baseline_bytes] if valid_baseline else []) + post_values
+        peak = max(visible_values) if visible_values else None
         return {
             "source": source,
             "available": False,
             "required_for_acceptance": bool(required_for_acceptance),
-            "baseline_bytes": None,
+            "baseline_bytes": baseline_bytes if valid_baseline else None,
             "sampled_peak_bytes": peak,
-            "final_bytes": final_bytes if isinstance(final_bytes, int) else None,
+            "final_bytes": (
+                final_bytes
+                if isinstance(final_bytes, int) and not isinstance(final_bytes, bool)
+                else None
+            ),
             "growth_bytes": None,
             "sample_interval_seconds": RSS_SAMPLE_INTERVAL_SECONDS,
             "semantics": "sampled-process-rss-growth-above-pre-job-baseline",
         }
 
-    peak = max(values) if values else baseline_bytes
+    peak = max([baseline_bytes, *post_values])
     growth = max(0, peak - baseline_bytes)
     return {
         "source": source,
@@ -219,8 +229,6 @@ def _measure(
     if not ready.wait(1):
         raise RuntimeError("RSS sampler did not start")
     before = rss_reader()
-    if before is not None:
-        peak_rss[0] = before
     start_threads = threading.active_count()
     t0 = time.perf_counter()
     try:
