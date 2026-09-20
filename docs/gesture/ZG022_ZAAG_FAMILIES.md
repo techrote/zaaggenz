@@ -10,18 +10,22 @@ No new ZG-022 recipe has `approved_default=true`. A default change requires an e
 
 ## Candidate families
 
-| ID | Primary idea | Useful source range | Phase / tail | Cost | Main limitation |
+The first owner audition pack (PR #80, preserved again after #110/#139) was explicitly rejected on 2026-09-20 as too close to a set of dull tonal twangs and too far from the brutal zaag source brief. Corrective #229 therefore **replaces the active candidate IDs** rather than silently mutating those historical renders. The rejected audio/manifests remain preserved as research evidence in their original artifacts and git history.
+
+The replacement set deliberately uses six different character mechanisms after the recovered source/motion stages:
+
+| ID | Character mechanism | Useful source range | Phase / tail | Cost | Main limitation |
 |---|---|---:|---|---|---|
-| `zaag.relaxed-punch` | relaxed attack/decay while retaining nonlinear edge | 27–96 Hz | source-derived / preserve | medium | can lose bite in very dense rolls |
-| `zaag.vowel-sway` | moving resonant upper-mid emphasis | 24–110 Hz | source-derived / preserve | high | moving resonance can crowd wide stacks |
-| `zaag.upper-bounce` | slower upper-group amplitude bounce over continuous lower body | 28–118 Hz | source-derived / preserve | medium | very fast/pitched-up use can become bright |
-| `zaag.complementary-pulse` | opposed lower/upper envelopes | 24–105 Hz | source-derived / preserve | medium | crossing point can sound hollow on sparse notes |
-| `zaag.grit-skip` | bounded nonlinear grit plus light sample-hold texture | 31–84 Hz | source-derived / preserve | high | intentional alias/images accumulate in dense stacks |
-| `zaag.harmonic-turn` | richer partial source for explicit interval/progression manifests | 24–108 Hz | source-derived / preserve | high | wide chords can become dense |
+| `zaag.bloom-bark` | relaxed front edge blooming into asymmetric fold/bark + high-band bite | 25–102 Hz | source-derived / preserve | high | dense rolls can mask the bloom-to-bark transition |
+| `zaag.formant-snarl` | strong moving resonances driven into a saturated snarl | 24–108 Hz | source-derived / preserve | high | wide stacks can crowd the resonant motion |
+| `zaag.upper-chop` | continuous low body with hard chopped/re-excited upper band | 27–112 Hz | source-derived / preserve | high | extreme BPM can turn the upper chop into a bright buzz |
+| `zaag.split-maul` | opposed low/high spectral slams instead of a gentle crossfade | 24–104 Hz | source-derived / preserve | high | coarse alternation deliberately dominates sparse sustains |
+| `zaag.crushed-teeth` | destructive nonlinear edge, low-bit hold and upper re-excitation | 29–88 Hz | source-derived / preserve | high | dense transposition loses pitch clarity fastest |
+| `zaag.harmonic-rip` | dense partial source with short-comb/ring-like tearing sidebands | 24–106 Hz | source-derived / preserve | high | wide chords make the metallic rip denser |
 
-The exposed macros are `attack_relax`, `vowel_motion`, `upper_bounce`, `complementary_motion`, `grit` and `harmonic_motion`, each bounded 0–1. Expert controls keep the underlying formant endpoints/Q, bounce depth/rate, complementary depth, nonlinear drive/mix/oversampling, sample-hold/bit depth, pitch-ratio range, phase policy, tail policy and quality cost reachable.
+The exposed macros remain `attack_relax`, `vowel_motion`, `upper_bounce`, `complementary_motion`, `grit` and `harmonic_motion`, each bounded 0–1. Expert controls keep formant endpoints/Q, bounce/complementary depth, nonlinear drive/oversampling, sample-hold/bit depth, pitch-ratio range, phase policy, tail policy and quality cost explicit.
 
-The macros are musical handles, not learned latent variables. They compile to explicit deterministic processing and are stored with every recipe.
+The six character profiles are fixed deterministic renderer mechanisms (`bark`, `snarl`, `chop`, `split`, `crush`, `rip`). They are engineering identities, not scores. CI asserts that all six are present and that their matched source waveforms do not collapse into a near-identical degenerate set; owner listening still decides creative usefulness.
 
 ## Deliberate contrasts
 
@@ -38,7 +42,8 @@ The post-source motion path is fixed and inspectable:
 1. vowel/formant-like resonant crossfade where enabled;
 2. upper-group bounce where enabled;
 3. complementary low/upper envelope exchange where enabled;
-4. bounded antialiased tanh and optional deterministic sample-hold/bitcrush grit.
+4. one explicit replacement-family character profile (`bark`, `snarl`, `chop`, `split`, `crush` or `rip`) for genuine candidates;
+5. bounded antialiased tanh and optional deterministic sample-hold/bitcrush grit.
 
 No final normalization is performed. The vowel stage is an engineered resonant gesture, not a physiological vocal-formant model. Sample hold is allowed to produce deliberate alias/images and is documented as such.
 
@@ -78,7 +83,7 @@ These are fail-closed execution bounds, not musical transforms. No accepted even
 
 ## Owner audition gate
 
-`build_owner_audition_pack()` produces a deterministic level-matched pack containing all six candidates and all three contrasts. Matching is whole-item RMS with peak-safe gain reduction only: no compression, clipping or hidden normalization is used to make conditions look similar.
+`build_owner_audition_pack()` produces a deterministic level-matched pack containing all six replacement candidates and all three contrasts. The evidence tool also emits a one-bar identical-pattern melodic demo for every genuine candidate so the owner is not forced to judge source identity from isolated 48 Hz hits alone. Matching is whole-item RMS with peak-safe gain reduction only: no compression, clipping or hidden normalization is used to make conditions look similar.
 
 The audition deliberately has four separate 1–7 endpoints:
 
@@ -89,7 +94,7 @@ The audition deliberately has four separate 1–7 endpoints:
 
 There is also free-text keep/reject rationale. Rejected variants remain evidence rather than disappearing from the registry.
 
-The generated ZG-022 pack is initially `pending-owner`. It does **not** include a reconstructed `locked_bloom` waveform; the verified existing product remains the listening anchor. The owner can compare the pack against the real protected preset. Until an explicit decision is recorded, `new_default` remains `null`.
+The replacement pack is revision `zg022-brutal-family-redesign-229-v1` and is initially `pending-owner`. It does **not** include a reconstructed `locked_bloom` waveform; the verified existing product remains the listening anchor. The owner can compare the pack against the real protected preset. Until an explicit decision is recorded, `new_default` remains `null`.
 
 ## Evidence and claims
 
