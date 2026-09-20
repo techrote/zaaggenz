@@ -118,3 +118,28 @@ PR #214 implements the bounded repair path recorded above without changing the p
 Adversarial regressions reproduce the original failures: decorative result-hash tampering, item relabelling, single-use audit iterators, 100-participant plans completed from eight observed participants, vanished missing cells, incompatible method/estimand declarations, the 1,792-pair randomisation allocation case, and unbounded counterbalance materialisation. Synthetic calibration remains explicitly non-participant evidence.
 
 The reviewed state for the final PR head is `implementation=accepted`, `evidence=accepted`, `research=accepted`, `dependency_satisfied=true`, with no ZG-040 blocker and evidence references to PR #211, the rollback review, PR #214 and the #41 corrective-reacceptance record. This reacceptance is valid only when the exact final head passes the required ZG-040 Ubuntu/Windows, inherited ZG-015/QC, programme-state and reverse-dependency gates. Issue #41 is closed only after those exact-head gates pass and the merge is verified on `main`.
+
+## Authority reconciliation update — 2026-09-20
+
+This dated section records the post-corrective state consumed by the pre-ZG-043 authority-reconciliation campaign. It supersedes the original 2026-09-15 snapshot for **current navigation only**; the earlier sections remain preserved history. Live readiness is still `programme/task_state.json`.
+
+### Machine authority repaired first
+
+ZG-000 child issue #217 / PR #222 repaired the machine-readable state without changing any planned DAG edge, stable-ID mapping or `dependency_satisfied` boolean. The accepted live blocker/evidence model now separates semantic blocker identity from issue/PR/document navigation.
+
+- **ZG-024** remains implementation/evidence partial, research-active and not dependency-satisfying. Correctives #134 / PR #187 (Candidate 2.0 provenance), #87 / PR #194 (transient-v4 eligibility) and #92 / PR #195 (staged deterministic research) are complete evidence, not live blockers. The parent #25 blocker is now the narrower research condition: reliable eligible-candidate availability plus held-out improvement on fresh structural/spectral and mixed-texture cases without holdout feedback or weakened safety gates. The accepted #92 result is mixed/no-go and promoted no production optimizer.
+- **ZG-029** is accepted/dependency-satisfying under ownership policy `zaaggenz.layer-ownership/1.1.0`. Final corrective #202 / PR #209 distinguishes raw SYNTHLINE/exciter audition/null stems from the exact processed `source_bus`; the old 1.0 additive-pre-master wording is historical only.
+- **ZG-045** remains not started/not dependency-satisfying, but completed canonical-environment prerequisite #103 / PR #199 and hardening #203 / PR #205 are no longer represented as a live task-local blocker. Outstanding readiness comes from the planned DAG.
+
+### Late programme reacceptance/integration
+
+- **ZG-042 / #43** was reaccepted through PR #213 after the PR #212 rollback. Current state is accepted/dependency-satisfying; the rollback remains historical evidence.
+- **ZG-040 / #41** was reaccepted through PR #214 after the same rollback. Current state is implementation/evidence/research accepted and dependency-satisfying.
+- **ZG-041 / #42** is integrated through PR #215. Compose remains the default ordinary workspace; `/research` is an explicit non-destructive hub over accepted Research surfaces and does not own a second Compose session.
+- **ZG-043 / #44** is not itself implemented or dependency-satisfying, but all of its declared hard parents (ZG-009, ZG-011, ZG-027, ZG-029, ZG-030 and ZG-041) currently satisfy dependency evidence. This is prerequisite readiness, not a completion claim for ZG-043.
+
+### Current ZG-024 read set
+
+For new inverse-search work, read the accepted chain through Candidate 2.0 provenance, transient-v4, staged protocol v2, the mixed/no-go staged result and lineage reconciliation, then read the live `task_state.json` row and parent #25 latest blocker record. Handoffs 1/2 remain important history/substrate but are not the terminal current authority.
+
+The repository must preserve the original rollback, failed/superseded research and pre-G0 records as history while preventing them from being mistaken for live instructions.

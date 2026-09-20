@@ -1,6 +1,6 @@
 # ZG-040 preregistration and reproducible study scaffold
 
-Status: **corrective reacceptance implemented; accepted dependency evidence is gated by PR #214 final-head CI**  
+Status: **corrective reacceptance complete via PR #214; live state is accepted and dependency-satisfying**  
 Manifest version: `zaaggenz-study-manifest/1.0.0`  
 Trusted dataset version: `zaaggenz-study-dataset/1.1.0`
 

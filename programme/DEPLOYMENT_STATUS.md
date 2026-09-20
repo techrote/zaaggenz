@@ -8,7 +8,8 @@
 - Overview epic: **ZG-000 → issue #1**.
 - Implementation/research tasks: **ZG-001…ZG-045 → issues #2…#46**.
 - Stable-ID map: `programme/issue_map.json`.
-- Machine-readable task/dependency graph: `programme/tasks.json`, `programme/dependency_graph.json`.
+- Machine-readable planned task/dependency graph: `programme/tasks.json`, `programme/dependency_graph.json`.
+- Live evidence-aware task/readiness state: `programme/task_state.json`.
 - Master orchestration atlas: `docs/zaaggenz/OVERVIEW.md`.
 - RAG/read-set index plus architecture, spectral, rhythm, experiment, validation, risk, workflow and source documentation.
 
@@ -19,11 +20,18 @@
 - The master atlas was reconciled with the actually deployed ZG-019…ZG-024 programme before this receipt was written.
 - No supplied reference recording was uploaded to the repository.
 
-## Current implementation gate
+## Current authority
 
-The repository was initially empty. **ZG-001 remains the first hard gate:** recover and provenance-check the actual v1.2.1 source/archive before implementation work assumes production paths, baseline hashes or test state.
+The repository began as a planning/deployment shell, but that bootstrap state is historical. ZG-001/G0 recovery is accepted: the owner-supplied v1.2.1 archive and compact runtime payload are authenticated and materialisable from the repository.
 
-The programme documentation may be improved in parallel, but implementation dependencies are not satisfied by this planning deployment alone.
+Current authority is deliberately split by concern:
+
+- `programme/task_state.json` owns live implementation/evidence/research/owner-gate state and the explicit `dependency_satisfied` decision;
+- `programme/tasks.json` and `programme/dependency_graph.json` own the planned hard prerequisites, groups and shared locks;
+- `programme/issue_map.json` owns stable-ID → GitHub issue navigation;
+- GitHub issue open/closed state is informational and cannot independently satisfy or revoke a dependency.
+
+This deployment receipt is not a second progress ledger. Agents must consume the live state rather than infer readiness from this file.
 
 ## GitHub-native metadata
 

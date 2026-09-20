@@ -50,7 +50,9 @@ Current checkpoints remain `verified-prefix-replay-v1`. A checkpoint created and
 
 Consumers must treat Candidate 2.0.0's `search_binding` as the authoritative self-contained provenance envelope and the duplicated top-level provenance fields only as validated projections. Consumers must not relabel a candidate by rewriting those projections.
 
-The current production inspector does not yet consume persisted inverse candidates as authoritative project/render input; that integration remains tracked separately by #94. When #94/#92 consume inverse evidence, they should require Candidate 2.0.0 (or a later explicitly versioned successor) and preserve `search_binding_sha256` through any derived evidence.
+Corrective #94 is complete: production Inspector binds an exact immutable `RenderArtifact` and its complete source identity; it does **not** reinterpret a persisted inverse candidate as authoritative project/render input. Research issue #92 is also complete with the accepted mixed/no-go staged-search result and promoted no production optimizer.
+
+Candidate 2.0.0 therefore remains authenticated inverse-research evidence, not an implicit Compose mutation path. No current production route auto-applies a persisted inverse candidate to Compose. Any future capability that consumes a candidate as editable project/render input requires an explicit versioned integration decision and must preserve `search_binding_sha256` (or a later explicitly versioned successor) through derived evidence.
 
 ## Protected semantics
 

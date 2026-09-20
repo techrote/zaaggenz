@@ -4,7 +4,7 @@ ZG-023 adds an optional Research workspace for auditing spectral transformations
 
 ## Workspace boundary and production source binding
 
-Run `python -m zaaggenz_inspector` after materialising the authenticated recovered runtime. The loopback-only standalone server exposes both `/timeline` and `/inspector` on one origin so a completed timeline render can be bound without copying mutable browser audio. The standalone wrapper remains a narrow development/research surface; the unified product runtime tracked by #95 will consume the same binding contract rather than invent a second one.
+The canonical user path is `python -m zaaggenz_runtime` and the unified `/inspector` workspace established through completed runtime reconciliation #95. `python -m zaaggenz_inspector` remains a focused development/research wrapper after materialising the authenticated recovered runtime; it exposes both `/timeline` and `/inspector` on one loopback origin so a completed timeline render can be bound without copying mutable browser audio. Both paths consume the same accepted binding contract rather than inventing separate source authority.
 
 Production Inspector state starts **unbound**. A source becomes inspectable only through `POST /api/inspector/bind` with the job ID of a completed render owned by that server's `TimelineService`. The server takes the completed `RenderArtifact` directly from the scheduler and binds its immutable `audio_bytes` and validated `AudioAssetRef`; it does not reconstruct a recipe, rerender, upload arbitrary arrays, or trust browser-declared hashes. The route uses the same loopback Host/Origin and session-token protections as timeline rendering.
 

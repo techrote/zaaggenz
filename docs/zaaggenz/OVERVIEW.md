@@ -48,7 +48,7 @@ Stable IDs are authoritative; actual issue numbers are in [`programme/issue_map.
 
 The planned DAG and the current state are deliberately separate. [`programme/task_state.json`](../../programme/task_state.json) records orthogonal implementation, evidence, research, owner-gate and blocker state plus the explicit `dependency_satisfied` decision for each stable task. GitHub issue open/closed is mirrored there for navigation only; it is not used to compute readiness. Validate and derive readiness with `python tools/validate_programme_state.py --validate` / `--report`. Accepted corrective debt does not automatically revoke prerequisite evidence; a task is withheld only when the state record explicitly says its acceptance/gate is not dependency-satisfying.
 
-**Post-merge review update — 2026-09-19:** ZG-040/#41 and ZG-042/#43 were downgraded from accepted/dependency-satisfying to partial/not-satisfying after independent adversarial reproductions. Their merged PRs remain historical evidence, but downstream tasks must consume the live state, not the earlier completion comments. ZG-040 currently blocks confirmatory study-family work that depends on its evidence-integrity guarantees; ZG-042 currently blocks release-validation reliance on its memory-bound/exact-section guarantees.
+**Post-merge review history — 2026-09-19:** independent adversarial review temporarily downgraded ZG-040/#41 and ZG-042/#43 through the reconciliation recorded in PR #212. Both were subsequently repaired and reaccepted: ZG-042 via PR #213 and ZG-040 via PR #214. The rollback remains important governance history, but it is not current blocker state; live readiness is always read from `programme/task_state.json`.
 
 | ID | Task | Milestone | Hard prerequisites |
 |---|---|---|---|

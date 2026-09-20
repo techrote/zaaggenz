@@ -1,10 +1,12 @@
 # zaaggenz preliminary research results — 2026-09-12
 
-This is independent preliminary evidence, not an implementation of the unavailable v1.2.1 synthesiser. No production task is closed, no prerequisite is waived, and no default sound has been changed.
+> **Historical pre-G0 research evidence.** This report preserves what was known and measured during the 2026-09-12 preliminary pass. It is not a live programme-status source; current readiness is [`programme/task_state.json`](programme/task_state.json). ZG-001 was subsequently completed after the authenticated v1.2.1 source was recovered.
 
-## Current gate
+At the time of this pass this was independent preliminary evidence, not an implementation of the then-unavailable v1.2.1 synthesiser. No production task was closed, no prerequisite was waived, and no default sound was changed by this research.
 
-The main repository at `c1e4de5e94d9b0e304bac06f0746d6bd80f90832` and the uploaded programme contain planning material, not the actual application archive. ZG-001 / issue #2 remains blocked on source recovery. The programme ZIP SHA-256 is `f342f0dda48e5dfbae7b9d179a46313e4077f349f85fcbd4b5437f0bb348216e`. The live 45-task, 158-edge graph agrees with the supplied programme.
+## Gate at the time of this preliminary pass
+
+The main repository at `c1e4de5e94d9b0e304bac06f0746d6bd80f90832` and the uploaded programme contained planning material, not the actual application archive. ZG-001 / issue #2 therefore remained blocked on source recovery **at that time**. The programme ZIP SHA-256 is `f342f0dda48e5dfbae7b9d179a46313e4077f349f85fcbd4b5437f0bb348216e`. The live 45-task, 158-edge graph agrees with the supplied programme.
 
 ## Work completed locally
 
@@ -60,4 +62,4 @@ Private-reference reproduction additionally requires the original local files an
 
 ZG-005/012/013/017: independent resolution, phase and residual fixtures. ZG-014/018/024: density and assignment counterexamples. ZG-007/020: tuning-format and dissonance sensitivity oracles. ZG-016/019/021/030: effect-delta identity and oversampling evidence. ZG-025..028: exact clocks and explicit phrase-role controls. ZG-003/004: revision ownership and bounded scheduling models. ZG-015/034..040: protocol and coverage checks. ZG-006/033: private-reference identities, replication and candidates awaiting manual review.
 
-Production adapters, full-rate owner listening, source recovery, browser integration and participant-protocol approval remain separate requirements. No biochemical, preference or artistic-success outcome was measured in this pass.
+At the time of this preliminary pass, production adapters, full-rate owner listening, source recovery, browser integration and participant-protocol approval were separate requirements. Source recovery was subsequently completed under ZG-001; current unresolved gates are read from `programme/task_state.json`. No biochemical, preference or artistic-success outcome was measured in this pass.
