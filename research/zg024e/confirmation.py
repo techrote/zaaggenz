@@ -26,7 +26,7 @@ SELECTED_METHOD = "zg024e.coupled-ab-36.v1"
 MATCHED_NULL_METHOD = "zg024e.factorized-36-balanced.v1"
 
 
-def _confirmation_fixture(name, truth, base, description, seed, *, equivalence=False):
+def _confirmation_fixture(name, truth, base, description, seed, *, equivalence=False, budget_evaluations=36):
     return SyntheticFixture(
         name=name,
         description=description,
@@ -41,12 +41,12 @@ def _confirmation_fixture(name, truth, base, description, seed, *, equivalence=F
         target=render_trace(truth).output,
         plan=PLAN,
         objective=OBJECTIVE,
-        budget=_budget(36),
+        budget=_budget(budget_evaluations),
         seed=seed,
     )
 
 
-def confirmation_fixture(name, *, seed="53"):
+def confirmation_fixture(name, *, seed="53", budget_evaluations=36):
     if name not in CONFIRMATION_NAMES:
         raise ValueError("unknown ZG-024e confirmation fixture")
     if seed not in SEARCH_SEEDS:
@@ -65,7 +65,7 @@ def confirmation_fixture(name, *, seed="53"):
             name, truth, base,
             "Untouched confirmation: fresh simultaneous structural+spectral displacement "
             "testing the frozen cross-family-coupling diagnosis.",
-            seed,
+            seed, budget_evaluations=budget_evaluations,
         )
 
     if name == "confirm2-mixed-texture":
@@ -81,7 +81,7 @@ def confirmation_fixture(name, *, seed="53"):
             name, truth, base,
             "Untouched confirmation: fresh A+B displacement plus strong nonlinear texture "
             "change, distinct from prior calibration and confirmation targets.",
-            seed,
+            seed, budget_evaluations=budget_evaluations,
         )
 
     base = _source(
@@ -96,5 +96,5 @@ def confirmation_fixture(name, *, seed="53"):
         name, truth, base,
         "Untouched confirmation: fresh drive/input-trim equivalence embedded in "
         "structural+spectral nuisance displacement.",
-        seed, equivalence=True,
+        seed, equivalence=True, budget_evaluations=budget_evaluations,
     )
