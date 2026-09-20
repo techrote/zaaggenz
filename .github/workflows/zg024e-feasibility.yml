@@ -5,6 +5,7 @@ on:
       - 'research/zg024e/**'
       - 'tests/inverse_research/test_zg024e_*.py'
       - 'tools/inverse_feasibility_report.py'
+      - 'tools/inverse_feasibility_confirmation.py'
       - 'docs/inverse/ZG024E_*'
       - 'examples/zg024e_*'
       - 'programme/task_state.json'
@@ -50,6 +51,33 @@ jobs:
           --selection-out zg024e-development-selection.json
           --telemetry-out zg024e-development-telemetry.json
           --require-integrity
+      - name: Verify development rerun reproduces committed selection decision
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          frozen = json.loads(Path('examples/zg024e-development-selection.json').read_text(encoding='utf-8'))
+          actual = json.loads(Path('zg024e-development-selection.json').read_text(encoding='utf-8'))
+          for key in (
+              'selection_decision_sha256',
+              'selected_intervention_method',
+              'selected_matched_null_method',
+              'primary_mechanism',
+              'primary_diagnosis',
+          ):
+              if actual[key] != frozen[key]:
+                  raise SystemExit(f'ZG-024e frozen selection drift for {key}: {actual[key]!r} != {frozen[key]!r}')
+          print('ZG-024e development rerun reproduces committed selection decision')
+          PY
+      - name: Run untouched sealed confirmation
+        run: >-
+          python tools/inverse_feasibility_confirmation.py
+          --out zg024e-confirmation-evidence.json
+          --full-out zg024e-confirmation-full.json
+          --portable-out zg024e-confirmation-portable.json
+          --telemetry-out zg024e-confirmation-telemetry.json
+          --require-integrity
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -60,6 +88,10 @@ jobs:
             zg024e-development-portable.json
             zg024e-development-selection.json
             zg024e-development-telemetry.json
+            zg024e-confirmation-evidence.json
+            zg024e-confirmation-full.json
+            zg024e-confirmation-portable.json
+            zg024e-confirmation-telemetry.json
           retention-days: 14
           compression-level: 9
 
@@ -84,10 +116,15 @@ jobs:
 
           ATOL, RTOL = 1e-7, 1e-5
           roots = {
-              'ubuntu': Path('portable/zg024e-development-ubuntu-latest/zg024e-development-portable.json'),
-              'windows': Path('portable/zg024e-development-windows-latest/zg024e-development-portable.json'),
+              'development': {
+                  'ubuntu': Path('portable/zg024e-development-ubuntu-latest/zg024e-development-portable.json'),
+                  'windows': Path('portable/zg024e-development-windows-latest/zg024e-development-portable.json'),
+              },
+              'confirmation': {
+                  'ubuntu': Path('portable/zg024e-development-ubuntu-latest/zg024e-confirmation-portable.json'),
+                  'windows': Path('portable/zg024e-development-windows-latest/zg024e-confirmation-portable.json'),
+              },
           }
-          values = {name: json.loads(path.read_text(encoding='utf-8')) for name, path in roots.items()}
 
           def compare(a, b, path='root'):
               if type(a) is not type(b):
@@ -108,8 +145,10 @@ jobs:
               elif a != b:
                   raise AssertionError(f'{path}: {a!r} != {b!r}')
 
-          compare(values['ubuntu'], values['windows'])
-          print('ZG-024e development evidence agrees across Ubuntu and Windows under abs=1e-7 rel=1e-5')
+          for scope, paths in roots.items():
+              values = {name: json.loads(path.read_text(encoding='utf-8')) for name, path in paths.items()}
+              compare(values['ubuntu'], values['windows'], scope)
+              print(f'ZG-024e {scope} evidence agrees across Ubuntu and Windows under abs=1e-7 rel=1e-5')
           PY
 
   authority:
