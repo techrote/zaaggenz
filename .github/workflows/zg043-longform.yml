@@ -50,7 +50,7 @@ jobs:
           python -m unittest discover -s tests/gesture -v
           python -m unittest discover -s tests/layers -v
           python -m unittest discover -s tests/performance -v
-          python -m unittest tests.runtime.test_zg041_workspace -v
+          python -m unittest discover -s tests/runtime -p 'test_zg041_workspace.py' -v
 
   evidence:
     needs: longform
