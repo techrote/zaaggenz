@@ -1,0 +1,83 @@
+name: ZG-043 long-form arrangement and export
+
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_longform/**'
+      - 'tests/longform/**'
+      - 'tools/zg043_fixture_report.py'
+      - 'docs/longform/**'
+      - 'programme/ci_reverse_dependencies.json'
+      - 'programme/task_state.json'
+      - '.github/workflows/zg043-longform.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  longform:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      NUMEXPR_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical/shared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: ZG-043 long-form model, render and export acceptance
+        run: python -m unittest discover -s tests/longform -v
+      - name: Direct-parent and ownership regressions
+        run: |
+          python -m unittest discover -s tests/project -v
+          python -m unittest discover -s tests/timeline -v
+          python -m unittest discover -s tests/grammar -v
+          python -m unittest discover -s tests/gesture -v
+          python -m unittest discover -s tests/layers -v
+          python -m unittest discover -s tests/performance -v
+          python -m unittest discover -s tests/runtime -p 'test_zg041_workspace.py' -v
+
+  evidence:
+    needs: longform
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      MKL_NUM_THREADS: '1'
+      NUMEXPR_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Materialize authenticated v1.2.1 source
+        run: python baseline/recovered_source/materialize_v2.py --out .
+      - name: Install numerical/shared dependencies
+        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+      - name: Render required structured and 64-bar evidence
+        run: python tools/zg043_fixture_report.py --out zg043-evidence.json --sample-rate 12000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg043-longform-evidence
+          path: zg043-evidence.json
+          retention-days: 14

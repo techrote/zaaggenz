@@ -80,9 +80,9 @@ class ProgrammeStateTests(unittest.TestCase):
 
     def test_closed_issue_without_evidence_does_not_become_satisfied(self) -> None:
         candidate = copy.deepcopy(self.state)
-        # ZG-043 is intentionally not started and has no accepted evidence.
+        # ZG-044 is intentionally not started and has no accepted evidence.
         # Closing its GitHub mirror must not manufacture dependency readiness.
-        row = candidate["tasks"]["ZG-043"]
+        row = candidate["tasks"]["ZG-044"]
         row["github_issue"]["state"] = "closed"
         ps.validate_state(candidate, root=ROOT)
         self.assertEqual("none", row["evidence"])
@@ -217,12 +217,26 @@ class ProgrammeStateTests(unittest.TestCase):
             "ZG-038": [],
             "ZG-039": ["ZG-024"],
             "ZG-043": [],
-            "ZG-044": ["ZG-022", "ZG-024", "ZG-043"],
-            "ZG-045": ["ZG-043", "ZG-044"],
+            "ZG-044": ["ZG-022", "ZG-024"],
+            "ZG-045": ["ZG-044"],
         }
         for sid, unsatisfied in expected.items():
             self.assertEqual(unsatisfied, report[sid]["unsatisfied_parents"])
             self.assertEqual(not unsatisfied, report[sid]["hard_prerequisites_satisfied"])
+
+    def test_zg043_longform_export_is_accepted_dependency_evidence(self) -> None:
+        row = self.state["tasks"]["ZG-043"]
+        self.assertEqual((row["implementation"], row["evidence"]), ("accepted", "accepted"))
+        self.assertTrue(row["dependency_satisfied"])
+        self.assertEqual(row["blockers"], [])
+        self.assertEqual(row["github_issue"], {"number": 44, "state": "closed"})
+        self.assertIn("pr:#226", row["evidence_refs"])
+        self.assertIn("issue:#44:implementation-evidence", row["evidence_refs"])
+        self.assertIn("docs:docs/longform/README.md", row["evidence_refs"])
+        self.assertIn("docs:docs/longform/VERIFICATION.md", row["evidence_refs"])
+        report = ps.readiness_report(self.state, root=ROOT)
+        self.assertEqual(report["ZG-044"]["unsatisfied_parents"], ["ZG-022", "ZG-024"])
+        self.assertEqual(report["ZG-045"]["unsatisfied_parents"], ["ZG-044"])
 
     def test_unknown_task_and_wrong_issue_mapping_fail(self) -> None:
         bad = copy.deepcopy(self.state)

@@ -39,6 +39,7 @@
     "zg040-studies.yml": "ZG-040",
     "zg041-compose-research.yml": "ZG-041",
     "zg042-performance.yml": "ZG-042",
+    "zg043-longform.yml": "ZG-043",
     "zg045-environment.yml": "ZG-045"
   },
   "source_path_owners": {
@@ -86,6 +87,7 @@
     "zaaggenz_web_release/**": ["ZG-009", "ZG-015", "ZG-023", "ZG-032"],
     "zaaggenz_studies/**": ["ZG-040"],
     "zaaggenz_performance/**": ["ZG-042"],
+    "zaaggenz_longform/**": ["ZG-043"],
     "pyproject.toml": ["ZG-045"],
     "constraints/**": ["ZG-045"],
     "package.json": ["ZG-045"],

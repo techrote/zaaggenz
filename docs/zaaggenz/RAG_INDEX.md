@@ -53,7 +53,10 @@ Add `RHYTHM_EXPECTATION` for directional/modal/phrase semantics and `SPECTRAL_HA
 `EXPERIMENTS` + `VALIDATION_GATES` + the creative brief that defines the manipulation + `SOURCES`. Freeze protocol/stimuli before confirmatory outcomes.
 
 ### Integration / release — ZG-041…045
-`OVERVIEW` + `CONTEXT_AND_DECISIONS` + `ARCHITECTURE` + `VALIDATION_GATES` + evidence from all direct parents. Add `docs/runtime/ZG041_COMPOSE_RESEARCH.md` for the accepted Compose/Research boundary, `docs/performance/ZG042_LONGFORM.md` for long-form execution/resource authority, and `docs/packaging/ENVIRONMENT.md` for the canonical package/environment prerequisite used by ZG-045.
+`OVERVIEW` + `CONTEXT_AND_DECISIONS` + `ARCHITECTURE` + `VALIDATION_GATES` + evidence from all direct parents. Add `docs/runtime/ZG041_COMPOSE_RESEARCH.md` for the accepted Compose/Research boundary, `docs/performance/ZG042_LONGFORM.md` for long-form execution/resource authority, `docs/longform/README.md` + `docs/longform/VERIFICATION.md` for accepted ZG-043 arrangement/export ownership, and `docs/packaging/ENVIRONMENT.md` for the canonical package/environment prerequisite used by ZG-045.
+
+### ZG-043 long-form arrangement / export
+For work that consumes ZG-043 (especially ZG-044/ZG-045), read `docs/longform/README.md` then `docs/longform/VERIFICATION.md`, followed by the accepted ZG-029 ownership, ZG-030 pocket, ZG-041 Compose/Research and ZG-042 long-workload authorities referenced there. The long-form wrapper is `zaaggenz-longform-arrangement/1.0.0`; it does not replace Project v1 or Timeline v1. Simple note-event export is explicitly warning-bearing and is never authority over non-12-TET, spectral/adaptive/timbral or layer-ownership intent.
 
 ## Machine-readable orchestration
 
