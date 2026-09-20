@@ -80,9 +80,9 @@ class ProgrammeStateTests(unittest.TestCase):
 
     def test_closed_issue_without_evidence_does_not_become_satisfied(self) -> None:
         candidate = copy.deepcopy(self.state)
-        # ZG-043 is intentionally not started and has no accepted evidence.
+        # ZG-044 is intentionally not started and has no accepted evidence.
         # Closing its GitHub mirror must not manufacture dependency readiness.
-        row = candidate["tasks"]["ZG-043"]
+        row = candidate["tasks"]["ZG-044"]
         row["github_issue"]["state"] = "closed"
         ps.validate_state(candidate, root=ROOT)
         self.assertEqual("none", row["evidence"])
