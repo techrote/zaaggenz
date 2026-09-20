@@ -69,8 +69,17 @@ def main():
         )
     if structured["section_count"] != 12:
         raise RuntimeError("structured example section count changed")
+    if not any(row["return_of_section_id"] is not None for row in structured["section_ranges"]):
+        raise RuntimeError("structured example no longer proves motif-return reuse")
     if stress["section_count"] != 16:
         raise RuntimeError("64-bar stress section count changed")
+    stress_document = stress_64bar_example(args.sample_rate).to_dict()
+    if not all(
+        section["repeats"] == 4
+        and section["meter_segments"] == [{"beat": "0/1", "numerator": 4, "denominator": 4}]
+        for section in stress_document["sections"]
+    ):
+        raise RuntimeError("64-bar stress fixture is no longer sixteen literal four-bar 4/4 sections")
     if "non-12tet-tuning" not in stress["note_warning_codes"]:
         raise RuntimeError("64-bar stress no longer exercises non-octave export warnings")
     for row in (structured, stress):
