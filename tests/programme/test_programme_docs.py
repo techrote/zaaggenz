@@ -78,7 +78,7 @@ class ProgrammeDocsTests(unittest.TestCase):
         for required in pd.ZG024_REQUIRED_RAG:
             with self.subTest(required=required):
                 docs = dict(self.docs)
-                docs["rag"] = docs["rag"].replace(required, f"OLD-{required}")
+                docs["rag"] = docs["rag"].replace(required, "REMOVED_CURRENT_INVERSE_AUTHORITY.md")
                 errors = pd.audit_texts(docs, self.baseline, self.state)
                 self.assertIn(f"rag: missing current inverse authority pointer {required}", errors)
 
