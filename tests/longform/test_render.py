@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import sys
+from pathlib import Path
 import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path[:0] = [str(ROOT), str(ROOT / "app")]
 
 import numpy as np
 

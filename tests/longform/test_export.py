@@ -3,8 +3,12 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
+import sys
 import unittest
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path[:0] = [str(ROOT), str(ROOT / "app")]
 
 from scipy.io import wavfile
 

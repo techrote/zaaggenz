@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import json
 import tempfile
+import sys
 import unittest
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path[:0] = [str(ROOT), str(ROOT / "app")]
 
 from zaaggenz_longform import (
     LongformDocument,

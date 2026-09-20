@@ -399,6 +399,7 @@ def _absolute_note_rows(compiled, section_start, tuning):
             _rat(fraction(source["beat"]) + fraction(source["duration_beats"])),
         ) - origin
         row = deepcopy(source)
+        row["tuning_id"] = tuning["id"]
         row["start_sample"] = section_start + start
         row["duration_samples"] = end - start
         row["start_seconds"] = (section_start + start) / compiled.recipe.to_dict()["time_map"]["sample_rate_hz"]
