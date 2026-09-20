@@ -143,7 +143,7 @@ def _motifs():
             "origin": {"kind": "authored", "source_id": "zg043-original-pulse-a"},
             "events": [
                 _event("a0", "0/1", "1/2", 8, gain=-23.0),
-                _event("a1", "1/1", "1/2", 12, gain=-24.0, roll=2),
+                _event("a1", "1/1", "1/1", 12, gain=-24.0, roll=4),
                 _event("a2", "2/1", "1/1", None, gain=-120.0),
                 _event("a3", "3/1", "1/2", 10, gain=-25.0),
             ],
