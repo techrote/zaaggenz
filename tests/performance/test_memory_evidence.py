@@ -57,6 +57,20 @@ class ProcessMemoryEvidenceTests(unittest.TestCase):
         self.assertIsNone(acceptance["process_rss_within_reservation"])
         self.assertFalse(acceptance["accepted"])
 
+    def test_baseline_without_any_post_observation_is_unavailable(self):
+        evidence = bench._process_rss_evidence(
+            source="test-rss",
+            baseline_bytes=1000,
+            sampled_peak_bytes=None,
+            final_bytes=None,
+            required_for_acceptance=True,
+        )
+        self.assertFalse(evidence["available"])
+        self.assertEqual(evidence["baseline_bytes"], 1000)
+        self.assertEqual(evidence["sampled_peak_bytes"], 1000)
+        self.assertIsNone(evidence["growth_bytes"])
+        self.assertFalse(bench._memory_acceptance(100, 90, evidence)["accepted"])
+
     def test_process_metric_exact_boundary_and_one_over(self):
         exact = bench._process_rss_evidence(
             source="test-rss",
