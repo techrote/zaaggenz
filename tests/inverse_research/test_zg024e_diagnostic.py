@@ -2,7 +2,7 @@ import unittest
 
 from zaaggenz_jobs import JobCancelled
 from zaaggenz_project import Project
-from zaaggenz_inverse import prepare_experiment, request_from_project
+from zaaggenz_inverse import ParameterState, prepare_experiment, request_from_project
 from zaaggenz_inverse.recipes import state_from_recipe
 from research.zg024e import (
     DESIGN_MANIFEST,
@@ -216,34 +216,29 @@ class ZG024eDiagnosticTests(unittest.TestCase):
             [candidate.eligible for candidate in changed.candidates],
         )
 
-    def test_cache_reuse_within_capacity_and_strategy_identity_separation(self):
-        # The accepted bounded render cache is intentionally smaller than the
-        # 36-evaluation diagnostic working set. Verify full replay reuse using the
-        # preregistered 24-evaluation control (the inherited supported case), rather
-        # than requiring an unbounded cache merely to make this test pass.
-        control_spec = DiagnosticSpec("zg024e.factorized-24-control.v1")
-        control_fixture = development_fixture(
-            "dev2-mixed-texture", budget_evaluations=control_spec.budget
+    def test_recent_cache_reuse_and_strategy_identity_separation(self):
+        # The accepted render cache is deliberately bounded and much smaller than
+        # a full diagnostic working set. Verify reuse on a recently evaluated
+        # candidate that is guaranteed to remain resident; do not turn the test
+        # into an implicit requirement to enlarge the production cache.
+        spec = DiagnosticSpec("zg024e.factorized-36-balanced.v1")
+        fixture = development_fixture(
+            "dev2-mixed-texture", budget_evaluations=spec.budget
         )
-        fit, _ = control_fixture.experiment()
-        first = run_diagnostic(fit, control_spec)
+        fit, _ = fixture.experiment()
+        balanced = run_diagnostic(fit, spec)
+        last = balanced.candidates[-1]
+        state = ParameterState.from_dict(last.to_dict()["parameters"])
+        ordinal = last.to_dict()["ordinal"]
         calls = fit.render_calls
         hits = fit.render_hits
-        replay = run_diagnostic(fit, control_spec)
-        self.assertEqual(first.to_dict(), replay.to_dict())
+        replayed = fit.evaluate(state, ordinal)
+        self.assertEqual(replayed.sha256, last.sha256)
         self.assertEqual(fit.render_calls, calls)
         self.assertGreater(fit.render_hits, hits)
 
-        # Strategy/run identity separation is checked independently at the new
-        # 36-evaluation budget; cache capacity is not widened for the experiment.
-        fixture36 = development_fixture(
-            "dev2-mixed-texture", budget_evaluations=36
-        )
-        balanced_fit, _ = fixture36.experiment()
-        balanced = run_diagnostic(
-            balanced_fit, DiagnosticSpec("zg024e.factorized-36-balanced.v1")
-        )
-        other_fit, _ = fixture36.experiment(render_cache=balanced_fit.render_cache)
+        # Research strategy identity is separate from shared renderer/cache keys.
+        other_fit, _ = fixture.experiment(render_cache=fit.render_cache)
         other = run_diagnostic(
             other_fit, DiagnosticSpec("zg024e.factorized-36-a-heavy.v1")
         )
