@@ -33,7 +33,7 @@ User intent controls the artistic target. Literature constrains factual/scientif
 
 ## Active reconciliation campaign
 
-Before changing programme state, authority-bearing front-door prose, RAG/read sets or pre-ZG-043 readiness guards, read `AUTHORITY_RECONCILIATION_RAG.md`. It records the 2026-09-19 audit findings, protected authority hierarchy, serialized repair sequence and focused read sets. Active execution issues are #217 (machine authority) → #218 (human/RAG authority) → #219 (drift guardrails/final ZG-043 certification), followed by separate ZG-042 hardening #220. The campaign document is a planning/retrieval aid; live readiness remains `programme/task_state.json`.
+Before changing programme state, authority-bearing front-door prose, RAG/read sets or pre-ZG-043 readiness guards, read `AUTHORITY_RECONCILIATION_RAG.md`. It records the 2026-09-19 audit findings, protected authority hierarchy, serialized repair sequence and focused read sets. #217 machine authority is merged via PR #222; #218 is the current human/RAG reconciliation; #219 follows with durable drift guards/final ZG-043 certification; separate ZG-042 hardening #220 remains a technical follow-up. The campaign document is a planning/retrieval aid; live readiness remains `programme/task_state.json`.
 
 ## Suggested read sets
 
@@ -53,7 +53,7 @@ Add `RHYTHM_EXPECTATION` for directional/modal/phrase semantics and `SPECTRAL_HA
 `EXPERIMENTS` + `VALIDATION_GATES` + the creative brief that defines the manipulation + `SOURCES`. Freeze protocol/stimuli before confirmatory outcomes.
 
 ### Integration / release — ZG-041…045
-`OVERVIEW` + `CONTEXT_AND_DECISIONS` + `ARCHITECTURE` + `VALIDATION_GATES` + evidence from all direct parents.
+`OVERVIEW` + `CONTEXT_AND_DECISIONS` + `ARCHITECTURE` + `VALIDATION_GATES` + evidence from all direct parents. Add `docs/runtime/ZG041_COMPOSE_RESEARCH.md` for the accepted Compose/Research boundary, `docs/performance/ZG042_LONGFORM.md` for long-form execution/resource authority, and `docs/packaging/ENVIRONMENT.md` for the canonical package/environment prerequisite used by ZG-045.
 
 ## Machine-readable orchestration
 
@@ -69,11 +69,18 @@ Stable IDs are the join key across documentation, commits, tests and issues. `pr
 Search for the stable ID, contract name or exact musical/DSP term first. Prefer one authoritative section plus neighbouring context to a large pile of disconnected snippets. If the expected document/artefact is missing, treat that as a blocker or documentation debt; do not fill the gap by inventing prior decisions.
 
 ### ZG-024 serial inverse-search passes
-`docs/inverse/README.md` defines the ZG-024a laboratory and reuse boundaries;
-`docs/inverse/RECOVERED_BASELINE.md` preserves predecessor provenance;
-`docs/inverse/ZG024_RESEARCH_HANDOFF_1.md` records the deterministic laboratory calibration;
-`docs/inverse/ZG024_RESEARCH_HANDOFF_2.md` records the fixed-budget grid/uniform/Halton/coordinate strategy comparison, gate interaction, and staged-search research directions;
-`docs/inverse/ZG024_LINEAGE_RECONCILIATION.md` is the authoritative branch/PR disposition and superseded-evidence preservation record; it prevents historical work branches or PR #85 from being mistaken for current implementation instructions;
-`docs/inverse/TRANSIENT_PRESERVATION_GATE.md` defines the repaired `zg.inverse.transient-onset-contrast.v4` hard eligibility diagnostic and its limits;
-`docs/inverse/TRANSIENT_V4_EVIDENCE_MIGRATION.md` records the exact frozen-calibration and strategy-evidence transition from the derivative gate to transient v4.
-Issue #25 remains open: ZG-024a is substrate and ZG-024b is strategy evidence, neither is the final production optimizer.
+Read the current lineage in this order:
+
+1. `docs/inverse/README.md` — laboratory/reuse boundary;
+2. `docs/inverse/RECOVERED_BASELINE.md` — predecessor provenance;
+3. `docs/inverse/ZG024_RESEARCH_HANDOFF_1.md` — deterministic laboratory calibration;
+4. `docs/inverse/ZG024_RESEARCH_HANDOFF_2.md` — fixed-budget grid/uniform/Halton/coordinate comparison and gate interaction;
+5. `docs/inverse/CANDIDATE_PROVENANCE.md` — Candidate 2.0 / authenticated search-binding evidence from completed corrective #134 / PR #187;
+6. `docs/inverse/TRANSIENT_PRESERVATION_GATE.md` — accepted `zg.inverse.transient-onset-contrast.v4` eligibility diagnostic from completed #87 / PR #194;
+7. `docs/inverse/TRANSIENT_V4_EVIDENCE_MIGRATION.md` — migration of frozen research evidence to the accepted transient-v4 semantics;
+8. `docs/inverse/ZG024_STAGED_PROTOCOL_V2.md` — frozen staged-search protocol;
+9. `docs/inverse/ZG024_STAGED_RESULT.md` — accepted mixed/no-go outcome from completed #92 / PR #195; **no production optimizer was promoted**;
+10. `docs/inverse/ZG024_LINEAGE_RECONCILIATION.md` — authoritative accepted/superseded PR and branch disposition;
+11. `programme/task_state.json` plus parent issue #25's latest blocker record — current readiness authority.
+
+Do **not** restart #87, #92 or #134: those child issues are completed evidence/history. Parent ZG-024 / #25 remains research-active because the current evidence does not yet establish reliable eligible-candidate availability plus held-out improvement across fresh structural/spectral and mixed-texture cases without holdout feedback or weakened safety gates.
