@@ -1,6 +1,6 @@
 # ZG-022 bouncy melodic zaag source and gesture families
 
-ZG-022 is a curated experimental preset layer above the recovered v1.2.1 source, ZG-008 source-preserving pitch construction and the later spectral/DSP work. It deliberately does **not** replace the protected `locked_bloom` sound.
+ZG-022 is a curated production-preset layer above the recovered v1.2.1 source, ZG-008 source-preserving pitch construction and the later spectral/DSP work, with three deliberate research contrasts kept separately. It deliberately does **not** replace the protected `locked_bloom` default.
 
 ## Protected compatibility anchor
 
@@ -8,7 +8,7 @@ ZG-022 is a curated experimental preset layer above the recovered v1.2.1 source,
 
 No new ZG-022 recipe has `approved_default=true`. A default change requires an explicit owner decision after listening.
 
-## Candidate families
+## Owner-approved production families
 
 The first owner audition pack (PR #80, preserved again after #110/#139) was explicitly rejected on 2026-09-20 as too close to a set of dull tonal twangs and too far from the brutal zaag source brief. Corrective #229 therefore **replaces the active candidate IDs** rather than silently mutating those historical renders. The rejected audio/manifests remain preserved as research evidence in their original artifacts and git history.
 
@@ -25,7 +25,11 @@ The replacement set deliberately uses six different character mechanisms after t
 
 The exposed macros remain `attack_relax`, `vowel_motion`, `upper_bounce`, `complementary_motion`, `grit` and `harmonic_motion`, each bounded 0–1. Expert controls keep formant endpoints/Q, bounce/complementary depth, nonlinear drive/oversampling, sample-hold/bit depth, pitch-ratio range, phase policy, tail policy and quality cost explicit.
 
-The six character profiles are fixed deterministic renderer mechanisms (`bark`, `snarl`, `chop`, `split`, `crush`, `rip`). They are engineering identities, not scores. CI asserts that all six are present and that their matched source waveforms do not collapse into a near-identical degenerate set; owner listening still decides creative usefulness.
+The six character profiles are fixed deterministic renderer mechanisms (`bark`, `snarl`, `chop`, `split`, `crush`, `rip`). They are engineering identities, not scores. CI asserts that all six are present and that their matched source waveforms do not collapse into a near-identical degenerate set.
+
+On **2026-09-27**, the owner explicitly kept all six replacement families and required every one to become a first-class product preset. Bloom Bark, Formant Snarl, Split Maul, Crushed Teeth and Harmonic Rip received **6/7 on bounce, melodic identity, source character and usefulness**; Upper Chop received **7/7 on all four endpoints**. Those scores are listening evidence, not an instruction to rank or delete the 6/7 presets. `locked_bloom` remains the protected default because no separate default-replacement instruction was given.
+
+Compose exposes the six through the ordinary Source preset selector. Selection is persisted as the RenderRecipe source identity, so save/reopen retains the exact named preset rather than flattening it into anonymous parameters. During source-derived melodic rendering, that identity is cryptographically paired with the registered recipe parameters and invokes the accepted ZG-022 family mechanism before note pitch construction; mismatched parameters fail closed.
 
 ## Deliberate contrasts
 
@@ -94,7 +98,7 @@ The audition deliberately has four separate 1–7 endpoints:
 
 There is also free-text keep/reject rationale. Rejected variants remain evidence rather than disappearing from the registry.
 
-The replacement pack is revision `zg022-brutal-family-redesign-229-v1` and is initially `pending-owner`. It does **not** include a reconstructed `locked_bloom` waveform; the verified existing product remains the listening anchor. The owner can compare the pack against the real protected preset. Until an explicit decision is recorded, `new_default` remains `null`.
+The replacement pack is revision `zg022-brutal-family-redesign-229-v1`; its immutable audition manifest records the historical pre-decision state `pending-owner`. It does **not** include a reconstructed `locked_bloom` waveform; the verified existing product remains the listening anchor. The subsequent owner disposition is recorded on parent #23: all six are kept and promoted to first-class presets, with Upper Chop the 7/7 standout. The immutable audition artifact is not rewritten after the fact. `new_default` remains `null` and `locked_bloom` remains the protected default.
 
 ## Evidence and claims
 
