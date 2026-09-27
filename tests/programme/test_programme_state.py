@@ -25,12 +25,14 @@ class ProgrammeStateTests(unittest.TestCase):
         self.assertEqual("accepted", row["evidence"])
         self.assertTrue(row["dependency_satisfied"])
 
-    def test_owner_gated_task_is_not_dependency_satisfied(self) -> None:
+    def test_owner_approved_first_class_presets_are_dependency_satisfied(self) -> None:
         row = self.state["tasks"]["ZG-022"]
         self.assertEqual("accepted", row["implementation"])
         self.assertEqual("accepted", row["evidence"])
-        self.assertEqual("pending", row["owner_gate"])
-        self.assertFalse(row["dependency_satisfied"])
+        self.assertEqual("satisfied", row["owner_gate"])
+        self.assertTrue(row["dependency_satisfied"])
+        self.assertEqual([],row["blockers"])
+        self.assertIn("pr:#235",row["evidence_refs"])
 
     def test_serial_research_task_is_not_dependency_satisfied(self) -> None:
         row = self.state["tasks"]["ZG-024"]
