@@ -1,7 +1,7 @@
 import {Editor,copy,rational,value,snap,add} from './editor.mjs';
 import {RenderTransport} from './jobs_transport.mjs';
 const $=id=>document.getElementById(id),transport=new RenderTransport();
-let editor,token,selected=null,validation=null,epoch=0,validationSequence=0,job=null,slots=[],activeSlot=null;
+let editor,token,selected=null,validation=null,epoch=0,validationSequence=0,job=null,slots=[],activeSlot=null,presetCatalogue=null;
 const status=(message,error=false)=>{ $('status').textContent=message;$('status').classList.toggle('error',error); };
 async function api(path,payload){
   const response=await fetch('/api/timeline/'+path,payload===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Zaaggenz-Token':token},body:JSON.stringify(payload)});
@@ -25,7 +25,11 @@ async function validateLatest(){
     const result=await api('validate',{document:JSON.parse(serialized)});
     if(seq!==validationSequence||JSON.stringify(editor.document)!==serialized)return;
     validation=result;$('revision').textContent=result.revision_id;
-    $('pitch-context').textContent=`Source ${result.source_hz.toFixed(2)} Hz · ${result.tuning.id} · source-preserving melody`;
+    const preset=result.source_preset_id;
+    if(preset&&!Array.from($('source-preset').options).some(o=>o.value===preset))$('source-preset').add(new Option('Custom legacy source',preset));
+    if(preset)$('source-preset').value=preset;
+    const presetLabel=$('source-preset').selectedOptions[0]?.textContent??preset;
+    $('pitch-context').textContent=`${presetLabel} · source ${result.source_hz.toFixed(2)} Hz · ${result.tuning.id} · source-preserving melody`;
     $('render').disabled=false;$('render-region').disabled=false;
     updateTarget();status(`Ready · ${editor.document.notes.length} events · estimated render admission ${(result.estimated_memory_bytes/1048576).toFixed(1)} MiB`);
   }catch(e){if(seq===validationSequence){validation=null;$('revision').textContent='Invalid editing revision';status(e.message,true);}}
@@ -136,6 +140,15 @@ function bind(){
   $('undo').onclick=()=>mutate(()=>editor.undo());$('redo').onclick=()=>mutate(()=>editor.redo());
   $('example4').onclick=()=>mutate(()=>editor.example(4));$('example16').onclick=()=>mutate(()=>editor.example(16));
   $('project-name').onchange=()=>mutate(()=>editor.commit(s=>s.name=$('project-name').value));
+  $('source-preset').onchange=async()=>{
+    const presetId=$('source-preset').value;if(!presetId||presetId==='custom')return;
+    invalidate();$('source-preset').disabled=true;status('Applying source preset…');
+    try{
+      const result=await api('preset',{document:editor.document,preset_id:presetId});
+      editor.replace(result.document);selected=null;afterEdit();
+    }catch(e){status(e.message,true);validateLatest();}
+    finally{$('source-preset').disabled=false;}
+  };
   $('set-length').onclick=()=>mutate(()=>editor.commit(s=>s.end_beat=rational($('length').value)));
   $('master').onchange=()=>mutate(()=>editor.commit(s=>s.master_gain_db=Number($('master').value)));
   $('add-clip').onclick=()=>mutate(()=>editor.clip($('clip-name').value,$('region-start').value,$('region-end').value));
@@ -163,5 +176,8 @@ function bind(){
     else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();mutate(()=>editor.redo());}
     else if(e.key==='Delete'&&selected){e.preventDefault();mutate(()=>editor.remove(selected));}});
 }
-try{const boot=await api('bootstrap');token=boot.token;editor=new Editor(boot.document);bind();paint();await validateLatest();}
+try{const boot=await api('bootstrap');token=boot.token;presetCatalogue=boot.presets;
+  const presetSelect=$('source-preset');presetSelect.replaceChildren();
+  for(const item of presetCatalogue.presets)presetSelect.add(new Option(item.label,item.id));
+  editor=new Editor(boot.document);bind();paint();await validateLatest();}
 catch(e){status(e.message,true);}

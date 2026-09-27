@@ -11,7 +11,7 @@ from zaaggenz_contracts import digest
 from zaaggenz_contracts.music import beat_to_sample
 from zaaggenz_jobs import JobScheduler, SchedulerLimits, JobClass, RenderArtifact, JobError
 from zaaggenz_melody import MelodicRenderSpec, make_render_executor
-from .model import TimelineDocument, compile_recipe, render_region, memory_estimate, text, describe
+from .model import (TimelineDocument,apply_source_preset,source_preset_catalogue,compile_recipe,render_region,memory_estimate,text,describe)
 
 
 def scheduler_limits():
@@ -99,6 +99,15 @@ class TimelineService:
         with self._jobs_lock:
             if job_id not in self._jobs:
                 raise JobError('job is not owned by timeline service')
+
+    def presets(self):
+        return source_preset_catalogue()
+
+    def apply_preset(self,data,preset_id):
+        document=apply_source_preset(TimelineDocument(data),preset_id)
+        recipe=compile_recipe(document)
+        return {'document':document.to_dict(),**describe(document),'recipe_sha256':recipe.sha256,
+                'estimated_memory_bytes':memory_estimate(recipe)}
 
     def validate(self, data):
         document = TimelineDocument(data)

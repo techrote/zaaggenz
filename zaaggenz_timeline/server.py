@@ -84,7 +84,7 @@ class Handler(webapp.Handler):
                 session = getattr(self.server, 'session', None)
                 document = self.server.initial_document if session is None else session.document()
                 payload = {'document': document.to_dict(), 'token': self.server.token,
-                           'web_release': self._release_payload('timeline')}
+                           'presets': self.server.timeline.presets(), 'web_release': self._release_payload('timeline')}
                 if session is not None:
                     payload['session'] = session.snapshot()
                 return self._json(payload)
@@ -134,6 +134,14 @@ class Handler(webapp.Handler):
             if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
                 raise ValueError('application/json required')
             data = loads(self._read_body(limit=2_000_000))
+            if path == '/api/timeline/preset':
+                exact(data, {'document','preset_id'}, 'preset request')
+                if type(data['preset_id']) is not str:
+                    raise ValueError('preset_id must be text')
+                result=self.server.timeline.apply_preset(data['document'],data['preset_id'])
+                session=getattr(self.server,'session',None)
+                if session is not None:result['session']=session.accept_document(result['document'])
+                return self._json(result)
             if path == '/api/timeline/validate':
                 exact(data, {'document'}, 'validation request')
                 result = self.server.timeline.validate(data['document'])

@@ -18,7 +18,7 @@ The ZG-001 baseline gate is resolved. The owner-supplied `zaaggenz-v1.2.1.zip` w
 
 `baseline/recovered_source/README.md` is the source-provenance authority for that payload. Downstream work uses the authenticated materialised `app/...` paths; it must not reconstruct production source from screenshots or historical snippets. `locked_bloom`, source-preserving ARRANGE, complete SYNTHLINE in combined renders, transparent SCULPT, MASTER semantics and the recovered Earth/UI behaviour remain protected compatibility anchors.
 
-The current programme is no longer merely proposed: substantial implementation/evidence through the accepted ZG-001…032 surface exists. That does **not** make every parent task complete. In particular, `programme/task_state.json` currently represents ZG-022 as implementation/evidence accepted but owner-gated, ZG-024 as research-active with accepted partial passes, and later integration/research work according to its actual accepted evidence. GitHub issue open/closed state is informational only.
+The current programme is no longer merely proposed: substantial implementation/evidence through the accepted ZG-001…032 surface exists. That does **not** make every parent task complete. In particular, `programme/task_state.json` now records ZG-022 as owner-approved and dependency-satisfying after all six corrective families were promoted to first-class Compose presets, while ZG-024 remains research-active with accepted partial passes and later integration/research work follows its actual accepted evidence. GitHub issue open/closed state is informational only.
 
 ## Historical planning-time access snapshot
 

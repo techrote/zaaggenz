@@ -35,7 +35,7 @@ This summary is descriptive for the original 2026-09-15 reconciliation; later da
 
 - **ZG-001:** baseline recovery/provenance is accepted. The original owner-supplied ZIP SHA-256 is `90be319a4660a637077df935a8ebcbd1bb4c3a629e28e2f6d4bfe62d88dfe8a8`; the compact recovered runtime payload SHA-256 is `eaf5d3ab822dfa121cd3b795d62619af9e62c041fb02de19f8dbeafb0014c919`. Source recovery is **not** a current blocker.
 - **ZG-002…ZG-021:** accepted implementation/evidence is currently dependency-satisfying according to `task_state.json`; corrective follow-ups may still harden individual boundaries without automatically erasing accepted prerequisite evidence.
-- **ZG-022:** substantial implementation/evidence is accepted, but the owner listening/default-approval gate remains pending. It is not dependency-satisfying.
+- **ZG-022:** the corrective replacement pack is owner-approved and all six sounds are first-class Compose presets via #231 / PR #235. Five received 6/7 across bounce, melodic identity, source character and usefulness; Upper Chop received 7/7 across all four. The task is dependency-satisfying. `locked_bloom` remains the protected default because no separate default-replacement instruction was given.
 - **ZG-023:** accepted and dependency-satisfying; #94 separately hardens real immutable source binding before later workspace integration relies on it.
 - **ZG-024:** serial inverse-search research remains active. PR #84 and PR #86 plus handoffs 1/2 are accepted partial evidence; #87/#92/#134 remain relevant and the parent is not dependency-satisfying.
 - **ZG-025…ZG-027:** accepted and dependency-satisfying under the current state record.
@@ -72,7 +72,7 @@ python tools/check_programme_docs.py --check
 python -m unittest discover -s tests/programme -p 'test_programme_*.py' -v
 ```
 
-`check_programme_docs.py` verifies the core document set exists, points status-bearing prose to the accepted state authority, retains the latest ZG-024 handoff pointers, confirms key live state (ZG-001 resolved; ZG-022 owner-gated; ZG-024 active), checks the accepted baseline hashes against the recovered-source provenance document, and rejects known bootstrap-era present-tense blocker phrases.
+`check_programme_docs.py` verifies the core document set exists, points status-bearing prose to the accepted state authority, retains the latest ZG-024 handoff pointers, confirms key live state (ZG-001 resolved; ZG-022 owner-approved/first-class/dependency-satisfying; ZG-024 active), checks the accepted baseline hashes against the recovered-source provenance document, and rejects known bootstrap-era present-tense blocker phrases.
 
 When implementation/evidence changes, update `task_state.json` through review first. Narrative documents should consume that state rather than inventing a parallel completion vocabulary.
 

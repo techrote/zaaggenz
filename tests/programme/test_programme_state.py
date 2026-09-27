@@ -25,12 +25,14 @@ class ProgrammeStateTests(unittest.TestCase):
         self.assertEqual("accepted", row["evidence"])
         self.assertTrue(row["dependency_satisfied"])
 
-    def test_owner_gated_task_is_not_dependency_satisfied(self) -> None:
+    def test_owner_approved_first_class_presets_are_dependency_satisfied(self) -> None:
         row = self.state["tasks"]["ZG-022"]
         self.assertEqual("accepted", row["implementation"])
         self.assertEqual("accepted", row["evidence"])
-        self.assertEqual("pending", row["owner_gate"])
-        self.assertFalse(row["dependency_satisfied"])
+        self.assertEqual("satisfied", row["owner_gate"])
+        self.assertTrue(row["dependency_satisfied"])
+        self.assertEqual([],row["blockers"])
+        self.assertIn("pr:#235",row["evidence_refs"])
 
     def test_serial_research_task_is_not_dependency_satisfied(self) -> None:
         row = self.state["tasks"]["ZG-024"]
@@ -66,7 +68,12 @@ class ProgrammeStateTests(unittest.TestCase):
 
     def test_pending_owner_gate_cannot_be_forced_satisfied(self) -> None:
         bad = copy.deepcopy(self.state)
-        bad["tasks"]["ZG-022"]["dependency_satisfied"] = True
+        row = bad["tasks"]["ZG-022"]
+        # Reproduce the historical pre-owner-decision state synthetically. The
+        # live row is now approved/satisfied, but a genuinely pending owner gate
+        # must still make dependency_satisfied=True invalid.
+        row["owner_gate"] = "pending"
+        row["dependency_satisfied"] = True
         with self.assertRaises(ps.StateError):
             ps.validate_state(bad, root=ROOT)
 
@@ -103,11 +110,12 @@ class ProgrammeStateTests(unittest.TestCase):
         self.assertEqual(before, ps.hard_prerequisites_satisfied("ZG-025", opened, root=ROOT))
 
     def test_readiness_follows_parent_evidence_not_child_issue_state(self) -> None:
-        # ZG-033 remains blocked by the unsatisfied ZG-022 owner gate; repaired
-        # ZG-040 is now accepted prerequisite evidence.
+        # ZG-022 is now owner-approved/dependency-satisfying, so ZG-033's hard
+        # prerequisites are ready regardless of the informational child issue
+        # mirror. Readiness follows accepted parent evidence, not issue state.
         report = ps.readiness_report(self.state, root=ROOT)["ZG-033"]
-        self.assertFalse(report["hard_prerequisites_satisfied"])
-        self.assertEqual(report["unsatisfied_parents"], ["ZG-022"])
+        self.assertTrue(report["hard_prerequisites_satisfied"])
+        self.assertEqual(report["unsatisfied_parents"], [])
 
     def test_post_merge_corrective_reacceptance_is_scoped_to_repaired_task(self) -> None:
         study = self.state["tasks"]["ZG-040"]
@@ -214,15 +222,15 @@ class ProgrammeStateTests(unittest.TestCase):
     def test_readiness_table_matches_authority_reconciliation_contract(self) -> None:
         report = ps.readiness_report(self.state, root=ROOT)
         expected = {
-            "ZG-033": ["ZG-022"],
-            "ZG-034": ["ZG-022"],
+            "ZG-033": [],
+            "ZG-034": [],
             "ZG-035": [],
             "ZG-036": [],
             "ZG-037": [],
             "ZG-038": [],
             "ZG-039": ["ZG-024"],
             "ZG-043": [],
-            "ZG-044": ["ZG-022", "ZG-024"],
+            "ZG-044": ["ZG-024"],
             "ZG-045": ["ZG-044"],
         }
         for sid, unsatisfied in expected.items():
@@ -240,7 +248,7 @@ class ProgrammeStateTests(unittest.TestCase):
         self.assertIn("docs:docs/longform/README.md", row["evidence_refs"])
         self.assertIn("docs:docs/longform/VERIFICATION.md", row["evidence_refs"])
         report = ps.readiness_report(self.state, root=ROOT)
-        self.assertEqual(report["ZG-044"]["unsatisfied_parents"], ["ZG-022", "ZG-024"])
+        self.assertEqual(report["ZG-044"]["unsatisfied_parents"], ["ZG-024"])
         self.assertEqual(report["ZG-045"]["unsatisfied_parents"], ["ZG-044"])
 
     def test_unknown_task_and_wrong_issue_mapping_fail(self) -> None:

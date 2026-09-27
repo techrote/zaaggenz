@@ -166,6 +166,22 @@ def _apply_preserved_topology(pre,d):
         except GraphError as exc:raise MelodyError('preserved DSP graph could not execute on melodic output: '+str(exc)) from exc
     return np.asarray(pre,dtype=np.float64)
 
+def _production_preset_source(d,base_params,spec,ctx=None):
+    source_id=d['source']['id']
+    try:
+        from zaaggenz_zaag import PRODUCTION_PRESET_IDS,family,render_family_source
+    except ImportError:
+        return None
+    if source_id not in PRODUCTION_PRESET_IDS:return None
+    if spec.mode is not NoteMode.SOURCE_DERIVED:
+        raise MelodyError('ZG-022 production presets currently require source-derived note mode')
+    _checkpoint(ctx)
+    rendered=render_family_source(family(source_id),int(base_params.sr),beats=1,bpm=float(base_params.bpm))
+    if rendered.source_params!=d['source']['params']:
+        raise MelodyError('production preset source parameters do not match its registered recipe identity')
+    _checkpoint(ctx)
+    return rendered.audio
+
 def render_phrase(recipe,spec=MelodicRenderSpec(),*,job_context=None):
     if not isinstance(spec,MelodicRenderSpec):raise MelodyError('MelodicRenderSpec required')
     c=_contract(recipe);d=_validate_consumer(c,spec);phrase=d['phrase'];tm=d['time_map'];tuning=tuning_from_spec(d['tuning']);base_params=legacy_object('synth',d['source']['params']);gestures=_gesture_map(phrase)
@@ -173,8 +189,11 @@ def render_phrase(recipe,spec=MelodicRenderSpec(),*,job_context=None):
     pitched=any(ev['pitch'] is not None for ev in phrase['events'])
     base_source=np.zeros(0,dtype=np.float32)
     if pitched and spec.mode is NoteMode.SOURCE_DERIVED:
-        from uptempo_harmony.synth import synthesize_one
-        base_source=synthesize_one(base_params)[0]
+        preset_source=_production_preset_source(d,base_params,spec,job_context)
+        if preset_source is not None:base_source=np.asarray(preset_source,dtype=np.float32)
+        else:
+            from uptempo_harmony.synth import synthesize_one
+            base_source=synthesize_one(base_params)[0]
     _checkpoint(job_context,.08)
     target_cache={};phrase_start=beat_to_sample(tm,phrase['start_beat']);phrase_end=beat_to_sample(tm,phrase['end_beat']);nominal=max(0,phrase_end-phrase_start)
     synthline=np.zeros(nominal,dtype=np.float64);exciter=np.zeros(nominal,dtype=np.float64);records=[];roll_total=0;events=phrase['events'];count=max(1,len(events))
@@ -214,7 +233,7 @@ def render_phrase(recipe,spec=MelodicRenderSpec(),*,job_context=None):
         from zaaggenz_dsp.graph import apply_output_policy,GraphError
         mix,master_diag=apply_output_policy(pre,d['output'])
     except GraphError as exc:raise MelodyError('melodic final output policy failed: '+str(exc)) from exc
-    diag=dict(contract_version=d['version'],render_spec_sha256=spec.sha256,recipe_sha256=c.sha256,mode=spec.mode.value,sample_rate_hz=base_params.sr,
+    diag=dict(contract_version=d['version'],render_spec_sha256=spec.sha256,recipe_sha256=c.sha256,mode=spec.mode.value,source_preset_id=d['source']['id'],sample_rate_hz=base_params.sr,
               phrase_start_sample=phrase_start,nominal_phrase_samples=nominal,rendered_samples=n,source_samples=len(base_source),notes=sum(not r['rest'] for r in records),rests=sum(r['rest'] for r in records),
               roll_retriggers=roll_total,pre_master_peak=float(np.max(np.abs(pre),initial=0)),master_peak=float(master_diag['output_peak']),clipped_fraction=float(master_diag['clip_fraction']))
     _checkpoint(job_context,.92)

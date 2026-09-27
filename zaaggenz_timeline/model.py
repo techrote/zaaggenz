@@ -6,7 +6,7 @@ import json
 import math
 import re
 from zaaggenz_contracts import Contract, digest, validate
-from zaaggenz_contracts.legacy import envelope, freeze_legacy
+from zaaggenz_contracts.legacy import adapt_parameters, envelope, freeze_legacy
 from zaaggenz_contracts.model import check_json, fraction, loads
 from zaaggenz_contracts.music import beat_to_sample
 from zaaggenz_melody import make_phrase_plan, make_melodic_recipe, note_event, rest_event
@@ -130,13 +130,54 @@ def default_document(sample_rate=48000):
                              'next_id': 0, 'layer_ownership': deepcopy(OWNERSHIP), 'master_gain_db': 0.})
 
 
+def source_preset_catalogue():
+    from zaaggenz_zaag import product_preset_catalogue
+    return product_preset_catalogue()
+
+def _locked_bloom_params_like(params):
+    from uptempo_harmony.synth import PRESETS
+    return adapt_parameters('synth',{**PRESETS['locked_bloom'].to_dict(),
+                                     'sr':params['sr'],'bpm':params['bpm'],'beats':params['beats']})
+
+def source_preset_id(document):
+    if not isinstance(document,TimelineDocument):document=TimelineDocument(document)
+    base=Project.from_document(document.to_dict()['project']).head_recipe.to_dict()
+    source_id=base['source']['id'];params=base['source']['params']
+    from zaaggenz_zaag import PRODUCTION_PRESET_IDS,family
+    if source_id in PRODUCTION_PRESET_IDS:
+        expected=adapt_parameters('synth',{**family(source_id).synth_overrides,
+                                           'sr':params['sr'],'bpm':params['bpm'],'beats':1})
+        return source_id if params==expected else 'custom'
+    if source_id in ('source','locked_bloom') and params==_locked_bloom_params_like(params):
+        return 'locked_bloom'
+    return 'custom'
+
+def apply_source_preset(document,preset_id):
+    if not isinstance(document,TimelineDocument):document=TimelineDocument(document)
+    data=document.to_dict();project=Project.from_document(data['project']);base=project.head_recipe.to_dict()
+    old_id=base['source']['id'];old=base['source']['params']
+    if preset_id=='locked_bloom':
+        new_id='locked_bloom';params=adapt_parameters('synth',{**__import__('uptempo_harmony.synth',fromlist=['PRESETS']).PRESETS['locked_bloom'].to_dict(),
+                                                                'sr':old['sr'],'bpm':old['bpm'],'beats':1})
+    else:
+        from zaaggenz_zaag import PRODUCTION_PRESET_IDS,family
+        if preset_id not in PRODUCTION_PRESET_IDS:raise TimelineError('unknown or non-production source preset')
+        new_id=preset_id;params=adapt_parameters('synth',{**family(preset_id).synth_overrides,
+                                                          'sr':old['sr'],'bpm':old['bpm'],'beats':1})
+    base['source']['id']=new_id;base['source']['params']=params
+    if base['output_node']==old_id:base['output_node']=new_id
+    for node in base['nodes']:
+        node['inputs']=[new_id if value==old_id else value for value in node['inputs']]
+    project.commit(Contract(base));data['project']=project.to_document()
+    return TimelineDocument(data)
+
 def compile_recipe(document):
     """Compile only the explicitly declared melody branch; retain the full legacy project."""
     if not isinstance(document, TimelineDocument):
         raise TimelineError('TimelineDocument required')
     data = document.to_dict()
     base = Project.from_document(data['project']).head_recipe.to_dict()
-    events, gestures = [], []
+    source_id=base['source']['id'];events, gestures = [], []
     tuning = tuning_from_spec(base['tuning'])
     for row in sorted(data['notes'], key=lambda r: (fraction(r['beat']), r['id'])):
         silent = row['muted'] or row['degree'] is None
@@ -147,17 +188,17 @@ def compile_recipe(document):
                 {'axis': 'density_per_beat', 'unit': 'events/beat', 'interpolation': 'step',
                  'points': [{'beat': '0/1', 'value': float(row['roll_density'])}]}]))
         if silent:
-            event = rest_event(row['id'], row['beat'], row['duration_beats'])
+            event = rest_event(row['id'], row['beat'], row['duration_beats'], source_id=source_id)
         else:
             hz = tuning.frequency(row['degree'], row['detune_cents'])
             if not 15 <= hz <= 240 or not .25 <= hz / base['source']['params']['f0_hz'] <= 4:
                 raise TimelineError(f"note {row['id']}: target outside the source-derived renderer's range")
             event = note_event(row['id'], row['beat'], row['duration_beats'], tuning.id, row['degree'],
-                               detune_cents=row['detune_cents'], gain_db=row['gain_db'], gesture_id=gid)
+                               detune_cents=row['detune_cents'], gain_db=row['gain_db'], gesture_id=gid, source_id=source_id)
         events.append(event)
-    phrase = make_phrase_plan(tuning.id, events, end_beat=data['end_beat'], gestures=gestures)
+    phrase = make_phrase_plan(tuning.id, events, end_beat=data['end_beat'], gestures=gestures, source_id=source_id)
     return make_melodic_recipe(base['source']['params'], base['time_map'], base['tuning'], phrase,
-                               quality='standard', tail_mode='truncate', master_gain_db=data['master_gain_db'])
+                               quality='standard', tail_mode='truncate', master_gain_db=data['master_gain_db'], source_id=source_id)
 
 
 def render_region(recipe, region):
@@ -183,7 +224,7 @@ def memory_estimate(recipe):
 def describe(document):
     base = Project.from_document(document.to_dict()['project']).head_recipe.to_dict()
     tuning = tuning_from_spec(base['tuning'])
-    return {'revision_id': document.revision_id, 'source_hz': base['source']['params']['f0_hz'],
+    return {'revision_id': document.revision_id, 'source_hz': base['source']['params']['f0_hz'], 'source_preset_id': source_preset_id(document),
             'tuning': base['tuning'], 'time_map': base['time_map'], 'layer_ownership': deepcopy(OWNERSHIP),
             'targets': {r['id']: None if r['degree'] is None else tuning.frequency(r['degree'], r['detune_cents'])
                         for r in document.to_dict()['notes']}}

@@ -51,6 +51,25 @@ class TimelineModelTests(unittest.TestCase):
             self.assertIsNotNone(base[key])
         self.assertEqual(recovered.to_dict()['notes'][0]['degree'], 0)
 
+    def test_first_class_preset_identity_roundtrips_and_executes_family_renderer(self):
+        original=TimelineDocument(fixture())
+        self.assertEqual(source_preset_id(original),'locked_bloom')
+        selected=apply_source_preset(original,'zaag.upper-chop')
+        self.assertEqual(source_preset_id(selected),'zaag.upper-chop')
+        project=Project.from_document(selected.to_dict()['project'])
+        self.assertEqual(project.head_recipe.to_dict()['source']['id'],'zaag.upper-chop')
+        reopened=TimelineDocument.from_json(json.dumps(selected.to_dict()))
+        self.assertEqual(source_preset_id(reopened),'zaag.upper-chop')
+        rendered=render_phrase(compile_recipe(reopened))
+        self.assertEqual(rendered.diagnostics['source_preset_id'],'zaag.upper-chop')
+        self.assertGreater(float(np.max(np.abs(rendered.mix))),0)
+        baseline=render_phrase(compile_recipe(original))
+        self.assertFalse(np.array_equal(rendered.mix,baseline.mix))
+
+    def test_nonproduction_contrast_cannot_be_selected_as_product_preset(self):
+        with self.assertRaisesRegex(ValueError,'non-production'):
+            apply_source_preset(TimelineDocument(fixture()),'contrast.piep')
+
     def test_recipe_compilation_never_mutates_protected_source(self):
         doc = TimelineDocument(fixture())
         base = Project.from_document(doc.to_dict()['project']).head_recipe.to_dict()
@@ -194,8 +213,18 @@ class HTTPTests(unittest.TestCase):
     def test_bootstrap_and_actual_editor_and_legacy_pages(self):
         _,raw=self.request('/api/timeline/bootstrap');boot=json.loads(raw)
         self.assertEqual(boot['token'],self.server.token)
+        self.assertEqual(boot['presets']['default'],'locked_bloom')
+        self.assertEqual(len(boot['presets']['presets']),7)
         for path,needle in [('/timeline',b'Notes, rolls'),('/',b'Open note / clip timeline'),('/timeline/app.mjs',b'RenderTransport')]:
             _,body=self.request(path);self.assertIn(needle,body)
+
+    def test_preset_endpoint_returns_stable_selected_project_identity(self):
+        code,body=self.request('/api/timeline/preset',{'document':fixture(),'preset_id':'zaag.upper-chop'})
+        self.assertEqual(code,200);result=json.loads(body)
+        self.assertEqual(result['source_preset_id'],'zaag.upper-chop')
+        project=Project.from_document(result['document']['project'])
+        self.assertEqual(project.head_recipe.to_dict()['source']['id'],'zaag.upper-chop')
+        self.assertEqual(source_preset_id(TimelineDocument(result['document'])),'zaag.upper-chop')
 
     def test_cross_origin_and_dns_rebinding_hosts_rejected(self):
         for headers in ({'Origin':'https://foreign.invalid'},{'Host':'foreign.invalid'}):

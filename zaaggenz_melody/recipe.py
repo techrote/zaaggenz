@@ -27,7 +27,7 @@ def make_phrase_plan(tuning_id,events,*,start_beat='0/1',end_beat='4/1',gestures
     try:return Contract(d)
     except Exception as exc:raise MelodyError('invalid phrase plan') from exc
 
-def make_melodic_recipe(synth_params,time_map,tuning,phrase,*,mode=NoteMode.SOURCE_DERIVED,tail_mode='preserve',tail_maximum_samples=0,quality='high',master_gain_db=0.):
+def make_melodic_recipe(synth_params,time_map,tuning,phrase,*,mode=NoteMode.SOURCE_DERIVED,tail_mode='preserve',tail_maximum_samples=0,quality='high',master_gain_db=0.,source_id='source'):
     try:mode=NoteMode(mode)
     except ValueError as exc:raise MelodyError('unknown note render mode') from exc
     if tail_mode not in ('preserve','truncate'):raise MelodyError('melodic tail mode must be preserve or truncate')
@@ -36,7 +36,10 @@ def make_melodic_recipe(synth_params,time_map,tuning,phrase,*,mode=NoteMode.SOUR
     tm=deepcopy(time_map.to_dict() if isinstance(time_map,Contract) else time_map);tu=deepcopy(tuning.to_dict() if isinstance(tuning,Contract) else tuning);ph=deepcopy(phrase.to_dict() if isinstance(phrase,Contract) else phrase)
     try:validate(tm,'TimeMap');validate(tu,'TuningSpec');validate(ph,'PhrasePlan')
     except Exception as exc:raise MelodyError('invalid time/tuning/phrase contract') from exc
-    d=freeze_legacy(synth_params).to_dict();d['time_map']=tm;d['tuning']=tu;d['phrase']=ph;d['phase_policy']=mode.phase_policy
+    d=freeze_legacy(synth_params).to_dict()
+    old_source_id=d['source']['id'];d['source']['id']=source_id
+    if d['output_node']==old_source_id:d['output_node']=source_id
+    d['time_map']=tm;d['tuning']=tu;d['phrase']=ph;d['phase_policy']=mode.phase_policy
     d['tail']=dict(mode=tail_mode,maximum_samples=tail_maximum_samples);d['quality']=quality;d['output']['master_gain_db']=_number(master_gain_db,'master_gain_db')
     try:return Contract(d)
     except Exception as exc:raise MelodyError('melodic recipe violates shared contract') from exc
