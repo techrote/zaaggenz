@@ -1,0 +1,167 @@
+{
+  "version": "1.0.0",
+  "assets": [
+    {
+      "id": "krach_elements_of_nature_2026",
+      "sha256": "51526e8453f4ab3cc8e32b9bbfec0870816b6ea96899a1952847f585f43d2a8e",
+      "bytes": 7633264,
+      "filename_hint": "Elements Of Nature (So W'Happy Festival Official Anthem 2026).mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 221.15629166666668,
+        "sample_peak_24k": 1.5869486331939697,
+        "integrated_lufs": -5.3,
+        "true_peak_dbtp": 4.9,
+        "energetic_medians": {
+          "power_centroid_hz": 337.0090808886881,
+          "power_flatness": 0.04363342065321711,
+          "crest_db": 5.263652845458921
+        }
+      }
+    },
+    {
+      "id": "krach_fa_ti_co_equal2_edit",
+      "sha256": "f20ddc3e355cbbb4ce82fd61bdc22398635a2858fe79890df45c2a1834da9665",
+      "bytes": 3447734,
+      "filename_hint": "FA-TI-CO (EQUAL2 ZAAG-TI-CO EDIT) [FREE DL].mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 106.30095833333333,
+        "sample_peak_24k": 1.556647777557373,
+        "integrated_lufs": -2.3,
+        "true_peak_dbtp": 5,
+        "energetic_medians": {
+          "power_centroid_hz": 592.9119720357855,
+          "power_flatness": 0.06082484935242176,
+          "crest_db": 4.697105804427768
+        }
+      }
+    },
+    {
+      "id": "krach_uptempo_slut",
+      "sha256": "1c2986811cd3e077e34a0b6eda81efd2d53d7179be51bb4a5eb21a74ccef757b",
+      "bytes": 4655942,
+      "filename_hint": "PEYGAN X EQUAL2 - UPTEMPO SԼUT.mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 144.451375,
+        "sample_peak_24k": 1.5800294876098633,
+        "integrated_lufs": -4.2,
+        "true_peak_dbtp": 4,
+        "energetic_medians": {
+          "power_centroid_hz": 393.7345420673739,
+          "power_flatness": 0.04918151717296085,
+          "crest_db": 4.824952950953147
+        }
+      }
+    },
+    {
+      "id": "krach_this_is_krach",
+      "sha256": "bb59a7b6b2ab18b6a5fbd1f62a16042705c0f767eec5ff147f02313fbff33b99",
+      "bytes": 6115270,
+      "filename_hint": "This Is Krach.mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 180.01925,
+        "sample_peak_24k": 1.4326283931732178,
+        "integrated_lufs": -5,
+        "true_peak_dbtp": 3.9,
+        "energetic_medians": {
+          "power_centroid_hz": 327.895685826453,
+          "power_flatness": 0.037592956298368695,
+          "crest_db": 4.5970503737450175
+        }
+      }
+    },
+    {
+      "id": "krach_blow",
+      "sha256": "db006184a4e8f3957d3bce96aa93be6aba9db15184423d285908345e5dfa12f9",
+      "bytes": 5761499,
+      "filename_hint": "BLOW.mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 171.69233333333332,
+        "sample_peak_24k": 1.3079084157943726,
+        "integrated_lufs": -5,
+        "true_peak_dbtp": 3.7,
+        "energetic_medians": {
+          "power_centroid_hz": 396.34094079475585,
+          "power_flatness": 0.04001449374132611,
+          "crest_db": 4.865416481003809
+        }
+      }
+    },
+    {
+      "id": "krach_bouncin_2_tha_beat",
+      "sha256": "ac02630a8ab50b30778bc5d01100108fc44f9c2713cd51fbce63be009e995afd",
+      "bytes": 7528557,
+      "filename_hint": "BOUNCIN 2 THA BEAT.mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 209.536875,
+        "sample_peak_24k": 1.454392671585083,
+        "integrated_lufs": -3.5,
+        "true_peak_dbtp": 4.4,
+        "energetic_medians": {
+          "power_centroid_hz": 432.6674642568902,
+          "power_flatness": 0.049726850154579866,
+          "crest_db": 5.100658428799845
+        }
+      }
+    }
+  ]
+}
