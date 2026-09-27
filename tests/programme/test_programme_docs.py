@@ -138,12 +138,12 @@ class ProgrammeDocsTests(unittest.TestCase):
         errors = pd.audit_texts(self.docs, self.baseline, state)
         self.assertIn("live state no longer records accepted/satisfied ZG-001 recovery", errors)
 
-    def test_owner_gate_and_research_state_are_not_erased(self) -> None:
+    def test_owner_approval_and_research_state_are_not_erased(self) -> None:
         state = copy.deepcopy(self.state)
-        state["tasks"]["ZG-022"]["owner_gate"] = "satisfied"
+        state["tasks"]["ZG-022"]["owner_gate"] = "pending"
         state["tasks"]["ZG-024"]["research"] = "accepted"
         errors = pd.audit_texts(self.docs, self.baseline, state)
-        self.assertIn("live state no longer records ZG-022 owner gate as pending/unsatisfied", errors)
+        self.assertIn("live state no longer records ZG-022 owner approval with first-class preset promotion pending", errors)
         self.assertIn("live state no longer records ZG-024 as active research/unsatisfied", errors)
 
 
