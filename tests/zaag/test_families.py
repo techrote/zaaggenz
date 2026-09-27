@@ -3,7 +3,7 @@ import json,unittest
 from pathlib import Path
 import numpy as np
 from zaaggenz_contracts.legacy import adapt_parameters
-from zaaggenz_zaag import (LOCKED_BLOOM,FAMILIES,candidates,contrasts,registry_payload,registry_sha256,
+from zaaggenz_zaag import (LOCKED_BLOOM,FAMILIES,PRODUCTION_PRESET_IDS,candidates,contrasts,production_presets,product_preset_catalogue,registry_payload,registry_sha256,
     render_family_source,family_demo_manifest,example_manifests,render_arrangement,build_owner_audition_pack)
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -23,6 +23,19 @@ class ZaagFamilyTests(unittest.TestCase):
         self.assertEqual(len({x.id for x in FAMILIES}),9);self.assertTrue(all(not x.approved_default for x in FAMILIES))
         payload=registry_payload();self.assertIsNone(payload['new_default']);self.assertTrue(payload['owner_approval_required'])
         self.assertEqual(len(registry_sha256()),64)
+
+    def test_owner_approved_six_are_first_class_presets_without_implicit_default_change(self):
+        expected={x.id for x in candidates()}
+        self.assertEqual(set(PRODUCTION_PRESET_IDS),expected)
+        self.assertEqual({x.id for x in production_presets()},expected)
+        catalogue=product_preset_catalogue()
+        self.assertEqual(catalogue['default'],'locked_bloom')
+        self.assertEqual(catalogue['owner_approval'],'zg022-owner-approval-2026-09-27')
+        ids=[x['id'] for x in catalogue['presets']]
+        self.assertEqual(ids[0],'locked_bloom')
+        self.assertEqual(set(ids[1:]),expected)
+        self.assertTrue(set(ids).isdisjoint({x.id for x in contrasts()}))
+        self.assertTrue(catalogue['presets'][0]['protected_default'])
 
     def test_every_family_has_bounded_controls_range_policy_cost_and_limitations(self):
         for recipe in FAMILIES:
