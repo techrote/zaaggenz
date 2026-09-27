@@ -146,12 +146,16 @@ def _grit(x,recipe):
         y=bitcrush(y,BitcrushSpec(bit_depth=e.bit_depth,hold_samples=e.hold_samples,wet=e.bitcrush_wet*m)).audio
     return np.asarray(y,dtype=np.float64)
 
-def render_family_source(recipe,sample_rate_hz=48000,*,beats=1):
+def render_family_source(recipe,sample_rate_hz=48000,*,beats=1,bpm=None):
     if not isinstance(recipe,ZaagFamilyRecipe):raise ZaagFamilyError('ZaagFamilyRecipe required')
     if type(sample_rate_hz)is not int or not 8000<=sample_rate_hz<=96000:raise ZaagFamilyError('sample rate outside recovered source bounds')
     if type(beats)is not int or not 1<=beats<=8:raise ZaagFamilyError('beats must be integer 1..8')
+    if bpm is not None and (type(bpm) not in (int,float) or type(bpm)is bool or not math.isfinite(float(bpm)) or not 20<=float(bpm)<=1000):
+        raise ZaagFamilyError('bpm must be finite in recovered source bounds')
     formant=_validate_formants(recipe,sample_rate_hz)
-    params=adapt_parameters('synth',{**recipe.synth_overrides,'sr':sample_rate_hz,'beats':beats})
+    overrides={**recipe.synth_overrides,'sr':sample_rate_hz,'beats':beats}
+    if bpm is not None:overrides['bpm']=float(bpm)
+    params=adapt_parameters('synth',overrides)
     from uptempo_harmony.synth import synthesize_one
     base=np.asarray(synthesize_one(legacy_object('synth',params))[0],dtype=np.float64)
     if base.ndim!=1 or not np.isfinite(base).all():raise ZaagFamilyError('legacy source returned invalid audio')
