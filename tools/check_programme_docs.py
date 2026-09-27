@@ -178,8 +178,14 @@ def audit_texts(docs: dict[str, str], baseline: str, state: dict) -> list[str]:
                         f"{name}: stale live ZG-001/source-recovery claim present: {pattern.pattern!r}"
                     )
 
-    if not (z22.get("owner_gate") == "pending" and z22.get("dependency_satisfied") is False):
-        errors.append("live state no longer records ZG-022 owner gate as pending/unsatisfied")
+    if not (
+        z22.get("implementation") == "accepted"
+        and z22.get("evidence") == "accepted"
+        and z22.get("owner_gate") == "satisfied"
+        and z22.get("dependency_satisfied") is True
+        and not z22.get("blockers")
+    ):
+        errors.append("live state no longer records completed owner-approved ZG-022 first-class presets")
 
     if not (z24.get("research") == "active" and z24.get("dependency_satisfied") is False):
         errors.append("live state no longer records ZG-024 as active research/unsatisfied")
