@@ -320,7 +320,7 @@
       }
     },
     "ZG-022": {
-      "implementation": "partial",
+      "implementation": "accepted",
       "evidence": "accepted",
       "research": "not_applicable",
       "owner_gate": "satisfied",
