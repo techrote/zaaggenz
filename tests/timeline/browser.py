@@ -42,6 +42,11 @@ def main():
                     page.screenshot(path=args.out/'failure.png',full_page=True)
                     raise
             ready()
+            # Owner-approved ZG-022 sounds are ordinary Compose presets with
+            # stable identity across the normal save/reopen path.
+            expect(page.locator('#source-preset')).to_have_value('locked_bloom')
+            page.locator('#source-preset').select_option('zaag.upper-chop');ready()
+            expect(page.locator('#source-preset')).to_have_value('zaag.upper-chop')
             def saved(name):
                 ready()
                 with page.expect_download() as download:page.locator('#save').click()
@@ -63,6 +68,13 @@ def main():
                 evidence.append({'name':name,'revision_id':artifact['revision_id'],'artifact':artifact,
                                  'wav_sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
                 return job
+            preset_saved=saved('upper-chop-preset.zgtimeline.json')
+            preset_recipe=json.loads(preset_saved['project']['revisions'][-1]['recipe_json'])
+            assert preset_recipe['source']['id']=='zaag.upper-chop'
+            page.locator('#open').set_input_files(args.out/'upper-chop-preset.zgtimeline.json');ready()
+            expect(page.locator('#source-preset')).to_have_value('zaag.upper-chop')
+            page.locator('#source-preset').select_option('locked_bloom');ready()
+            expect(page.locator('#source-preset')).to_have_value('locked_bloom')
             # Principal editing: rational snap, notes, rests, rolls, move, resize, mute.
             page.locator('#snap').select_option('1/12')
             page.locator('#beat').fill('1/3');page.locator('#duration').fill('1/2');page.locator('#degree').fill('4')
@@ -142,7 +154,7 @@ def main():
             browser.close()
         report={'method':'zg009-browser-v1','sample_rate_hz':args.sample_rate,'browser':'Chromium',
                 'checks':'passed','page_errors':errors,'examples':evidence,
-                'scope':'real browser and numerical server; no owner listening approval implied'}
+                'scope':'real browser and numerical server; owner approval is separate recorded ZG-022 evidence'}
         (args.out/'report.json').write_text(json.dumps(report,indent=2,sort_keys=True)+'\n',encoding='utf-8')
         print(json.dumps({'checks':'passed','renders':len(evidence),'sample_rate_hz':args.sample_rate}))
     finally:
