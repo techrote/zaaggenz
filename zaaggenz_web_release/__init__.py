@@ -145,10 +145,10 @@ _PROTOCOL_PACKAGES = {
     "vocal": frozenset(("zaaggenz_contracts", "zaaggenz_jobs", "zaaggenz_project", "zaaggenz_timeline", "zaaggenz_vocal", "zaaggenz_textgesture")),
 }
 _EXECUTION_ONLY_PACKAGES = {
-    "timeline": frozenset(("zaaggenz_melody", "zaaggenz_tuning")),
-    "listening": frozenset(("zaaggenz_melody", "zaaggenz_tuning")),
-    "inspector": frozenset(("zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_components", "zaaggenz_spectral")),
-    "vocal": frozenset(("zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_analysis", "zaaggenz_gesture")),
+    "timeline": frozenset(("zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_zaag")),
+    "listening": frozenset(("zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_zaag")),
+    "inspector": frozenset(("zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_components", "zaaggenz_spectral", "zaaggenz_zaag")),
+    "vocal": frozenset(("zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_analysis", "zaaggenz_gesture", "zaaggenz_zaag")),
 }
 _HELPER_PATH = "zaaggenz_web_release/__init__.py"
 
