@@ -1,11 +1,329 @@
 {
-  "version":"1.0.0",
-  "assets":[
-    {"id":"activation","sha256":"109f6889cf128113c107d38b091f79e369219826c7515de7e25599abe596f013","bytes":5862603,"filename_hint":"Aversion - Activation [FREE PROMO].mp3","native":{"sample_rate_hz":48000,"channels":2,"codec":"mp3"},"rights":{"status":"owner-supplied-private-reference","redistribution":"not-authorized-in-repository","note":"No redistribution grant is recorded; source recording stays local."},"planning":{"decoded_24k_duration_s":175.84475,"sample_peak_24k":1.3474555015563965,"integrated_lufs":-7.1,"true_peak_dbtp":3.0,"energetic_medians":{"power_centroid_hz":472.25587687679257,"power_flatness":0.0609967469963825,"crest_db":6.438947103705613}}},
-    {"id":"zaagtivation","sha256":"6bda47f6d5182acc676c9cb466fc6a36ce09844c49c848e0d11add06b4051d22","bytes":7370435,"filename_hint":"AVERSION - ACTIVATION (EQUAL2'S ZAAGTIVATION EDIT) [FREE DL].mp3","native":{"sample_rate_hz":48000,"channels":2,"codec":"mp3"},"rights":{"status":"owner-supplied-private-reference","redistribution":"not-authorized-in-repository","note":"No redistribution grant is recorded; source recording stays local."},"planning":{"decoded_24k_duration_s":224.606625,"sample_peak_24k":1.6180365085601807,"integrated_lufs":-4.0,"true_peak_dbtp":4.8,"energetic_medians":{"power_centroid_hz":645.8844183115386,"power_flatness":0.08234699796887482,"crest_db":5.82023831633944}}},
-    {"id":"one_kick","sha256":"d239481cb7c5ca4465664bb13fcf193223ad67eecce25376fc9fe2e9ad2aa1bb","bytes":3862460,"filename_hint":"CareLexX - 1 Kick A Second.f251.webm","native":{"sample_rate_hz":48000,"channels":2,"codec":"opus"},"rights":{"status":"owner-supplied-private-reference","redistribution":"not-authorized-in-repository","note":"No redistribution grant is recorded; source recording stays local."},"planning":{"decoded_24k_duration_s":232.0,"sample_peak_24k":1.2897719144821167,"integrated_lufs":-6.4,"true_peak_dbtp":3.7,"energetic_medians":{"power_centroid_hz":570.1467011323164,"power_flatness":0.06864622725893348,"crest_db":5.935510718260352}}},
-    {"id":"push_up","sha256":"13cc7ffd6c2c4447b4566915393bd908b4c6dfebe6be2b7814593c0a7f345255","bytes":2462033,"filename_hint":"Creeds - Push Up (MYTH Edit) (Uptempo).f251.webm","native":{"sample_rate_hz":48000,"channels":2,"codec":"opus"},"rights":{"status":"owner-supplied-private-reference","redistribution":"not-authorized-in-repository","note":"No redistribution grant is recorded; source recording stays local."},"planning":{"decoded_24k_duration_s":144.521,"sample_peak_24k":1.292968511581421,"integrated_lufs":-5.4,"true_peak_dbtp":2.7,"energetic_medians":{"power_centroid_hz":232.88702807417616,"power_flatness":0.02257374279328997,"crest_db":5.213978769283716}}},
-    {"id":"con_calma","sha256":"448cd1252e68a17b9dbfaeb0f99db24f5d789007f5e66c7bfbd8bc1a0e7733d8","bytes":4559762,"filename_hint":"Daddy Yankee - Con Calma (MARBUL X EXCIDIUM X CARELEXX EDIT)(1).webm","native":{"sample_rate_hz":48000,"channels":2,"codec":"opus"},"rights":{"status":"owner-supplied-private-reference","redistribution":"not-authorized-in-repository","note":"No redistribution grant is recorded; source recording stays local."},"planning":{"decoded_24k_duration_s":237.88845833333335,"sample_peak_24k":1.677706241607666,"integrated_lufs":-3.6,"true_peak_dbtp":4.8,"energetic_medians":{"power_centroid_hz":132.74889546989414,"power_flatness":0.006782183137677404,"crest_db":3.916176239613346}}},
-    {"id":"go_insane","sha256":"09cfd30433e08f1fbaa5835e9c6f0157e582c6431722d203bcddbc54065c53e3","bytes":3778378,"filename_hint":"GO INSANE(1).webm","native":{"sample_rate_hz":48000,"channels":2,"codec":"opus"},"rights":{"status":"owner-supplied-private-reference","redistribution":"not-authorized-in-repository","note":"No redistribution grant is recorded; source recording stays local."},"planning":{"decoded_24k_duration_s":219.42858333333334,"sample_peak_24k":1.6441924571990967,"integrated_lufs":-6.2,"true_peak_dbtp":5.0,"energetic_medians":{"power_centroid_hz":413.1165256377752,"power_flatness":0.04996407286853787,"crest_db":5.503845361178894}}}
+  "version": "1.0.0",
+  "assets": [
+    {
+      "id": "activation",
+      "sha256": "109f6889cf128113c107d38b091f79e369219826c7515de7e25599abe596f013",
+      "bytes": 5862603,
+      "filename_hint": "Aversion - Activation [FREE PROMO].mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 175.84475,
+        "sample_peak_24k": 1.3474555015563965,
+        "integrated_lufs": -7.1,
+        "true_peak_dbtp": 3,
+        "energetic_medians": {
+          "power_centroid_hz": 472.25587687679257,
+          "power_flatness": 0.0609967469963825,
+          "crest_db": 6.438947103705613
+        }
+      }
+    },
+    {
+      "id": "zaagtivation",
+      "sha256": "6bda47f6d5182acc676c9cb466fc6a36ce09844c49c848e0d11add06b4051d22",
+      "bytes": 7370435,
+      "filename_hint": "AVERSION - ACTIVATION (EQUAL2'S ZAAGTIVATION EDIT) [FREE DL].mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 224.606625,
+        "sample_peak_24k": 1.6180365085601807,
+        "integrated_lufs": -4,
+        "true_peak_dbtp": 4.8,
+        "energetic_medians": {
+          "power_centroid_hz": 645.8844183115386,
+          "power_flatness": 0.08234699796887482,
+          "crest_db": 5.82023831633944
+        }
+      }
+    },
+    {
+      "id": "one_kick",
+      "sha256": "d239481cb7c5ca4465664bb13fcf193223ad67eecce25376fc9fe2e9ad2aa1bb",
+      "bytes": 3862460,
+      "filename_hint": "CareLexX - 1 Kick A Second.f251.webm",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "opus"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 232,
+        "sample_peak_24k": 1.2897719144821167,
+        "integrated_lufs": -6.4,
+        "true_peak_dbtp": 3.7,
+        "energetic_medians": {
+          "power_centroid_hz": 570.1467011323164,
+          "power_flatness": 0.06864622725893348,
+          "crest_db": 5.935510718260352
+        }
+      }
+    },
+    {
+      "id": "push_up",
+      "sha256": "13cc7ffd6c2c4447b4566915393bd908b4c6dfebe6be2b7814593c0a7f345255",
+      "bytes": 2462033,
+      "filename_hint": "Creeds - Push Up (MYTH Edit) (Uptempo).f251.webm",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "opus"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 144.521,
+        "sample_peak_24k": 1.292968511581421,
+        "integrated_lufs": -5.4,
+        "true_peak_dbtp": 2.7,
+        "energetic_medians": {
+          "power_centroid_hz": 232.88702807417616,
+          "power_flatness": 0.02257374279328997,
+          "crest_db": 5.213978769283716
+        }
+      }
+    },
+    {
+      "id": "con_calma",
+      "sha256": "448cd1252e68a17b9dbfaeb0f99db24f5d789007f5e66c7bfbd8bc1a0e7733d8",
+      "bytes": 4559762,
+      "filename_hint": "Daddy Yankee - Con Calma (MARBUL X EXCIDIUM X CARELEXX EDIT)(1).webm",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "opus"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 237.88845833333335,
+        "sample_peak_24k": 1.677706241607666,
+        "integrated_lufs": -3.6,
+        "true_peak_dbtp": 4.8,
+        "energetic_medians": {
+          "power_centroid_hz": 132.74889546989414,
+          "power_flatness": 0.006782183137677404,
+          "crest_db": 3.916176239613346
+        }
+      }
+    },
+    {
+      "id": "go_insane",
+      "sha256": "09cfd30433e08f1fbaa5835e9c6f0157e582c6431722d203bcddbc54065c53e3",
+      "bytes": 3778378,
+      "filename_hint": "GO INSANE(1).webm",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "opus"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 219.42858333333334,
+        "sample_peak_24k": 1.6441924571990967,
+        "integrated_lufs": -6.2,
+        "true_peak_dbtp": 5,
+        "energetic_medians": {
+          "power_centroid_hz": 413.1165256377752,
+          "power_flatness": 0.04996407286853787,
+          "crest_db": 5.503845361178894
+        }
+      }
+    },
+    {
+      "id": "krach_elements_of_nature_2026",
+      "sha256": "51526e8453f4ab3cc8e32b9bbfec0870816b6ea96899a1952847f585f43d2a8e",
+      "bytes": 7633264,
+      "filename_hint": "Elements Of Nature (So W'Happy Festival Official Anthem 2026).mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 221.15629166666668,
+        "sample_peak_24k": 1.5869486331939697,
+        "integrated_lufs": -5.3,
+        "true_peak_dbtp": 4.9,
+        "energetic_medians": {
+          "power_centroid_hz": 337.0090808886881,
+          "power_flatness": 0.04363342065321711,
+          "crest_db": 5.263652845458921
+        }
+      }
+    },
+    {
+      "id": "krach_fa_ti_co_equal2_edit",
+      "sha256": "f20ddc3e355cbbb4ce82fd61bdc22398635a2858fe79890df45c2a1834da9665",
+      "bytes": 3447734,
+      "filename_hint": "FA-TI-CO (EQUAL2 ZAAG-TI-CO EDIT) [FREE DL].mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 106.30095833333333,
+        "sample_peak_24k": 1.556647777557373,
+        "integrated_lufs": -2.3,
+        "true_peak_dbtp": 5,
+        "energetic_medians": {
+          "power_centroid_hz": 592.9119720357855,
+          "power_flatness": 0.06082484935242176,
+          "crest_db": 4.697105804427768
+        }
+      }
+    },
+    {
+      "id": "krach_uptempo_slut",
+      "sha256": "1c2986811cd3e077e34a0b6eda81efd2d53d7179be51bb4a5eb21a74ccef757b",
+      "bytes": 4655942,
+      "filename_hint": "PEYGAN X EQUAL2 - UPTEMPO SԼUT.mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 144.451375,
+        "sample_peak_24k": 1.5800294876098633,
+        "integrated_lufs": -4.2,
+        "true_peak_dbtp": 4,
+        "energetic_medians": {
+          "power_centroid_hz": 393.7345420673739,
+          "power_flatness": 0.04918151717296085,
+          "crest_db": 4.824952950953147
+        }
+      }
+    },
+    {
+      "id": "krach_this_is_krach",
+      "sha256": "bb59a7b6b2ab18b6a5fbd1f62a16042705c0f767eec5ff147f02313fbff33b99",
+      "bytes": 6115270,
+      "filename_hint": "This Is Krach.mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 180.01925,
+        "sample_peak_24k": 1.4326283931732178,
+        "integrated_lufs": -5,
+        "true_peak_dbtp": 3.9,
+        "energetic_medians": {
+          "power_centroid_hz": 327.895685826453,
+          "power_flatness": 0.037592956298368695,
+          "crest_db": 4.5970503737450175
+        }
+      }
+    },
+    {
+      "id": "krach_blow",
+      "sha256": "db006184a4e8f3957d3bce96aa93be6aba9db15184423d285908345e5dfa12f9",
+      "bytes": 5761499,
+      "filename_hint": "BLOW.mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 171.69233333333332,
+        "sample_peak_24k": 1.3079084157943726,
+        "integrated_lufs": -5,
+        "true_peak_dbtp": 3.7,
+        "energetic_medians": {
+          "power_centroid_hz": 396.34094079475585,
+          "power_flatness": 0.04001449374132611,
+          "crest_db": 4.865416481003809
+        }
+      }
+    },
+    {
+      "id": "krach_bouncin_2_tha_beat",
+      "sha256": "ac02630a8ab50b30778bc5d01100108fc44f9c2713cd51fbce63be009e995afd",
+      "bytes": 7528557,
+      "filename_hint": "BOUNCIN 2 THA BEAT.mp3",
+      "native": {
+        "sample_rate_hz": 48000,
+        "channels": 2,
+        "codec": "mp3"
+      },
+      "rights": {
+        "status": "owner-supplied-private-reference",
+        "redistribution": "not-authorized-in-repository",
+        "note": "No redistribution grant is recorded; source recording stays local."
+      },
+      "planning": {
+        "decoded_24k_duration_s": 209.536875,
+        "sample_peak_24k": 1.454392671585083,
+        "integrated_lufs": -3.5,
+        "true_peak_dbtp": 4.4,
+        "energetic_medians": {
+          "power_centroid_hz": 432.6674642568902,
+          "power_flatness": 0.049726850154579866,
+          "crest_db": 5.100658428799845
+        }
+      }
+    }
   ]
 }
