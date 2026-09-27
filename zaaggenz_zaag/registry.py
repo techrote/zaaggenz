@@ -69,6 +69,10 @@ FAMILIES=(
     ['Intentional negative/control condition.','Harmonic density alone must not be treated as preference evidence.'],'contrast'))
 
 _BY_ID={x.id:x for x in FAMILIES}
+# Owner-approved on 2026-09-27 from the full-rate corrective #229 audition.
+# These are ordinary production presets; this does not select a replacement
+# default. locked_bloom remains the protected default/compatibility anchor.
+PRODUCTION_PRESET_IDS=tuple(x.id for x in FAMILIES if x.classification=='candidate')
 
 def family(id):
     try:return _BY_ID[id]
@@ -76,5 +80,15 @@ def family(id):
 
 def candidates():return tuple(x for x in FAMILIES if x.classification=='candidate')
 def contrasts():return tuple(x for x in FAMILIES if x.classification=='contrast')
+def production_presets():return tuple(_BY_ID[x] for x in PRODUCTION_PRESET_IDS)
+def product_preset_catalogue():
+    return {'kind':'ZaagProductPresetCatalogue','version':'1.0.0','default':'locked_bloom',
+            'owner_approval':'zg022-owner-approval-2026-09-27',
+            'presets':[{'id':'locked_bloom','label':'Locked Bloom','protected_default':True},
+                       *[{'id':x.id,'label':x.label,'protected_default':False,
+                          'recipe_sha256':x.sha256,'macros':x.macros.to_dict(),
+                          'expert':x.expert.to_dict(),'useful_pitch_range_hz':list(x.useful_pitch_range_hz),
+                          'tuning_guidance':x.tuning_guidance,'limitations':list(x.limitations)}
+                         for x in production_presets()]]}
 def registry_payload():return {'kind':'ZaagFamilyRegistry','version':'1.0.0','protected_anchor':LOCKED_BLOOM.to_dict(),'families':[x.to_dict() for x in FAMILIES],'new_default':None,'owner_approval_required':True}
 def registry_sha256():return canonical_sha256(registry_payload())
