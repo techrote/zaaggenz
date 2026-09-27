@@ -181,7 +181,7 @@ def audit_texts(docs: dict[str, str], baseline: str, state: dict) -> list[str]:
     z22_blockers = {b.get("ref") for b in z22.get("blockers", []) if isinstance(b, dict)}
     if not (
         z22.get("owner_gate") == "satisfied"
-        and z22.get("implementation") == "partial"
+        and z22.get("implementation") == "accepted"
         and z22.get("dependency_satisfied") is False
         and "corrective:ZG-022-first-class-preset-promotion" in z22_blockers
     ):
