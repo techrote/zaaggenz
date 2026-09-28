@@ -140,21 +140,21 @@ def _character_profile(x,sr,bpm,recipe):
         z=np.tanh(10.*z)
         return .12*y+.7*z+1.2*_highpass_delta(z,sr,700.),mode
     if mode=='krach-black-mass':
-        body=_lp(y,sr,430.);surface=y-body
+        body=_lp(y,sr,650.);surface=y-body
         mid=_lp(surface,sr,1900.);teeth=surface-mid
         slow=.55+.45*np.sin(2.*np.pi*beats/.75+.55*np.sin(2.*np.pi*beats/2.))
-        scrape=np.tanh(13.*(mid*(.9+.45*slow)+teeth*(1.1-.35*slow)))
+        scrape=np.tanh(11.*(mid*(.9+.4*slow)+teeth*(1.05-.3*slow)))
         edge=_highpass_delta(scrape,sr,1100.)
-        return 1.18*body+.48*scrape+.42*edge,mode
+        return 2.3*body+.18*scrape+.12*edge,mode
     if mode=='krach-dark-bounce':
-        body=_lp(y,sr,500.);surface=y-body
+        body=_lp(y,sr,600.);surface=y-body
         mid=_lp(surface,sr,2100.);upper=surface-mid
         gate_mid=np.where(np.sin(2.*np.pi*beats/.25)>=0.,1.,.16)
         gate_upper=np.where(np.sin(2.*np.pi*(beats+.0625)/.125)>=0.,1.,.06)
         delay=max(1,round(sr*17/48000.))
         comb=surface-.82*np.pad(surface,(delay,0))[:len(surface)]
-        z=np.tanh(12.*(gate_mid*1.25*mid+gate_upper*1.7*upper+.48*comb))
-        return .95*body+.64*z+.38*_highpass_delta(z,sr,900.),mode
+        z=np.tanh(11.*(gate_mid*1.15*mid+gate_upper*1.55*upper+.4*comb))
+        return 1.7*body+.38*z+.18*_highpass_delta(z,sr,900.),mode
     if mode=='krach-mid-shred':
         body=_lp(y,sr,330.)
         lowmid=_lp(y,sr,920.)-body
