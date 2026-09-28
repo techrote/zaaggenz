@@ -70,13 +70,13 @@ _BASE_FAMILIES=(
 
 KRACH_CANDIDATES=(
  _f('zaag.krach-black-mass','Krach Black Mass','A deliberately dark Krach source: the low body remains massive and continuous while a separately saturated surface shifts above it.',
-    ZaagMacros(complementary_motion=.18,grit=.82,harmonic_motion=.55),_s(harmonic_count=70,harmonic_decay=.57,odd_even_ratio=2.25,roughness=.24,noise_level=.022,drive_db=24.,shaper_mix=.88,asymmetry=.2,hard_clip_mix=.62,wavefold=.96,preemphasis=.28,decay_ms=390.,seed=3321),
-    ExpertControls(grit_drive_db=13.,grit_mix=.44,grit_oversample=4,pitch_ratio_min=.5,pitch_ratio_max=1.85,quality_cost='high'),
+    ZaagMacros(complementary_motion=.12,grit=.5,harmonic_motion=.42),_s(harmonic_count=58,harmonic_decay=.78,odd_even_ratio=1.8,harmonic_tilt_db_per_oct=-.75,roughness=.16,noise_level=.01,drive_db=18.,shaper_mix=.78,asymmetry=.15,hard_clip_mix=.42,wavefold=.65,preemphasis=.08,decay_ms=420.,seed=3321),
+    ExpertControls(grit_drive_db=7.,grit_mix=.22,grit_oversample=4,pitch_ratio_min=.5,pitch_ratio_max=1.85,quality_cost='high'),
     (23.,90.),'Keep the source low enough that the body reads as mass; use filters/EQ to expose different moving surface layers rather than brightening the whole source.',
     ['Intentionally dark; wide upward transposition defeats the body/surface contrast.','The surface is animated independently, so dense chords can become cloudy.'],'krach-candidate'),
  _f('zaag.krach-dark-bounce','Krach Dark Bounce','Bouncin-inspired dark mass with independently ratcheted mid/upper surfaces: obvious motion without turning the whole source bright.',
-    ZaagMacros(upper_bounce=.78,complementary_motion=.32,grit=.8,harmonic_motion=.7),_s(harmonic_count=66,harmonic_decay=.6,odd_even_ratio=2.05,roughness=.2,noise_level=.018,drive_db=24.,shaper_mix=.87,hard_clip_mix=.6,wavefold=.9,preemphasis=.3,decay_ms=330.,seed=3322),
-    ExpertControls(upper_bounce_depth_db=5.5,upper_bounce_rate_beats=.5,complementary_depth_db=3.,grit_drive_db=12.,grit_mix=.42,grit_oversample=4,pitch_ratio_min=.5,pitch_ratio_max=2.,quality_cost='high'),
+    ZaagMacros(upper_bounce=.72,complementary_motion=.25,grit=.62,harmonic_motion=.66),_s(harmonic_count=62,harmonic_decay=.68,odd_even_ratio=1.95,harmonic_tilt_db_per_oct=-.45,roughness=.18,noise_level=.014,drive_db=21.,shaper_mix=.83,hard_clip_mix=.5,wavefold=.8,preemphasis=.16,decay_ms=350.,seed=3322),
+    ExpertControls(upper_bounce_depth_db=4.5,upper_bounce_rate_beats=.5,complementary_depth_db=2.5,grit_drive_db=9.,grit_mix=.3,grit_oversample=4,pitch_ratio_min=.5,pitch_ratio_max=2.,quality_cost='high'),
     (24.,98.),'Designed for repeated root-note loops and live filter/EQ movement; the low body should stay legible while the surface provides the bounce.',
     ['Fast surface ratchets can turn buzzy at extreme BPM.','Large chord stacks reduce the perceptual separation between body and moving surface.'],'krach-candidate'),
  _f('zaag.krach-mid-shred','Krach Mid Shred','A moving destructive midrange that tears across a retained low body, aimed at rasping Krach motion rather than a static distortion tail.',
