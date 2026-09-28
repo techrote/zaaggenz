@@ -4,9 +4,9 @@ on:
     paths:
       - 'zaaggenz_zaag/**'
       - 'tests/zaag/**'
-      - 'tools/zaag_family_report.py'
+      - 'tools/zaag_family_report.py'\n      - 'tools/krach_family_report.py'\n      - 'references/krach_private_registry_v1.json'\n      - 'references/krach_texture_analysis_v1.json'
       - 'examples/zg022_zaag_family_examples.json'
-      - 'docs/gesture/ZG022_ZAAG_FAMILIES.md'
+      - 'docs/gesture/ZG022_ZAAG_FAMILIES.md'\n      - 'docs/gesture/ZG022_KRACH_FOLLOWUP.md'
       - '.github/workflows/zg022-zaag-families.yml'
   workflow_dispatch:
 permissions:
@@ -70,3 +70,11 @@ jobs:
           path: |
             zaag-family-evidence-48k.json
             zaag-audition-48k/
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg022-krach-audition-fullrate
+          path: |
+            krach-family-evidence-48k.json
+            krach-audition-48k/
