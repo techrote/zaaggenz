@@ -5,7 +5,7 @@ import hashlib,json,math,re
 
 VERSION='1.0.0'
 ID=re.compile(r'^[a-z][a-z0-9_.-]{0,63}$')
-CLASSIFICATIONS={'candidate','contrast'}
+CLASSIFICATIONS={'candidate','krach-candidate','contrast'}
 QUALITY_COSTS={'low','medium','high'}
 
 class ZaagFamilyError(ValueError):pass
