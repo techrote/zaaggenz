@@ -174,7 +174,7 @@ def krach_loop_manifest(family_id,sr=48000):
     for i in range(16):
         gain=-4.5 if i%4==0 else (-6. if i%2==0 else -7.5)
         events.append(_event(i*.5,.46,family_id,(0,),gain))
-    return ArrangementManifest('zg022-krach-loop-'+family_id.replace('.','-'),2,200.,sr,tuple(events),
+    return ArrangementManifest('zg022-krach-loop-'+family_id.replace('.','-'),2,190.,sr,tuple(events),
         'Two-bar identical repeated-root Krach loop for body/surface persistence and live filter/EQ audition.')
 
 def example_manifests(sr=48000):return (one_shot_manifest(sr),four_bar_manifest(sr),sixteen_bar_manifest(sr))
