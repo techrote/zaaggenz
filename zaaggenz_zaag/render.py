@@ -77,6 +77,10 @@ CHARACTER_PROFILES={
     'zaag.split-maul':'split',
     'zaag.crushed-teeth':'crush',
     'zaag.harmonic-rip':'rip',
+    'zaag.krach-black-mass':'krach-black-mass',
+    'zaag.krach-dark-bounce':'krach-dark-bounce',
+    'zaag.krach-mid-shred':'krach-mid-shred',
+    'zaag.krach-air-teeth':'krach-air-teeth',
 }
 
 def _highpass_delta(x,sr,hz):return np.asarray(x,dtype=np.float64)-_lp(x,sr,hz)
@@ -135,6 +139,40 @@ def _character_profile(x,sr,bpm,recipe):
         z=z+.9*z*ring
         z=np.tanh(10.*z)
         return .12*y+.7*z+1.2*_highpass_delta(z,sr,700.),mode
+    if mode=='krach-black-mass':
+        body=_lp(y,sr,430.);surface=y-body
+        mid=_lp(surface,sr,1900.);teeth=surface-mid
+        slow=.55+.45*np.sin(2.*np.pi*beats/.75+.55*np.sin(2.*np.pi*beats/2.))
+        scrape=np.tanh(13.*(mid*(.9+.45*slow)+teeth*(1.1-.35*slow)))
+        edge=_highpass_delta(scrape,sr,1100.)
+        return 1.18*body+.48*scrape+.42*edge,mode
+    if mode=='krach-dark-bounce':
+        body=_lp(y,sr,500.);surface=y-body
+        mid=_lp(surface,sr,2100.);upper=surface-mid
+        gate_mid=np.where(np.sin(2.*np.pi*beats/.25)>=0.,1.,.16)
+        gate_upper=np.where(np.sin(2.*np.pi*(beats+.0625)/.125)>=0.,1.,.06)
+        delay=max(1,round(sr*17/48000.))
+        comb=surface-.82*np.pad(surface,(delay,0))[:len(surface)]
+        z=np.tanh(12.*(gate_mid*1.25*mid+gate_upper*1.7*upper+.48*comb))
+        return .95*body+.64*z+.38*_highpass_delta(z,sr,900.),mode
+    if mode=='krach-mid-shred':
+        body=_lp(y,sr,330.)
+        lowmid=_lp(y,sr,920.)-body
+        highmid=_lp(y,sr,2400.)-_lp(y,sr,920.)
+        upper=y-_lp(y,sr,2400.)
+        swing=np.sin(2.*np.pi*beats/.5)
+        gl=np.power(10.,(4.5*swing)/20.);gh=np.power(10.,(-4.5*swing)/20.)
+        ring=np.sin(2.*np.pi*(205.+105.*np.sin(2.*np.pi*beats/1.5))*t)
+        shred=np.tanh(14.*(gl*lowmid+1.25*gh*highmid+.55*upper+.32*y*ring))
+        return .72*body+.78*shred+.3*_highpass_delta(shred,sr,1200.),mode
+    if mode=='krach-air-teeth':
+        body=_lp(y,sr,390.);bright=y-body
+        high=_highpass_delta(y,sr,1050.);air=_highpass_delta(y,sr,2850.)
+        gate=np.where(np.sin(2.*np.pi*(beats+.03125)/.0625)>=0.,1.,.08)
+        ring=np.sin(2.*np.pi*(470.+190.*np.sin(2.*np.pi*beats/.5))*t)
+        tooth=np.tanh(16.*(bright+1.55*high+1.25*air+.28*bright*ring))
+        tooth=.62*tooth+.38*gate*tooth
+        return .68*body+.72*tooth+1.05*_highpass_delta(tooth,sr,1800.),mode
     raise ZaagFamilyError('unknown ZG-022 character profile '+str(mode))
 
 def _grit(x,recipe):
