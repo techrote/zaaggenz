@@ -81,7 +81,7 @@ def family(id):
 def candidates():return tuple(x for x in FAMILIES if x.classification=='candidate')
 def contrasts():return tuple(x for x in FAMILIES if x.classification=='contrast')
 def production_presets():return tuple(_BY_ID[x] for x in PRODUCTION_PRESET_IDS)
-def product_preset_catalogue():
+def _base_product_preset_catalogue():
     return {'kind':'ZaagProductPresetCatalogue','version':'1.0.0','default':'locked_bloom',
             'owner_approval':'zg022-owner-approval-2026-09-27',
             'presets':[{'id':'locked_bloom','label':'Locked Bloom','protected_default':True},
@@ -90,5 +90,12 @@ def product_preset_catalogue():
                           'expert':x.expert.to_dict(),'useful_pitch_range_hz':list(x.useful_pitch_range_hz),
                           'tuning_guidance':x.tuning_guidance,'limitations':list(x.limitations)}
                          for x in production_presets()]]}
+def product_preset_catalogue():
+    from .krach_presets import catalogue
+    payload=_base_product_preset_catalogue()
+    payload['presets'].extend(catalogue())
+    payload['tier_policy']='primary: owner favourites; secondary: retained processing starting points'
+    return payload
+
 def registry_payload():return {'kind':'ZaagFamilyRegistry','version':'1.0.0','protected_anchor':LOCKED_BLOOM.to_dict(),'families':[x.to_dict() for x in FAMILIES],'new_default':None,'owner_approval_required':True}
 def registry_sha256():return canonical_sha256(registry_payload())

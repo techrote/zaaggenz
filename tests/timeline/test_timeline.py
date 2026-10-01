@@ -75,10 +75,10 @@ class TimelineModelTests(unittest.TestCase):
         base = Project.from_document(doc.to_dict()['project']).head_recipe.to_dict()
         compiled = compile_recipe(doc).to_dict()
         self.assertEqual(compiled['source'], base['source'])
-        self.assertEqual(compiled['phase_policy'], 'source-derived')
-        self.assertEqual(compiled['render_mode'], 'synth')
+        self.assertEqual(compiled['phase_policy'],'source-derived')
+        self.assertEqual(compiled['render_mode'],'synth')
         self.assertIsNone(compiled['reversebass'])
-        self.assertEqual(doc.to_dict()['layer_ownership'], OWNERSHIP)
+        self.assertEqual(doc.to_dict()['layer_ownership'],OWNERSHIP)
 
     def test_every_authoring_change_affects_revision_identity(self):
         base = fixture(); identity = TimelineDocument(base).revision_id
@@ -88,28 +88,28 @@ class TimelineModelTests(unittest.TestCase):
             self.assertNotEqual(TimelineDocument(d).revision_id, identity)
 
     def test_validation_rejects_extra_fields_bad_versions_and_ownership(self):
-        for patch in ({'extra': 1}, {'version': '2.0.0'}, {'layer_ownership': {}}, {'next_id': True}, {'master_gain_db': float('nan')}):
+        for patch in ({'extra':1},{'version':'2.0.0'},{'layer_ownership':{}},{'next_id':True},{'master_gain_db':float('nan')}):
             with self.subTest(patch=patch), self.assertRaises(ValueError):
-                TimelineDocument({**fixture(), **patch})
+                TimelineDocument({**fixture(),**patch})
 
     def test_note_boundary_invalid_rational_and_duplicates(self):
-        for patch in ({'beat': '-1/1'}, {'duration_beats': '0/1'}, {'duration_beats': '2/4'},
-                      {'beat': '4/1'}, {'degree': True}, {'gain_db': float('inf')}, {'id': '../bad'},
-                      {'muted': 1}, {'roll_density': 17}, {'id': 'a'*60}):
+        for patch in ({'beat':'-1/1'},{'duration_beats':'0/1'},{'duration_beats':'2/4'},
+                      {'beat':'4/1'},{'degree':True},{'gain_db':float('inf')},{'id':'../bad'},
+                      {'muted':1},{'roll_density':17},{'id':'a'*60}):
             d=fixture();d['notes'][0].update(patch)
             with self.subTest(patch=patch), self.assertRaises(ValueError): TimelineDocument(d)
         d=fixture();d['notes'].append(d['notes'][0])
-        with self.assertRaisesRegex(ValueError, 'duplicate'): TimelineDocument(d)
+        with self.assertRaisesRegex(ValueError,'duplicate'): TimelineDocument(d)
 
     def test_object_and_roll_retrigger_limits_fail_before_allocation(self):
         d=fixture();d['notes']=[note(f'n-{i}') for i in range(257)]
         with self.assertRaises(ValueError): TimelineDocument(d)
         d=fixture();d['end_beat']='16/1';d['notes']=[note(duration_beats='16/1',roll_density=16)]
-        with self.assertRaisesRegex(ValueError, '64 retriggers'): TimelineDocument(d)
+        with self.assertRaisesRegex(ValueError,'64 retriggers'): TimelineDocument(d)
 
     def test_max_id_roll_is_valid_contract(self):
         d=fixture();d['notes']=[note('a'*59,roll_density=4)]
-        self.assertIsInstance(compile_recipe(TimelineDocument(d)), Contract)
+        self.assertIsInstance(compile_recipe(TimelineDocument(d)),Contract)
 
     def test_muted_and_rest_do_not_generate_pitch_or_rolls(self):
         d=fixture();d['notes'][0].update(muted=True,roll_density=8)
@@ -185,7 +185,7 @@ class ServiceTests(unittest.TestCase):
         with self.assertRaises(JobError):self.service.status('0'*32)
 
     def test_invalid_region_name_and_time_limit_rejected_before_enqueue(self):
-        for region in ({'start_beat':'-1/1','end_beat':'1/1'},{'start_beat':'1/1','end_beat':'1/1'}, {'start_beat':'0/1','end_beat':'5/1'}):
+        for region in ({'start_beat':'-1/1','end_beat':'1/1'},{'start_beat':'1/1','end_beat':'1/1'},{'start_beat':'0/1','end_beat':'5/1'}):
             with self.assertRaises(ValueError): self.service.submit(fixture(),region)
         with self.assertRaises(ValueError):self.service.submit(fixture(),name='')
         data=fixture();data['end_beat']='256/1'
@@ -214,7 +214,7 @@ class HTTPTests(unittest.TestCase):
         _,raw=self.request('/api/timeline/bootstrap');boot=json.loads(raw)
         self.assertEqual(boot['token'],self.server.token)
         self.assertEqual(boot['presets']['default'],'locked_bloom')
-        self.assertEqual(len(boot['presets']['presets']),7)
+        self.assertEqual(len(boot['presets']['presets']),11)
         for path,needle in [('/timeline',b'Notes, rolls'),('/',b'Open note / clip timeline'),('/timeline/app.mjs',b'RenderTransport')]:
             _,body=self.request(path);self.assertIn(needle,body)
 
