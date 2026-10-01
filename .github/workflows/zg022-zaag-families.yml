@@ -8,6 +8,7 @@ on:
       - 'examples/zg022_zaag_family_examples.json'
       - 'docs/gesture/ZG022_ZAAG_FAMILIES.md'
       - 'docs/gesture/ZG022_KRACH_RETRY_V2.md'
+      - 'docs/gesture/ZG022_KRACH_RETRY_V3.md'
       - '.github/workflows/zg022-zaag-families.yml'
   workflow_dispatch:
 permissions:
@@ -37,7 +38,7 @@ jobs:
         run: python baseline/recovered_source/materialize_v2.py --out .
       - name: Install dependencies
         run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt
-      - name: ZG-022 family acceptance including Krach v2 retry tests
+      - name: ZG-022 family acceptance including Krach v2 and v3 retry tests
         run: python -m unittest discover -s tests/zaag -v
       - name: Melody and gesture regressions
         run: |
@@ -64,8 +65,8 @@ jobs:
       - run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt
       - name: Full-rate source and short-example evidence
         run: python tools/zaag_family_report.py --sample-rate 48000 --skip-long --out zaag-family-evidence-48k.json --audition-dir zaag-audition-48k
-      - name: Full-rate Krach v2 audition evidence
-        run: python -m zaaggenz_zaag.krach_retry --sample-rate 48000 --out krach-retry-v2-48k
+      - name: Full-rate Krach v3 audition evidence
+        run: python -m zaaggenz_zaag.krach_retry_v3 --sample-rate 48000 --out krach-retry-v3-48k
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -75,6 +76,6 @@ jobs:
             zaag-audition-48k/
       - uses: actions/upload-artifact@v4
         with:
-          name: zg022-krach-retry-v2-fullrate
-          path: krach-retry-v2-48k/
+          name: zg022-krach-retry-v3-fullrate
+          path: krach-retry-v3-48k/
           if-no-files-found: error
