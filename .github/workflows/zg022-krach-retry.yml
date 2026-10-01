@@ -1,0 +1,35 @@
+name: ZG-022 Krach retry v2 audition
+on:
+  pull_request:
+    paths:
+      - 'zaaggenz_zaag/krach_retry.py'
+      - 'tests/zaag/test_krach_retry.py'
+      - 'docs/gesture/ZG022_KRACH_RETRY_V2.md'
+      - '.github/workflows/zg022-krach-retry.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  audition:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      PYTHONUTF8: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      PYTHONPATH: 'app:.'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - run: python baseline/recovered_source/materialize_v2.py --out .
+      - run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt
+      - name: Retry bounds, deterministic rendering and ownership tests
+        run: python -m unittest discover -s tests/zaag -p 'test_krach_retry.py' -v
+      - name: Build full-rate v2 audition
+        run: python -m zaaggenz_zaag.krach_retry --sample-rate 48000 --out krach-retry-v2-48k
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zg022-krach-retry-v2-fullrate
+          path: krach-retry-v2-48k/
+          if-no-files-found: error
