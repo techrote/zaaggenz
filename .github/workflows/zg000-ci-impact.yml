@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - 'zaaggenz_*/**'
+      - 'tests/contracts/test_nyquismic.py'
+      - 'tests/contracts/nyquismic_oracles.py'
+      - 'tests/contracts/fixtures/nyquismic*.json'
       - 'baseline/recovered_source/**'
       - 'web/**'
       - 'research/**'

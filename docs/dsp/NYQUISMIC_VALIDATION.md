@@ -2,9 +2,30 @@
 
 **Master:** [NYQ-000 #249](https://github.com/techrote/zaaggenz/issues/249)  
 **Acceptance owner:** [NYQ-009 #258](https://github.com/techrote/zaaggenz/issues/258)  
-**Status:** planned validation, not measured results. Numeric limits/tolerances are to be frozen in NYQ-001 and versioned by the implementing children before comparative outcomes.
+**Status:** NYQ-001 contract/clock fixtures and tolerances are frozen below; audio numerical comparisons and instrument acceptance remain pending the later children.
 
 Read the [specification](NYQUISMIC_MODULATION.md), [implementation RAG](../zaaggenz/NYQUISMIC_IMPLEMENTATION_RAG.md) and existing [validation gates](../zaaggenz/briefs/VALIDATION_GATES.md). Preserve baseline/accepted evidence and do not weaken a comparator to make a new renderer pass.
+
+## NYQ-001 frozen reference set
+
+The implemented contract, bounds and reproducibility policy are in
+[NYQ001_FOUNDATION.md](NYQ001_FOUNDATION.md). Independent generator
+`tests/contracts/nyquismic_oracles.py` has SHA-256
+`c700d12382ca1d55402f37d86376f5d625d44ed37cdedccdb21474519785c8b2`.
+Frozen analytic data `tests/contracts/fixtures/nyquismic-v1.json` has SHA-256
+`b42b2d9988df822169d8fd6e02a28dd208eff2b1e0ddf4a2d15df13c6c9ee5bd`.
+Neither calls a production clock/capture/reconstruction implementation.
+The separately identified legacy snapshot has SHA-256
+`a0717357a33a5f88e398ec9b5a8c524d2d3e60782a4bfa1369f3336ebf977b18`.
+
+Clock time tolerance is **2e-12 seconds + 8 ulps** of the absolute timestamp,
+frozen before production comparison. Integer event counts, epoch/crossing IDs,
+interval membership, rational phase, hashes and counter-addressed random values
+are exact. Static tone folding is independently checked, not falsely counted as
+rendered audio evidence. Preserve these fixture bytes and add explicitly versioned
+successors rather than regenerate a baseline to fit a later kernel. Source model,
+final filter, reconstructed images/amplitudes, sinusoidal/audio-derived modulation
+and cross-platform audio tolerances still require their own child evidence.
 
 ## Separate four questions
 
