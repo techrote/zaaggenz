@@ -11,13 +11,14 @@ def _data(bundle):
     except Exception as exc:raise ComponentError('valid PartialTrackBundle required') from exc
     return d
 
-def reconstruct_components(bundle,*,source=None,sample_rate_hz=None):
+def reconstruct_components(bundle,*,source=None,sample_rate_hz=None,checkpoint=None):
     """Resynthesise only the sinusoidal ownership described by a component bundle.
 
     When concrete source audio is available, bind the bundle's declared source asset
     to it before allocating output. Bundle-only reconstruction remains supported for
     portable validated ``PartialTrackBundle`` contracts.
     """
+    if checkpoint:checkpoint()
     d=_data(bundle);asset=d['asset']
     if source is None:
         if sample_rate_hz is not None:raise ComponentError('source required with sample_rate_hz')
@@ -28,8 +29,10 @@ def reconstruct_components(bundle,*,source=None,sample_rate_hz=None):
         n=bound.shape[0];ch=1 if bound.ndim==1 else bound.shape[1];sr=sample_rate_hz
     out=np.zeros((n,ch),dtype=np.float64)
     for track in d['tracks']:
+        if checkpoint:checkpoint()
         num=np.zeros((n,ch),dtype=np.float64);den=np.zeros(n,dtype=np.float64)
         for row in track['frames']:
+            if checkpoint:checkpoint()
             s=row['support'];lo,hi,anchor=s['start_sample'],s['end_sample'],s['anchor_sample'];win_n=hi-lo
             if win_n<2:continue
             start=max(0,lo);end=min(n,hi)

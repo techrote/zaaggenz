@@ -9,6 +9,7 @@ from test_web_release_protocol_identity import _copy_release_tree, _append
 
 ROOT = Path(__file__).resolve().parents[2]
 RACK_PROTOCOL_PATHS = (
+    'zaaggenz_runtime/session.py',
     'zaaggenz_contracts/rack.py',
     'zaaggenz_contracts/rack_schema.py',
     'zaaggenz_project/rack_state.py',

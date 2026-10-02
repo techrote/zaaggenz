@@ -5,6 +5,12 @@ foundation, not acceptance of the Compose rack UI or native plug-in hosting.
 MBR-002 owns actual RuntimeSession/JobScheduler execution; MBR-003 owns editing;
 MBR-004 closes built-in workflow acceptance. Phase B remains separate.
 
+Runtime follow-up: [MBR-002 Compose execution](MBR002_COMPOSE_EXECUTION.md)
+implements the backend route below without changing these accepted formats.
+Historical MBR-001-only rejection statements describe the foundation commit;
+current Compose consumes built-in racks, while unsupported consumers still
+fail explicitly. UI, Phase-A acceptance and native hosting remain separate.
+
 ## Version boundaries and compatibility
 
 | Envelope | Without a rack | Explicit rack opt-in |

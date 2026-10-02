@@ -64,9 +64,6 @@ def _curve_value(curve,event_beat,time_map,offset_beat,default=0.):
 
 def _validate_consumer(recipe,spec):
     d=recipe.to_dict();validate(d,'RenderRecipe')
-    from zaaggenz_contracts.rack import require_rack_consumer
-    try:require_rack_consumer(recipe,consumer='Compose melodic renderer')
-    except ValueError as exc:raise MelodyError(str(exc)) from exc
     if d['render_mode']!='synth' or d['arrangement'] is not None or d['reversebass'] is not None:raise MelodyError('ZG-008 consumes synth-mode melodic recipes only')
     if d['sculpt'] is not None and d['nodes']:raise MelodyError('legacy SCULPT plus explicit DSP graph has no declared melodic ordering')
     if not d['nodes'] and d['output_node']!=d['source']['id']:raise MelodyError('melodic recipe output node is not backed by a DSP graph')
@@ -77,6 +74,25 @@ def _validate_consumer(recipe,spec):
     if d['quality'] not in ('standard','high'):raise MelodyError('melodic renderer requires standard/high quality')
     for ev in d['phrase']['events']:
         if ev['layer_role']!='synthline':raise MelodyError('ZG-008 owns synthline note events only')
+    if 'rack' in d:
+        # Validate unavailable/bypassed state and full-context resource admission
+        # before source synthesis. This consumer remains explicitly mono.
+        from zaaggenz_spectral.rack_executor import compile_rack, estimate_rack_resources, MAX_WORKING_BYTES
+        try:
+            compiled = compile_rack(d['rack'], recipe)
+            if d['channels'] != 1:
+                raise MelodyError('Compose melodic source consumer supports mono only; rack PCM executor supports mono/stereo')
+            tm = d['time_map']; p = d['source']['params']
+            frames = beat_to_sample(tm, d['phrase']['end_beat']) - beat_to_sample(tm, d['phrase']['start_beat'])
+            source_frames = math.ceil(p['sr'] * 60 / p['bpm'] * p['beat_fill'])
+            # Preserve-tail renders can extend by a complete source note. The
+            # roll minimum slice can extend a truncate render by at most 16.
+            extent = frames + (source_frames if d['tail']['mode'] == 'preserve' else 16)
+            resources = estimate_rack_resources(compiled, extent)
+            if resources['estimated_live_bytes'] > MAX_WORKING_BYTES:
+                raise MelodyError('rack full-context memory estimate exceeds working-memory bound')
+        except ValueError as exc:
+            raise MelodyError(str(exc)) from exc
     return d
 
 def _fft_for(recipe,spec):return spec.high_fft if recipe['quality']=='high' else spec.standard_fft
@@ -231,7 +247,15 @@ def render_phrase(recipe,spec=MelodicRenderSpec(),*,job_context=None):
                             source_samples=len(wave),output_samples=len(main),pitch_ratio_start=float(ratios[0]),pitch_ratio_end=float(ratios[min(len(ratios)-1,max(0,min(gate_n-1,len(ratios)-1)))]),
                             gain_db=float(ev['gain_db']),roll_density=density,roll_retriggers=rolls,roll_slice_samples_max=roll_slice_max,roll_interval_samples_min=roll_interval_min))
     _checkpoint(job_context,.86)
-    n=max(len(synthline),len(exciter));synthline=_ensure(synthline,n);exciter=_ensure(exciter,n);raw_pre=synthline+exciter;pre=_apply_preserved_topology(raw_pre,d)
+    n=max(len(synthline),len(exciter));synthline=_ensure(synthline,n);exciter=_ensure(exciter,n)
+    rack_diagnostics = None
+    if 'rack' in d:
+        from zaaggenz_spectral.rack_executor import compile_rack, execute_rack
+        synthline, rack_diagnostics = execute_rack(synthline, base_params.sr, compile_rack(d['rack'], c),
+            checkpoint=None if job_context is None else job_context.check_cancelled)
+    # The separately owned roll EXCITER is not processed by the saved rack.
+    # Existing topology and final output policy keep their original positions.
+    raw_pre=synthline+exciter;pre=_apply_preserved_topology(raw_pre,d)
     try:
         from zaaggenz_dsp.graph import apply_output_policy,GraphError
         mix,master_diag=apply_output_policy(pre,d['output'])
@@ -239,11 +263,19 @@ def render_phrase(recipe,spec=MelodicRenderSpec(),*,job_context=None):
     diag=dict(contract_version=d['version'],render_spec_sha256=spec.sha256,recipe_sha256=c.sha256,mode=spec.mode.value,source_preset_id=d['source']['id'],sample_rate_hz=base_params.sr,
               phrase_start_sample=phrase_start,nominal_phrase_samples=nominal,rendered_samples=n,source_samples=len(base_source),notes=sum(not r['rest'] for r in records),rests=sum(r['rest'] for r in records),
               roll_retriggers=roll_total,pre_master_peak=float(np.max(np.abs(pre),initial=0)),master_peak=float(master_diag['output_peak']),clipped_fraction=float(master_diag['clip_fraction']))
+    if rack_diagnostics is not None:diag['rack'] = rack_diagnostics
     _checkpoint(job_context,.92)
     return MelodicRenderResult(np.asarray(mix,dtype=np.float32),{'synthline':np.asarray(synthline,dtype=np.float32),'exciter':np.asarray(exciter,dtype=np.float32),'pre_master':np.asarray(pre,dtype=np.float32)},tuple(records),diag)
 
 def melodic_cache_key(recipe,spec=MelodicRenderSpec()):
-    c=_contract(recipe);return digest({'domain':'zaaggenz.melodic-render-v1','recipe_sha256':c.sha256,'render_spec':spec.to_dict()})
+    c=_contract(recipe);data=c.to_dict()
+    if 'rack' not in data:
+        return digest({'domain':'zaaggenz.melodic-render-v1','recipe_sha256':c.sha256,'render_spec':spec.to_dict()})
+    from zaaggenz_spectral.rack_executor import compile_rack, implementation_identity
+    compiled = compile_rack(data['rack'], c)
+    data['rack'] = compiled.recipe.sonic_state()
+    return digest({'domain':'zaaggenz.melodic-saved-rack-render-v1', 'sonic_recipe':data,
+                   'render_spec':spec.to_dict(), 'implementation_sha256':implementation_identity()})
 
 def _waveform_scope(audio,bins=360):
     x=np.asarray(audio,dtype=np.float32);bins=max(1,min(int(bins),max(1,len(x))));edges=np.linspace(0,len(x),bins+1,dtype=int);return [float(np.max(np.abs(x[edges[i]:edges[i+1]]),initial=0)) for i in range(bins)]

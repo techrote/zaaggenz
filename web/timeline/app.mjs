@@ -116,7 +116,7 @@ async function render(region){
       const result=await api(`jobs/${submitted.job_id}`);
       if(requestEpoch!==epoch)return;
       status(`${name}: ${result.state} · ${Math.round(result.progress*100)}%`);
-      if(result.state==='failed'||result.state==='cancelled')throw Error(result.error??result.state);
+      if(result.state==='failed'||result.state==='cancelled'||result.state==='stale')throw Error(result.error??result.state);
       if(result.state==='completed'){
         if(result.revision_id!==revision||result.artifact.revision_id!==revision||result.artifact.recipe_sha256!==submitted.recipe_sha256)throw Error('Mismatched artifact rejected.');
         const response=await fetch(`/api/timeline/jobs/${submitted.job_id}/audio`);
