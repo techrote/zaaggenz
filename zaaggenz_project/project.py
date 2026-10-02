@@ -50,11 +50,14 @@ class Project:
         self._revisions={}
         self._slots={}
         self._head=None
+        self._format_version=VERSION
+        self._rack_presets={}
         self.commit(initial_recipe)
 
     @classmethod
     def _blank(cls):
-        x=cls.__new__(cls);x._revisions={};x._slots={};x._head=None;return x
+        x=cls.__new__(cls);x._revisions={};x._slots={};x._head=None
+        x._format_version=VERSION;x._rack_presets={};return x
 
     @property
     def head(self): return self._head
@@ -75,7 +78,13 @@ class Project:
         record={'id':rid,'parent':parent,'recipe_sha256':recipe_sha,'recipe_json':recipe.to_json()}
         existing=self._revisions.get(rid)
         if existing is not None and existing!=record: raise ProjectError('revision identity collision')
-        self._revisions[rid]=record;self._head=rid;return rid
+        version=self._format_version
+        if 'rack' in recipe.to_dict():version='1.1.0'
+        if version=='1.1.0':
+            from .rack_state import prepare_revision
+            try:prepare_revision(self,recipe,record,version)
+            except ContractError as exc:raise ProjectError(str(exc)) from exc
+        self._revisions[rid]=record;self._head=rid;self._format_version=version;return rid
 
     def audition(self, recipe: Contract):
         if not isinstance(recipe,Contract) or recipe.to_dict()['kind']!='RenderRecipe':
@@ -127,8 +136,13 @@ class Project:
             seen.add(cur);chain.append(cur);cur=self._revisions[cur]['parent']
         for rid in reversed(chain): revisions.append(deepcopy(self._revisions[rid]))
         _require(len(revisions)==len(self._revisions),'unreachable revision records')
-        return {'format':FORMAT,'format_version':VERSION,'head':self._head,'revisions':revisions,
-                'render_slots':deepcopy(dict(sorted(self._slots.items())))}
+        doc={'format':FORMAT,'format_version':self._format_version,'head':self._head,'revisions':revisions,
+             'render_slots':deepcopy(dict(sorted(self._slots.items())))}
+        if self._format_version=='1.1.0':
+            doc['rack_presets']=deepcopy(dict(sorted(self._rack_presets.items())))
+            from .rack_state import bounded_document
+            bounded_document(doc)
+        return doc
 
     @property
     def sha256(self): return digest(self.to_document())
@@ -144,22 +158,72 @@ class Project:
             _require(_revision_id(r['recipe_sha256'],r['parent'])==r['id'],'revision hash mismatch')
             p._revisions[r['id']]=deepcopy(r)
         p._head=doc['head'];p._slots=deepcopy(doc['render_slots'])
+        p._format_version=doc['format_version']
+        p._rack_presets=deepcopy(doc.get('rack_presets',{}))
         # Revalidate through canonical emitter to detect cycles/unreachable revisions.
         p.to_document()
+        from .rack_state import validate_revision, validate_presets
+        try:
+            for record in p._revisions.values():
+                recipe=Contract.from_json(record['recipe_json'])
+                if 'rack' in recipe.to_dict():
+                    _require(p._format_version=='1.1.0','rack revision requires explicit project format 1.1.0')
+                    validate_revision(p,recipe,record['parent'])
+            validate_presets(p)
+        except ContractError as exc:raise ProjectError(str(exc)) from exc
         for slot in p._slots.values():
             _require(slot['revision_id'] in p._revisions,'slot references unknown revision')
             validate(slot['asset'],'AudioAssetRef')
         return p
 
+
+    @property
+    def rack(self):
+        from zaaggenz_contracts.rack import RackRecipe
+        saved=self.head_recipe.to_dict().get('rack')
+        return None if saved is None else RackRecipe(saved)
+
+    @property
+    def rack_presets(self):
+        return deepcopy(self._rack_presets)
+
+    def set_rack(self,rack):
+        """Commit a new source-bound working copy, leaving all ancestors untouched."""
+        from zaaggenz_contracts.rack import with_rack
+        return self.commit(with_rack(self.head_recipe,rack))
+
+    def reset_rack(self):
+        """Remove only the rack; preserve source, SCULPT, graph and other intent."""
+        from zaaggenz_contracts.rack import without_rack
+        return self.commit(without_rack(self.head_recipe))
+
+    def save_rack_preset(self,identifier,name,rack=None,*,replace=False):
+        from .rack_state import save_preset
+        return save_preset(self,identifier,name,rack,replace=replace)
+
+    def rename_rack_preset(self,identifier,name):
+        from .rack_state import rename_preset
+        return rename_preset(self,identifier,name)
+
+    def apply_rack_preset(self,identifier):
+        from .rack_state import apply_preset
+        return apply_preset(self,identifier)
+
+    def restore_source_and_rack(self,identifier=None):
+        from .rack_state import restore_source_and_rack
+        return restore_source_and_rack(self,identifier)
+
+
 def migrate_document(doc):
     if type(doc) is not dict: raise ProjectError('project root must be an object')
     if doc.get('format')!=FORMAT: raise ProjectError('not a zaaggenz project')
     version=doc.get('format_version')
-    if version==VERSION: return deepcopy(doc)
+    if version in (VERSION,'1.1.0'): return deepcopy(doc)
     raise ProjectError(f'unsupported project format {version!r}; no silent migration is defined')
 
 def _validate_document(doc):
     expected={'format','format_version','head','revisions','render_slots'}
+    if doc['format_version']=='1.1.0':expected.add('rack_presets')
     _require(set(doc)==expected,'project has missing/unknown top-level fields')
     _require(type(doc['head']) is str and len(doc['head'])==64,'invalid project head')
     _require(type(doc['revisions']) is list and 1<=len(doc['revisions'])<=MAX_REVISIONS,'invalid revision list')

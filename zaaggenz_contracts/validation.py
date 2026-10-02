@@ -14,9 +14,9 @@ def require(condition, message):
         raise ContractError(message)
 
 
-@lru_cache(maxsize=12)
-def _validator(kind):
-    s = schema(kind)
+@lru_cache(maxsize=13)
+def _validator(kind, version=VERSION):
+    s = schema(kind, version=version)
     Draft202012Validator.check_schema(s)
     # No remote retrieval callback; only bundled fragment references are used.
     return Draft202012Validator(s, registry=Registry())
@@ -178,6 +178,15 @@ def _node(d):
 
 
 def _recipe(d):
+    if 'rack' in d:
+        from .rack import RackRecipe
+        import json
+        RackRecipe(d['rack']).require_source(d)
+        # A Project persists recipe_json as a bounded JSON string. Reject before
+        # a working-copy commit rather than producing a file that cannot reopen.
+        require(len(json.dumps(d, ensure_ascii=False, allow_nan=False,
+                               separators=(',', ':'))) <= 65536,
+                'rack-bearing recipe exceeds Project snapshot string bound')
     mode = d['render_mode']
     require((d['arrangement'] is None) == (mode == 'synth'), 'arrangement presence disagrees with render mode')
     require((d['reversebass'] is not None) == (mode in ('bass', 'arrange_bass')), 'reversebass presence disagrees with render mode')
@@ -244,8 +253,10 @@ def validate(data, expected_kind=None):
     kind = data.get('kind')
     require(type(kind) is str and kind in KINDS, 'unknown contract kind')
     require(expected_kind is None or kind == expected_kind, 'unexpected contract kind')
-    require(data.get('version') == VERSION, 'unsupported contract version; explicit migration required')
-    error = next(_validator(kind).iter_errors(data), None)
+    version = data.get('version')
+    require(version == VERSION or (kind == 'RenderRecipe' and version == '1.1.0'),
+            'unsupported contract version; explicit migration required')
+    error = next(_validator(kind, version).iter_errors(data), None)
     if error:
         raise ContractError(f'{list(error.absolute_path)}: {error.message[:400]}')
 

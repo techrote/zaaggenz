@@ -64,6 +64,9 @@ def _curve_value(curve,event_beat,time_map,offset_beat,default=0.):
 
 def _validate_consumer(recipe,spec):
     d=recipe.to_dict();validate(d,'RenderRecipe')
+    from zaaggenz_contracts.rack import require_rack_consumer
+    try:require_rack_consumer(recipe,consumer='Compose melodic renderer')
+    except ValueError as exc:raise MelodyError(str(exc)) from exc
     if d['render_mode']!='synth' or d['arrangement'] is not None or d['reversebass'] is not None:raise MelodyError('ZG-008 consumes synth-mode melodic recipes only')
     if d['sculpt'] is not None and d['nodes']:raise MelodyError('legacy SCULPT plus explicit DSP graph has no declared melodic ordering')
     if not d['nodes'] and d['output_node']!=d['source']['id']:raise MelodyError('melodic recipe output node is not backed by a DSP graph')
