@@ -9,6 +9,7 @@ import math
 from pathlib import Path
 import random
 import unittest
+from unittest.mock import patch
 
 from zaaggenz_contracts import Contract, ContractError, digest, schema
 from zaaggenz_contracts.examples import examples
@@ -577,6 +578,77 @@ class NyquismicInvalidAndBudgets(unittest.TestCase):
         stereo=sonic(channels=2,stereo_link='independent')
         with self.assertRaisesRegex(ContractError,'aggregate'): admit_foundation(stereo,'1/1',ResourceBudget(max_events=15))
         self.assertEqual(admit_foundation(replace(stereo,stereo_link='linked'),'1/1',ResourceBudget(max_events=8))[0].event_count,8)
+
+    def test_sampler_read_budget_includes_exact_endpoint_and_fractional_excess(self):
+        budget = ResourceBudget(max_read_s=1)
+        for boundary in ('zero_pad', 'edge_hold'):
+            spec = SonicSpec(clock=clock('2', phase_cycles='1/4'), input_boundary=boundary)
+            with self.subTest(boundary=boundary):
+                self.assertEqual(admit_foundation(spec, '1/1', budget)[0].event_count, 2)
+                self.assertEqual(ClockPlan(spec.clock, '1000000001/1000000000').event_count, 2)
+                # No extra event is needed for the full requested extent to
+                # exceed the budget: admission is not a last-capture query.
+                for end in ('1000000001/1000000000', '3/1'):
+                    with self.assertRaisesRegex(ContractError, 'requested read extent'):
+                        admit_foundation(spec, end, budget)
+                self.assertEqual(admit_foundation(spec, '3/1')[0].event_count, 6)
+
+    def test_sampler_read_budget_uses_source_time_not_absolute_clock_time(self):
+        spec = SonicSpec(clock=clock('2', origin_s='100/1'))
+        budget = ResourceBudget(max_read_s=1)
+        self.assertEqual(source_time(spec, '101/1'), 1)
+        self.assertEqual(admit_foundation(spec, '101/1', budget)[0].event_count, 2)
+        with self.assertRaisesRegex(ContractError, 'requested read extent'):
+            admit_foundation(spec, '102/1', budget)
+        with self.assertRaises(ContractError):
+            admit_foundation(spec, '99/1', budget)
+
+    def test_read_budget_validates_bypassed_zero_wet_and_independent_stereo(self):
+        budget = ResourceBudget(max_read_s=1)
+        for mode in ('sampler', 'playback_warp'):
+            for settings in ({'bypass': True}, {'wet': 0},
+                             {'channels': 2, 'stereo_link': 'independent'}):
+                spec = sonic('2', mode=mode,
+                             playback=PlaybackMap(source_extent_s='3/1')
+                             if mode == 'playback_warp' else None, **settings)
+                with self.subTest(mode=mode, settings=settings):
+                    with self.assertRaisesRegex(ContractError, 'requested read extent'):
+                        admit_foundation(spec, '3/1', budget)
+
+    def test_cascade_read_budget_applies_to_each_latent_stage(self):
+        a = SonicSpec(instance_id='a', clock=clock('2', origin_s='2/1'))
+        b = sonic('2', instance_id='b', bypass=True)
+        cascade = SonicSpec(mode='cascade', clock=None, stages=(a, b))
+        budget = ResourceBudget(max_read_s=1)
+        for spec in (cascade, replace(cascade, bypass=True), replace(cascade, wet=0)):
+            with self.assertRaisesRegex(ContractError, 'requested read extent'):
+                admit_foundation(spec, '3/1', budget)
+        # Per-stage source coordinates are not summed or mistaken for absolute
+        # output time; each stage independently fits the same declared limit.
+        admitted = replace(cascade, stages=(a, replace(b, clock=a.clock)))
+        self.assertEqual([p.event_count for p in admit_foundation(admitted, '3/1', budget)], [2, 2])
+
+    def test_source_read_rejection_precedes_clock_plan_construction(self):
+        for mode in ('sampler', 'playback_warp'):
+            spec = sonic('2', mode=mode,
+                         playback=PlaybackMap() if mode == 'playback_warp' else None)
+            with self.subTest(mode=mode):
+                with patch('zaaggenz_contracts.nyquismic_clock.ClockPlan', wraps=ClockPlan) as plan:
+                    with self.assertRaisesRegex(ContractError, 'requested read extent'):
+                        admit_foundation(spec, '3/1', ResourceBudget(max_read_s=1))
+                    plan.assert_not_called()
+
+    def test_playback_read_budget_keeps_unprojected_speed_and_origin(self):
+        budget = ResourceBudget(max_read_s=1)
+        playback = PlaybackMap(source_origin_s='1/2', speed='1/2')
+        for boundary in ('zero_pad', 'edge_hold', 'loop'):
+            spec = sonic('2', mode='playback_warp',
+                         playback=replace(playback, boundary=boundary))
+            with self.subTest(boundary=boundary):
+                self.assertEqual(source_time(spec, '1/1'), 1)
+                self.assertEqual(admit_foundation(spec, '1/1', budget)[0].event_count, 2)
+                with self.assertRaisesRegex(ContractError, 'requested read extent'):
+                    admit_foundation(spec, '3/1', budget)
 
     def test_frame_reference_pass_and_render_identity_admission(self):
         for rates in ((192000,), (384000,384000), (768000,384000), (4000000,), (True,), (384000,768000,1000000,2000000,3000000)):

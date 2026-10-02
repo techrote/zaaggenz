@@ -334,8 +334,9 @@ def admit_foundation(spec: SonicSpec, end_s: str, budget: ResourceBudget = Resou
     require(len(stages) + (spec.mode == 'cascade') <= budget.max_nodes, 'node budget exceeded')
     plans, total = [], 0
     for stage in stages:
-        if stage.playback is not None:
-            require(source_time(stage, end_s) <= budget.max_read_s, 'requested read extent exceeds admission budget')
+        # Bound the unprojected source coordinate in every mode. Sampler time
+        # advances too; padding, hold, looping and bypass do not waive admission.
+        require(source_time(stage, end_s) <= budget.max_read_s, 'requested read extent exceeds admission budget')
         plan = ClockPlan(stage.clock, end_s, budget)
         total += plan.event_count * (stage.channels if stage.stereo_link == 'independent' else 1)
         require(total <= budget.max_events, 'aggregate stage/channel event budget exceeded')

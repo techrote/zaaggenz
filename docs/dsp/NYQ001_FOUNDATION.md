@@ -203,7 +203,15 @@ ordering, not a claim that those kernels have run.
 | Additional reference passes | 4, with strictly increasing rates |
 
 `ResourceBudget` can reduce max_events, max_frames, max_nodes, max_read_s,
-max_filter_taps or max_reference_passes; it cannot raise a hard cap. Frame
+max_filter_taps or max_reference_passes; it cannot raise a hard cap.
+`max_read_s` bounds each stage's **unprojected source coordinate at the full
+requested output endpoint**, including sampler stages (`end - clock.origin_s`)
+and playback stages (source origin plus integrated speed). The equality boundary
+is admitted; any exact rational excess rejects before that stage's clock plan is
+constructed, even when it does not add a capture event. Zero-padding, edge-hold,
+loop projection, zero wet and bypass cannot waive this check. Cascade stages are
+checked independently rather than summing source coordinates or substituting
+absolute project time for elapsed sampler time. Frame
 admission includes channels and the largest delivery/evaluation/reference rate;
 the finite pass count bounds total work. Cascade/shared clocks are conservatively
 counted per stage, not discounted because sharing might later be optimized.
@@ -320,6 +328,7 @@ runtime/render/API/export and remains separate. Local environment: Python
 3.13.5, NumPy 2.3.5, SciPy 1.17.0, jsonschema 4.26.0, referencing 0.37.0,
 threadpoolctl 3.6.0, numerical threads bounded to one. Exact PR-head CI and a
 verified merge remain the acceptance authority, not this source-level record.
+
 Only after #250 acceptance may #251 add the actual fractional-event audio sampler
 using this clock authority and these oracles. #256 still owns a future typed rack
 schema extension after its separate kernel and MBR Phase-A prerequisites.

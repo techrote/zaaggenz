@@ -115,6 +115,14 @@ Mutate one sonic control, input feature, source, instance order, evaluation meth
 
 Freeze explicit finite limits for events and minimum spacing, control/ratio-set size, graph/cascade depth, filter support/lookahead, source read extent, artifact size and reference passes. Preflight bounds before allocating large buffers when possible; validate runtime state as well. Bounds are safety limits, not claims that audio must complete within a realtime buffer deadline.
 
+The NYQ-001 read-admission regressions lower `max_read_s` to one second and
+exercise sampler and playback maps, exact-limit and fractional-excess endpoints,
+nonzero clock/source origins, independent stereo, each cascade stage, latent
+bypass/zero-wet settings and rejection before clock-plan construction. They bind
+the full unprojected source coordinate, not the last captured event or a padded,
+held or looped coordinate. These regressions preserve the frozen clock oracle and
+legacy fixture bytes; they do not establish audio-kernel acceptance.
+
 Exercise zero/negative/NaN/Inf clocks, bool-as-number, over-range depth, denominator zero, huge ratios and numerators, unsupported kernel/mode combinations, nonmonotone jitter, cycles, stale/foreign feature identities, float overflow and integer export limits. No silent clamp, sort, dropped lane, fallback preset, renormalization or finite-looking saturation may hide an invalid computation.
 
 Cancel during event generation, filtering, source-read/loop operations, cascade stages, final flush, convergence checking and publication. Also test rapid superseding edits, output-write failure and restore/reopen. Previous coherent audio survives; failed/stale/partial output is not accepted or cached. Do not retry successful work or poll indefinitely.
