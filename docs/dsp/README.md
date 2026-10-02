@@ -41,3 +41,11 @@ Transition regions are deliberately filters, not brick walls. `confine_delta` me
 ## Scope
 
 This issue does not implement spectral Auto-Tune, Chordness, sidechain semantics or a new source oscillator. Those consumers get explicit, validated insertion points without changing the present default sound.
+
+## Planned opt-in family: Nyquismic Modulation
+
+[Nyquismic Modulation](NYQUISMIC_MODULATION.md) specifies virtual-clock sampling damage, modulation/jitter, rate quantization, explicit playback warp and ordered resampling cascades. See [validation](NYQUISMIC_VALIDATION.md) and [implementation RAG/issue map](../zaaggenz/NYQUISMIC_IMPLEMENTATION_RAG.md), master [#249](https://github.com/techrote/zaaggenz/issues/249).
+
+This is planned new versioned scope, not another executable v1 node or a change to the graph described above. Existing bitcrusher, direct-rate/AA nodes and factory sounds remain unchanged. Artistic virtual rate is distinct from fixed numerical evaluation and delivery clocks; improving quality must not silently remove intentional aliases.
+
+The implementation must reuse the typed graph, exact bypass and delay-aligned effect-delta routing, preserve source/layer ownership and one final master, and explicitly extend the accepted rack contract. Per-band integration waits for accepted MBR Phase A / #242; core DSP does not wait for external VST hosting. Offline quality is prioritized without imposing realtime/latency goals; finite safety budgets and cancellation remain required.
