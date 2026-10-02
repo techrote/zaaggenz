@@ -74,6 +74,22 @@ class ReverseDependencyCI(unittest.TestCase):
         self.assertIn("zg023-inspector.yml", dispatch)
         self.assertIn("zg032-vocal.yml", dispatch)
 
+    def test_nyquismic_contract_and_frozen_oracle_paths_are_owned(self) -> None:
+        for path in ("zaaggenz_contracts/nyquismic.py", "zaaggenz_contracts/nyquismic_clock.py",
+                     "tests/contracts/test_nyquismic.py", "tests/contracts/nyquismic_oracles.py",
+                     "tests/contracts/fixtures/nyquismic-v1.json",
+                     "tests/contracts/fixtures/nyquismic-legacy-anchors-v1.json"):
+            with self.subTest(path=path):
+                result = ci.classify_changed_paths([path], ROOT)
+                self.assertEqual(["ZG-002"], result["direct_stable_ids"])
+                self.assertIn("zg002-contracts.yml", result["native"])
+                self.assertIn("zg023-inspector.yml", {r["workflow"] for r in result["dispatch"]})
+        workflow = (ROOT / ".github/workflows/zg002-contracts.yml").read_text()
+        self.assertIn("github.event.pull_request.head.sha || github.sha", workflow)
+        impact = (ROOT / ".github/workflows/zg000-ci-impact.yml").read_text()
+        self.assertIn("tests/contracts/nyquismic_oracles.py", impact)
+        self.assertIn("tests/contracts/fixtures/nyquismic*.json", impact)
+
     def test_broad_consumer_filter_does_not_claim_source_ownership(self) -> None:
         result = ci.classify_changed_paths(["zaaggenz_melody/render.py"], ROOT)
         self.assertEqual(["ZG-008"], result["direct_stable_ids"])

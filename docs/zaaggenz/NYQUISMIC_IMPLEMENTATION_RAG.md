@@ -9,6 +9,26 @@
 
 This is the focused retrieval map and executable-work handoff for the approved feature. It does not replace accepted implementation/contracts or the canonical ZG programme's readiness state. `NYQ-*` are local follow-up identifiers, like `MBR-*`, not additions to the stable `ZG-000` through `ZG-045` IDs. Do not renumber the programme or silently rewrite its DAG.
 
+## NYQ-001 implementation handoff
+
+The 1.0.0 foundation is now in `zaaggenz_contracts/nyquismic.py` and
+`zaaggenz_contracts/nyquismic_clock.py`; read
+[NYQ001_FOUNDATION.md](../dsp/NYQ001_FOUNDATION.md) before changing or consuming it.
+It is the frozen parameter/bounds/phase/source-map/seed/checkpoint/identity and
+fixture-hash reference. `tests/contracts/test_nyquismic.py` runs through the
+existing mapped ZG-002 contract workflow; independent oracle and fixture paths
+also have explicit reverse-dependency ownership. No audio renderer, rack insert,
+Project migration or factory change is supplied. All audio execution fails
+explicitly, and unsupported routed/jitter/quantized clock geometry fails too.
+
+Reconciled main is `b76d22df189d176ea371e14e2fb0eff74cd2f7af`, containing accepted
+#248 and documentation #259. Concurrent #240 owns execution/runtime/API/export;
+NYQ-001 stays on contract/oracle surfaces. This source note does not satisfy a
+merge gate: consult #250's exact-head CI and verified merge before starting #251.
+#251 should reuse the integrated phase/event authority and frozen independent
+fixtures, not introduce a competing rounded-hold or period-recurrence clock.
+#256 alone owns the future typed rack adaptation after #255 and accepted #242.
+
 ## Owner decisions to preserve
 
 The feature name is **Nyquismic Modulation**; technical descriptions are **modulated virtual sampling lattice** and **virtual sample clock**. Retrieval aliases: nyquizmic, Nyquist modulation, clockfold, ratewarp, modulated sample-rate reduction, clock jitter, resampling damage, alias lattice.

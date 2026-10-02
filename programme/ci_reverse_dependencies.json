@@ -46,6 +46,9 @@
   "source_path_owners": {
     "baseline/recovered_source/**": ["ZG-001"],
     "zaaggenz_contracts/**": ["ZG-002"],
+    "tests/contracts/test_nyquismic.py": ["ZG-002"],
+    "tests/contracts/nyquismic_oracles.py": ["ZG-002"],
+    "tests/contracts/fixtures/nyquismic*.json": ["ZG-002"],
     "requirements-contracts.txt": ["ZG-002"],
     "zaaggenz_project/**": ["ZG-003"],
     "zaaggenz_jobs/**": ["ZG-004"],

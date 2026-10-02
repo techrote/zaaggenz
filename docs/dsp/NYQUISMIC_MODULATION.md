@@ -8,6 +8,22 @@
 
 Read [implementation RAG](../zaaggenz/NYQUISMIC_IMPLEMENTATION_RAG.md) for the issue chain, ownership and kickoff; read [validation](NYQUISMIC_VALIDATION.md) for independent oracles and acceptance. Live accepted code/contracts remain authoritative. No runtime behavior, factory sound, default or canonical programme readiness is changed by this document.
 
+## NYQ-001 frozen foundation
+
+The opt-in **1.0.0** contract/clock foundation is implemented in
+`zaaggenz_contracts/nyquismic.py` and `nyquismic_clock.py`.
+[NYQ001_FOUNDATION.md](NYQ001_FOUNDATION.md) is the exact parameter/budget,
+phase/reset/source-map, identity/checkpoint, capability and fixture-hash reference.
+It freezes 0.001–1,536,000 Hz virtual rates, a 1/1,536,000-second minimum gap,
+3600-second physical-time bounds, 1,000,000 admitted events, three nonnested
+stages, 16 routes/256 points per curve, 4096-tap support ceiling, 86,400-second
+read bound, 1,000,000 loop traversals and four additional reference passes.
+The exact-rational/Decimal80 clock calculates geometry only. All audio execution
+remains explicitly unavailable; routed/quantized/jitter clock geometry is also
+rejected until #253. No accepted rack/Project/RenderRecipe schema or legacy DSP
+behavior is changed. PR-head CI and the child merge record determine acceptance;
+this is not evidence of a finished Nyquismic instrument feature.
+
 ## Purpose and product boundary
 
 The owner proposed optionally modulating sample-rate behavior to create distinctive distortions, including non-integer ratios and deliberately imperfect resampling, analogous to amplitude bitcrushing. The agreed name is **Nyquismic Modulation**. The earlier spelling `nyquizmic` is only a retrieval alias, not a separate feature.
