@@ -12,6 +12,7 @@ from zaaggenz_contracts.music import beat_to_sample
 from zaaggenz_melody import make_phrase_plan, make_melodic_recipe, note_event, rest_event
 from zaaggenz_project import Project
 from zaaggenz_tuning import tuning_from_spec
+from zaaggenz_zaag.krach_presets import IDS as KRACH_IDS, parameters as krach_parameters, validate_binding as validate_krach
 
 VERSION = '1.0.0'
 OWNERSHIP = {'synthline': 'complete-source-derived-notes', 'exciter': 'source-derived-roll-slices',
@@ -60,6 +61,8 @@ class TimelineDocument:
         base = Project.from_document(data['project']).head_recipe.to_dict()
         if base['source']['method'] != 'legacy.synth.1.2.1':
             raise TimelineError('unsupported source; retained project must have a legacy synth source')
+        if base['source']['id'].startswith('zaag.krach-v3-'):
+            validate_krach(base['source']['id'],base['source']['params'])
         end = fraction(data['end_beat'])
         if not 0 < end <= 256:
             raise TimelineError('timeline length must be positive and at most 256 quarter-note beats')
@@ -144,6 +147,9 @@ def source_preset_id(document):
     base=Project.from_document(document.to_dict()['project']).head_recipe.to_dict()
     source_id=base['source']['id'];params=base['source']['params']
     from zaaggenz_zaag import PRODUCTION_PRESET_IDS,family
+    if source_id in KRACH_IDS:
+        validate_krach(source_id,params)
+        return source_id
     if source_id in PRODUCTION_PRESET_IDS:
         expected=adapt_parameters('synth',{**family(source_id).synth_overrides,
                                            'sr':params['sr'],'bpm':params['bpm'],'beats':1})
@@ -156,7 +162,9 @@ def apply_source_preset(document,preset_id):
     if not isinstance(document,TimelineDocument):document=TimelineDocument(document)
     data=document.to_dict();project=Project.from_document(data['project']);base=project.head_recipe.to_dict()
     old_id=base['source']['id'];old=base['source']['params']
-    if preset_id=='locked_bloom':
+    if preset_id in KRACH_IDS:
+        new_id=preset_id;params=krach_parameters(preset_id,old['sr'],old['bpm'])
+    elif preset_id=='locked_bloom':
         new_id='locked_bloom';params=adapt_parameters('synth',{**__import__('uptempo_harmony.synth',fromlist=['PRESETS']).PRESETS['locked_bloom'].to_dict(),
                                                                 'sr':old['sr'],'bpm':old['bpm'],'beats':1})
     else:
@@ -225,7 +233,10 @@ def memory_estimate(recipe):
     if frames / tm['sample_rate_hz'] > 60:
         raise TimelineError('render exceeds the 60-second timeline limit; shorten the phrase or raise tempo')
     source = math.ceil(p['sr'] * 60 / p['bpm'] * p['beat_fill'])
-    return 16 * 1024**2 + (frames + source) * 96 + source * 512
+    # Frozen Krach v3 synthesises internally at 4x, with explicit partial banks.
+    # Reserve the larger source working set before queuing the render.
+    source_work=4096 if d['source']['id'] in KRACH_IDS else 512
+    return 16 * 1024**2 + (frames + source) * 96 + source * source_work
 
 
 def describe(document):

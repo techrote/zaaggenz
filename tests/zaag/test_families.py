@@ -33,7 +33,8 @@ class ZaagFamilyTests(unittest.TestCase):
         self.assertEqual(catalogue['owner_approval'],'zg022-owner-approval-2026-09-27')
         ids=[x['id'] for x in catalogue['presets']]
         self.assertEqual(ids[0],'locked_bloom')
-        self.assertEqual(set(ids[1:]),expected)
+        self.assertEqual(set(ids[1:7]),expected)
+        self.assertEqual(set(ids[7:]),{'zaag.krach-v3-open','zaag.krach-v3-pulse','zaag.krach-v3-weight','zaag.krach-v3-edge'})
         self.assertTrue(set(ids).isdisjoint({x.id for x in contrasts()}))
         self.assertTrue(catalogue['presets'][0]['protected_default'])
 
@@ -91,8 +92,8 @@ class ZaagFamilyTests(unittest.TestCase):
         self.assertEqual(len(pack.items),9);self.assertEqual(pack.manifest['status'],'pending-owner')
         self.assertEqual(pack.manifest['audition_revision'],'zg022-brutal-family-redesign-229-v1')
         self.assertEqual(set(pack.manifest['candidate_intents']),{x.id for x in candidates()})
-        self.assertEqual({x['id'] for x in pack.manifest['endpoints']},{'bounce','melodic_identity','source_character','usefulness'})
         self.assertFalse(pack.manifest['anchor_audio_included']);self.assertTrue(pack.manifest['rejected_variants_retained_as_evidence'])
+        self.assertEqual({x['id'] for x in pack.manifest['endpoints']},{'bounce','melodic_identity','source_character','usefulness'})
         self.assertIn('Explicit owner approval',pack.manifest['decision_policy'])
         self.assertTrue(all(item.peak<=.980001 for item in pack.items))
         self.assertEqual(len(pack.manifest['manifest_sha256']),64)

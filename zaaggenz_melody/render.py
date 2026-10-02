@@ -71,6 +71,11 @@ def _validate_consumer(recipe,spec):
     if d['sculpt'] is not None and d['nodes']:raise MelodyError('legacy SCULPT plus explicit DSP graph has no declared melodic ordering')
     if not d['nodes'] and d['output_node']!=d['source']['id']:raise MelodyError('melodic recipe output node is not backed by a DSP graph')
     if d['source']['method']!='legacy.synth.1.2.1':raise MelodyError('unsupported source method')
+    if d['source']['id'].startswith('zaag.krach-v3-'):
+        from zaaggenz_zaag.krach_presets import validate_binding
+        validate_binding(d['source']['id'],d['source']['params'])
+        if spec.mode is not NoteMode.SOURCE_DERIVED:
+            raise MelodyError('approved Krach presets require source-derived mode')
     if d['phrase'] is None:raise MelodyError('melodic recipe requires PhrasePlan')
     if d['phase_policy']!=spec.mode.phase_policy:raise MelodyError('recipe phase policy disagrees with named note mode')
     if d['tail']['mode'] not in ('preserve','truncate'):raise MelodyError('melodic renderer requires explicit preserve/truncate tail policy')
@@ -171,6 +176,12 @@ def _apply_preserved_topology(pre,d):
 
 def _production_preset_source(d,base_params,spec,ctx=None):
     source_id=d['source']['id']
+    from zaaggenz_zaag.krach_presets import IDS as KRACH_IDS, render as render_krach
+    if source_id in KRACH_IDS:
+        _checkpoint(ctx)
+        audio=render_krach(source_id,d['source']['params'])
+        _checkpoint(ctx)
+        return audio
     try:
         from zaaggenz_zaag import PRODUCTION_PRESET_IDS,family,render_family_source
     except ImportError:
