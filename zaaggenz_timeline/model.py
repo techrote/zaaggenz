@@ -197,8 +197,15 @@ def compile_recipe(document):
                                detune_cents=row['detune_cents'], gain_db=row['gain_db'], gesture_id=gid, source_id=source_id)
         events.append(event)
     phrase = make_phrase_plan(tuning.id, events, end_beat=data['end_beat'], gestures=gestures, source_id=source_id)
-    return make_melodic_recipe(base['source']['params'], base['time_map'], base['tuning'], phrase,
+    compiled = make_melodic_recipe(base['source']['params'], base['time_map'], base['tuning'], phrase,
                                quality='standard', tail_mode='truncate', master_gain_db=data['master_gain_db'], source_id=source_id)
+    if 'rack' in base:
+        # Explicit opt-in uses the existing topology-preserving transform. Old
+        # no-rack compilation is unchanged; retained BODY/AUX/SUB stay retained.
+        from zaaggenz_melody.recipe import transform_melodic_recipe
+        compiled = transform_melodic_recipe(Contract(base), phrase, quality='standard',
+                                             tail_mode='truncate', master_gain_db=data['master_gain_db'])
+    return compiled
 
 
 def render_region(recipe, region):

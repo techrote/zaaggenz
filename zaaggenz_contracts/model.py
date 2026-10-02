@@ -181,3 +181,9 @@ class Contract:
     @property
     def sha256(self):
         return digest(self.to_dict())
+
+    @property
+    def sonic_sha256(self):
+        """Sonic intent identity; sha256 remains the complete saved snapshot ID."""
+        from .rack import sonic_recipe_sha256
+        return sonic_recipe_sha256(self)

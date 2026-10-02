@@ -74,9 +74,20 @@ KINDS = ('AudioAssetRef', 'TimeMap', 'TuningSpec', 'FeatureBundle', 'PartialTrac
          'GestureSpec', 'PhrasePlan', 'DSPNodeSpec', 'RenderRecipe', 'TrialSpec', 'RunManifest')
 
 
-def schema(kind=None):
+def schema(kind=None, *, version=VERSION):
     if kind is not None and kind not in KINDS:
         raise ValueError('unsupported contract kind')
+    # v1 exports are frozen. Only the explicitly selected RenderRecipe extension
+    # opts into v1.1; all nested musical/audio/DSP contracts remain v1.0.
+    if version not in (VERSION, '1.1.0') or (version != VERSION and kind != 'RenderRecipe'):
+        raise ValueError('unsupported contract schema version')
+    defs = definitions()
+    if version == '1.1.0':
+        from .rack_schema import rack_schema
+        recipe = defs['RenderRecipe']
+        recipe['properties']['version'] = const(version)
+        recipe['properties']['rack'] = rack_schema()
+        recipe['required'].append('rack')
     root = ref(kind) if kind else {'oneOf': [ref(k) for k in KINDS]}
-    return deepcopy({'$schema': DRAFT, '$id': 'urn:zaaggenz:contracts:1.0.0' + (':' + kind if kind else ''),
-                     '$defs': definitions(), **root})
+    return deepcopy({'$schema': DRAFT, '$id': 'urn:zaaggenz:contracts:' + version + (':' + kind if kind else ''),
+                     '$defs': defs, **root})

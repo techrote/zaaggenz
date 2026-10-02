@@ -4,6 +4,12 @@ on:
     paths:
       - 'zaaggenz_dsp/**'
       - 'zaaggenz_spectral/**'
+      - 'zaaggenz_contracts/**'
+      - 'zaaggenz_project/**'
+      - 'zaaggenz_timeline/**'
+      - 'zaaggenz_melody/**'
+      - 'tests/rack/**'
+      - 'docs/dsp/MBR001_EDITABLE_RACK.md'
       - 'tests/dsp/**'
       - 'tests/spectral/**'
       - 'tools/band_selective_report.py'
@@ -17,6 +23,7 @@ jobs:
   band-selective:
     strategy:
       fail-fast: false
+      max-parallel: 2
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
@@ -24,6 +31,8 @@ jobs:
     env: {PYTHONUTF8: '1', OPENBLAS_NUM_THREADS: '1', OMP_NUM_THREADS: '1'}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
       - name: Materialize authenticated legacy baseline
@@ -34,6 +43,8 @@ jobs:
         run: python -m unittest discover -s tests/dsp -v
       - name: Spectral acceptance and regressions
         run: python -m unittest discover -s tests/spectral -v
+      - name: MBR-001 saved rack, legacy parity and Compose contract handoff
+        run: python -m unittest discover -s tests/rack -v
       - name: Frozen 48 kHz band isolation evidence
         run: python tools/band_selective_report.py --out band-selective-evidence.json
       - uses: actions/upload-artifact@v4
