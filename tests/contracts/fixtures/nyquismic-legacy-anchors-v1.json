@@ -1,0 +1,97 @@
+{
+  "aa_filters": {
+    "1": {
+      "alignment": "sample-synchronous direct path",
+      "declared_latency_samples": 0,
+      "factor": 1,
+      "fir_taps": 0,
+      "id": "legacy-direct-1x",
+      "kaiser_beta": null
+    },
+    "2": {
+      "alignment": "offline zero-phase compensated polyphase; symmetric pre/post ringing is retained",
+      "cutoff_fraction_of_oversampled_nyquist": 0.5,
+      "declared_latency_samples": 0,
+      "factor": 2,
+      "fir_taps": 65,
+      "id": "zg.kaiser_polyphase_zero_phase.v1",
+      "kaiser_beta": 8.6
+    },
+    "4": {
+      "alignment": "offline zero-phase compensated polyphase; symmetric pre/post ringing is retained",
+      "cutoff_fraction_of_oversampled_nyquist": 0.25,
+      "declared_latency_samples": 0,
+      "factor": 4,
+      "fir_taps": 129,
+      "id": "zg.kaiser_polyphase_zero_phase.v1",
+      "kaiser_beta": 8.6
+    },
+    "8": {
+      "alignment": "offline zero-phase compensated polyphase; symmetric pre/post ringing is retained",
+      "cutoff_fraction_of_oversampled_nyquist": 0.125,
+      "declared_latency_samples": 0,
+      "factor": 8,
+      "fir_taps": 257,
+      "id": "zg.kaiser_polyphase_zero_phase.v1",
+      "kaiser_beta": 8.6
+    }
+  },
+  "base_commit": "b76d22df189d176ea371e14e2fb0eff74cd2f7af",
+  "bitcrush_default": {
+    "alias_policy": "intentional unfiltered quantization/sample-hold images; caller must opt into crossover-delta confinement when spill is undesired",
+    "bit_depth": 8,
+    "dither": "none",
+    "full_scale": 1.0,
+    "hold_phase": "sample 0 anchored",
+    "hold_samples": 1,
+    "quantizer": "signed uniform round-to-nearest; no hidden normalization",
+    "wet": 1.0
+  },
+  "contract_examples": {
+    "AudioAssetRef": "4cbaa280fe586dc537aa3eaf2d55e998315dd6b03dd05d5b09f10ce6999f448d",
+    "DSPNodeSpec": "fb8d9f4079ae6e9114db7d8227a16d30c0866cbb789ad831703c11f99530a8b8",
+    "FeatureBundle": "800faf8482ddf07ce6e146f54a452c029167da32a1cefa2f89477f07b9a913b8",
+    "GestureSpec": "bf6470ce6e7a3b6cd57d585395fa41498196bb92e13a57d2402f3f2d7cb1c43a",
+    "PartialTrackBundle": "35bb4b9291a4035408835a964ffc74421d04b0b7c1237587966325997d053113",
+    "PhrasePlan": "09d7c867a80617e3cfe97ef567c547066c50586bfedda5dbed07ac6ea7c6816a",
+    "RenderRecipe": "d81b094313d0a1de20a2351380c88443ef9b0c9f7f56d3e60b3b76bc48ee332e",
+    "RunManifest": "593e9a6f476f0d03a859bbd108d608a60f6a8988bda503d6c909566b6e3e97e5",
+    "TimeMap": "4887aa693a85d9332b2c04e50c0cf2c968db462b6fabe49793e0fe6a932f9bdf",
+    "TrialSpec": "6d1f4f395d8a9059700125867daf693f80d60192b818ceee7ddf7cb22f986b9a",
+    "TuningSpec": "b9c11f7d554ab461e8d774ef719c82347386092e270969fd56071424a80a3db3"
+  },
+  "empty_racks": {
+    "12000": "834a42647306222e798b8bb5d4290360aa38412806077dbbbdd9829cebf66060",
+    "48000": "5108bddcc007a5487ee6449c0d52d9447e1b3de0333b5f175772a804d57c7a08"
+  },
+  "factory_recipes": {
+    "air_sizzle": "180de9fd2250966f6a36feeee6afebe95450592e6f634e59ebeaf0e23ab28d13",
+    "breathing_noise": "189879b1708f2bc8260cc1ae2d882f68ddc21f7dea5505aa7c2cc2d4eb6ee2b9",
+    "clean_thump": "63e3ff631b5832372bd29510a9350714cc3d04078082744411ad582fb3692e62",
+    "continuous_csharp": "3ef43cc7f361e8d9215954440cff50065c56ae8175ff8638f1079f0570abe6c3",
+    "damped_body": "70b47d635dbd00d28d505c14d34de2d1efeb741499e53687d2375948eea02117",
+    "deep_punch": "c0cef00467d3604547f9aa6e601195acd360283758ce7462bb8d17fe60bbf821",
+    "dry_hammer": "fa340484c1c36d1e6df97f0b9e42d6d68138731fd30c15bb018d91fa43aab158",
+    "even_bite": "76194a2f4dfc2f11543e18879c275e6d6eea78e20f7c5fcc9ee99c0c49a47631",
+    "fizzle_burn": "8dfca3b664423a2444e261fda1a9e35302a393fe991d6bd8d570023d5a24c11b",
+    "grit_wall": "2c565cfc01e949b11aff8f01f09d44db113a6b36ae549a3750921f041dfec041",
+    "harmonic_glass": "cb372c5dafe8a8d5430ba5508703060289b76c159b512a3d6d6c08bb349ffac9",
+    "hollow_pipe": "ea4fe39e8d4a43d7e96449621bae0a5bb643150a1ac29e094aacd069e564c174",
+    "locked_bloom": "ba2dc2f7f896472fb9318733c74676346db03d675174a292cb3720a3d5db3a6e",
+    "long_roar": "98c970e0e8ac2ae11ad5b75b6d2b4a5069536b46b5f8d4a19cdd5b000e5d96a9",
+    "metal_scream": "7f4561c503af81f99b28ed5989c951bbe8c2805f6ade77abbe8686ab6445d48e",
+    "neutral": "467750d9cde6b8de45e43f3b3bf0ea3fef76a9aeeb0ac072180af8840974a3e6",
+    "odd_lattice": "6c1e4a0c8b1e05840ef84bc00e7bf29fc765aae3004f3b3b84dc88409077f3cb",
+    "odd_square": "e5c54a855b93b8b4bb60ffb77a58b23540e563f93201efa16b82190447e5626a",
+    "progressive_g": "226c1e25b1595c550270692aca453158571396e4425f70cb3aa0e3e9e1b66966",
+    "roll_exciter": "192797dddaa937d83b4ac622dcf689d5704b9ec3d91d5fa4bdab9f03eb123297",
+    "rubber_slam": "cf228be1cbbe8555e31ef68811f7cb0ea025a82844a682fe8a5b5be1e061c752",
+    "sandblast": "522a2d328344d71a4296fb1ed7e730c74e09331210ece0d3ceeda9d14705ebad",
+    "short_crack": "df37d997e3619f03cd46d458da935756b96428903a7659c16bc8048e6dc9c5ad",
+    "sub_pressure": "5d09ae2b8c40cdff6d6e5178be34c0474fc983d4f23c08286a3073b99e688a44",
+    "swept_mixed": "d29f1ce408f48b0072dc8d06cbf75cbda243dbc40b786e0f5189f636d74f7d46",
+    "sync_locked": "f7c0fdfc6c010382b470ada30ba394c17801d8b7fcb020c52cef79c11544eec3",
+    "unstable_osc": "191dd2c126c96f6abb9fccd2b69fcbc3ad3ecd0a5d648629ecb14d9e8b07c7f5"
+  },
+  "schema_v1": "ef7ef8314ca444ecbe6b1242e9dbb9af0456737bef4679622a78653743fbf568"
+}
