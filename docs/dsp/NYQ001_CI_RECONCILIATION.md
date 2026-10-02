@@ -123,3 +123,90 @@ needed. Exact-final-head native and reverse checks must pass **after** this repa
 and main must be verified after merge, before #250 can be accepted or #251 begun.
 The initial-head artifacts support the narrow provenance decision; they are not a
 substitute for final-head CI. This record makes no claim that PR #260 has merged.
+
+
+## Continuation: sampler read-admission correction
+
+Review of candidate `3ad7de65190f11b94e2c601508c081abada3577d` reproduced a
+source-read admission defect: a sampler at 2 Hz with `max_read_s=1` admitted a
+three-second plan, while the equivalent playback map rejected. Corrective
+commit **`12dc6a68547e38e5a0b0335c08dcc2cbc2ab22fe`**, tree
+`d171c944832816fcb833a2632e7995aeca0d9cde`, applies the existing unprojected
+source-time authority to every stage before constructing its ClockPlan. Six
+regressions cover the equality/fractional boundary, nonzero clock/source origins,
+latent bypass/zero wet, independent stereo, cascade stages, preallocation and
+preserved playback speed/loop projection. The corrected foundation/validation
+docs specify the same finite limit; no event-geometry or sonic-schema change.
+
+The amended contract suite passes **58 Nyquismic / 243 total contract tests**.
+As a negative control, executing these tests against the authenticated pre-fix
+module in memory yields eight failing subtests across five new methods, without
+errors. The sixth preserves playback semantics. All 17 contract-check commands,
+33 rack, 21 CI-routing and 10 runtime-protocol identity tests pass locally.
+The frozen oracle generator, analytic data and legacy anchor bytes are unchanged.
+
+Only `zaaggenz_contracts/nyquismic_clock.py` changes in the preceding NYQ
+implementation manifest. Its LF-normalized source SHA-256 becomes
+`a47027c1a9c75e1851a4a9d52aa9607580de082b8d83a87391b26a1949c5a196`;
+all other entries, including `nyquismic.py`, stay byte-identical. Replacing this
+one entry with its previous hash reconstructs `b7109aba...` exactly. Removing the
+two NYQ entries still reconstructs accepted main's `ae62e3d...` manifest.
+The corrected implementation identity is
+**`f562faec6d279b090ff0da28b7c73fc24082d875e2fa3d9c87cc50d95072bcd3`**.
+The original compressed calibration and its `ff938e70...` identity remain frozen.
+
+### New actual evidence, inspected before registration
+
+Existing ZG-024a run **37027834283** checked exact head `12dc6a6`. Both platform
+reports below were downloaded and their ZIP/member/report identities verified
+before appending any new registration. Their complete implementation manifests
+match each other and the tested local source exactly. Each contains all six
+fixtures and 36 candidates, with complete replay records, not a fabricated
+identity-substituted report.
+
+| Platform / artifact ID | Archive SHA-256 |
+|---|---|
+| Ubuntu / `11236157190` | `4cc1e978723d2c82b874a943c3f1dca554e6f21ca5dc85403b0608b461c9845c` |
+| Windows / `11236032532` | `36716413a912e4c83e989c8d05460434156dbfc486264000fb4710173ff3aa58` |
+
+| Evidence member | Ubuntu SHA-256 | Windows SHA-256 |
+|---|---|---|
+| `inverse-evidence.json` file | `bac934e70fa9db2666a60f3a80044d85c088813e16effdb550a6dc58c90fc883` | `1044651fdef27e0b3d4e5e8610e104ddbd456bff25247c3439766ce61fba29b2` |
+| `inverse-full.json` file | `8a9eb494df55cc0d445e77656a75bc7618e334c3928419c80ae2fda798dfdd17` | `05b0be7a3b5cadd8929ec7d2d1706a7de9139487963b18f4cb3738902dab26ee` |
+| `inverse-timing.json` file | `daf9f8edd5910622b021e1aea612fd0d93502d5e388cb10f366bc059f2e5904b` | `b647399efcae7eb5f989eef0d5c32179202749ceb90b34d5202ce11166c8a8e8` |
+| Report internal `evidence_sha256` | `71a08012fe8c7853fdc5f27cec63d1f52b6dfc986cad5a425faa450e4c63b4b5` | `d4a2ba7c8df43d1a1e1d68794497bb33b906c8c4202a77644272f68197bc6ad5` |
+
+For each actual report, the unchanged calibration comparator and historical
+registries produce precisely eight failures: the unregistered `ff938e70...` to
+`f562faec...` implementation transition plus the same seven listed state/gate
+paths. A proposed in-memory registration of only that identity and the exact
+existing path/from/to values produces **zero failures** on both platforms.
+Cross-platform comparison and comparison with the independently run local
+calibration also pass. Original **ATOL 1e-7 / RTOL 1e-5** are unchanged; report
+bytes differ across platforms, so this is not a bitwise audio-equivalence claim.
+
+The new registry append is based on that actual evidence. The implementation
+row's `from` remains the original calibration basis, while its single
+`changed_paths` entry records the correction relative to the preceding registered
+NYQ implementation. The corresponding validation row carries the seven old
+changes verbatim, not a new relaxation. No comparator, calibration, numeric
+score, recipe, rank, source/hash policy, old DSP, factory or accepted rack schema
+is changed. This narrow append was reconfirmed with #240 in comment 5955890794;
+its runtime/render/API/export ownership remains separate.
+
+`tests/inverse/test_nyq001_read_transition.py` inherits the existing comparator
+adversarial cases for this new exact successor and adds checks for its one
+changed source path and every historical registry row. Before this append the
+31 implementation rows had canonical digest
+`da2ca8d0e1d4dcd701d454b8ad5c9c3161ce5f05ca91d8e8fc4017c48bb7214e`,
+and the six validation rows had digest
+`16ff06fee56318399c69f3c7ddae2706916d05ee170096ef79a5b5a8359dd488`.
+Both prefixes and their existing compact UTF-8 encoding are preserved. These
+synthetic test fixtures are comparator tests only; the real platform reports
+above justify registration. All **19 transition tests** pass locally.
+
+Metadata/test/documentation changes do not change the corrected implementation
+manifest. The final PR head must independently pass all mapped native and
+reverse-dependency checks after this append. Previous-head green jobs and this
+artifact audit cannot authorize merge, issue closure or #251 by themselves.
+No automatic merge, duplicate dispatch or new workflow is introduced.
