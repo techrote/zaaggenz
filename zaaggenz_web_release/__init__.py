@@ -64,6 +64,8 @@ _CONTRACT_PROTOCOL_PATHS = (
     "zaaggenz_contracts/music.py",
     "zaaggenz_contracts/music_schema.py",
     "zaaggenz_contracts/ownership.py",
+    "zaaggenz_contracts/rack.py",
+    "zaaggenz_contracts/rack_schema.py",
     "zaaggenz_contracts/recipe_schema.py",
     "zaaggenz_contracts/registry.py",
     "zaaggenz_contracts/schema.py",
@@ -82,6 +84,7 @@ _PROJECT_PROTOCOL_PATHS = (
     "zaaggenz_project/__init__.py",
     "zaaggenz_project/cache.py",
     "zaaggenz_project/project.py",
+    "zaaggenz_project/rack_state.py",
 )
 _TIMELINE_PROTOCOL_PATHS = (
     "zaaggenz_timeline/__init__.py",
