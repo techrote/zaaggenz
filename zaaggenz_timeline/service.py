@@ -92,7 +92,19 @@ class TimelineService:
     def owns_scheduler(self):
         return self._owns_scheduler
 
-    def _remember_job(self, job_id, binding):
+    def _remember_job(self, job_id, binding=None):
+        # Retained internal consumers may hand us an already-completed render
+        # from the shared scheduler.  Never restore the old unbound ownership
+        # semantics: derive a complete non-authoritative binding from the exact
+        # RenderArtifact and current session generation, or fail closed.
+        if binding is None:
+            result = self.scheduler.result(job_id)
+            if not isinstance(result, RenderArtifact):
+                raise JobError('cannot remember an unbound non-render timeline job')
+            generation, _ = self.session.current_identity()
+            binding = {'generation':generation, 'revision_id':result.revision_id,
+                       'request_key':result.cache_key, 'authoritative':False,
+                       'revoked':False}
         with self._jobs_lock:
             self._jobs[job_id] = binding
             self._jobs.move_to_end(job_id)
