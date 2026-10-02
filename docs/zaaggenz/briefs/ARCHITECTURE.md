@@ -76,3 +76,11 @@ Prefer small registries with explicit schemas over inheritance-heavy frameworks.
 ## Release invariant
 
 A project saved in a release must either reopen with the same declared behaviour or fail with a specific migration/compatibility message. UI asset fingerprints/backend version must agree so the browser cannot silently combine releases.
+
+## Nyquismic virtual-clock extension — planned, opt-in
+
+[Nyquismic Modulation](../../dsp/NYQUISMIC_MODULATION.md), tracked by [master #249](https://github.com/techrote/zaaggenz/issues/249), adds artistic virtual sampling clocks inside the DSP graph rather than changing the project, audio-device or delivery timebase. Read the [implementation RAG](../NYQUISMIC_IMPLEMENTATION_RAG.md) and [validation plan](../../dsp/NYQUISMIC_VALIDATION.md) before implementation.
+
+Numerical evaluation quality, virtual artistic rate and output sample rate have separate explicit identities. Fractional event scheduling, playback read-time mapping, stochastic streams, filter support and checkpoints must preserve declared physical-time semantics across chunks and context-aware previews. Improving numerical quality cannot silently re-author intentional alias character; output-rate changes cannot silently redefine a saved virtual reference clock.
+
+The owner prioritizes offline sound quality/reproducibility with no hard realtime, latency or performance-efficiency requirement. Finite budgets, cancellation and atomic results remain safety invariants. Reuse the authoritative session/jobs, source/layer and singular master ownership; preserve old node/preset/rack versions and exact bypass. Cross-band control stays acyclic and upstream-bound. Rack integration consumes accepted MBR Phase A / #242; neither external hosting nor a global quality/default migration is a prerequisite. This planned extension is not evidence of an accepted runtime capability.

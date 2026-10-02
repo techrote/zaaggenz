@@ -91,3 +91,13 @@ Read the current lineage in this order:
 15. `programme/task_state.json` plus parent issue #25's latest blocker record — current readiness authority.
 
 Do **not** restart #87, #92 or #134: those child issues are completed evidence/history. ZG-024e / #227 is also terminal research history once PR #228 is merged; do not repeat its disclosed confirmation fixtures as a fresh test set. Parent ZG-024 / #25 remains research-active: coupling now explains part of the eligible-parent starvation, but untouched confirmation did not improve eligible availability over its matched null and regressed held-out performance against the best flat controls. The current blocker is therefore narrower: `research:ZG-024-coupled-search-heldout-generalisation`.
+
+## Nyquismic Modulation — local implementation follow-up
+
+For Nyquismic, virtual sample clocks, sample-rate modulation, jitter, rate quantization, playback-clock warp or resampling damage cascades, start with [NYQUISMIC_IMPLEMENTATION_RAG.md](NYQUISMIC_IMPLEMENTATION_RAG.md), then [the DSP specification](../dsp/NYQUISMIC_MODULATION.md) and [independent validation plan](../dsp/NYQUISMIC_VALIDATION.md). The RAG includes the autonomous kickoff and per-child read/ownership map.
+
+Master [#249](https://github.com/techrote/zaaggenz/issues/249) tracks NYQ-001–009 ([#250](https://github.com/techrote/zaaggenz/issues/250) through [#258](https://github.com/techrote/zaaggenz/issues/258)). These are local follow-up IDs, not new canonical ZG tasks. Planning/docs do not establish implementation or dependency satisfaction.
+
+The owner explicitly prioritizes offline synthesis quality/reproducibility over realtime speed or latency. Numerical evaluation quality, virtual artistic rate and delivery sample rate are separate. Preserve intentional artifacts, exact bypass, existing factories/bitcrusher/AA versions, immutable source/layer/master semantics and finite job safety.
+
+Core DSP can proceed independently. Rack integration #256 additionally requires accepted built-in MBR Phase A / #242 under #238; external VST3 Phase B and ZG-024 are not prerequisites. Reconcile live MBR/preset work and shared locks before editing. No global oversampling-default or output-rate migration is implied.
