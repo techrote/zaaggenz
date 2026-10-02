@@ -225,7 +225,14 @@ def memory_estimate(recipe):
     if frames / tm['sample_rate_hz'] > 60:
         raise TimelineError('render exceeds the 60-second timeline limit; shorten the phrase or raise tempo')
     source = math.ceil(p['sr'] * 60 / p['bpm'] * p['beat_fill'])
-    return 16 * 1024**2 + (frames + source) * 96 + source * 512
+    estimate = 16 * 1024**2 + (frames + source) * 96 + source * 512
+    if 'rack' in d:
+        from zaaggenz_spectral.rack_executor import compile_rack, estimate_rack_resources
+        # Full context, including the largest minimum roll-slice extension.
+        # No region/chunk discount: zero-phase filters and detector state see
+        # exactly the same context as saved-project rerender and export.
+        estimate += estimate_rack_resources(compile_rack(d['rack'], recipe), frames + 16)['estimated_live_bytes']
+    return estimate
 
 
 def describe(document):

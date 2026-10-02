@@ -85,16 +85,21 @@ class RackTimelineTests(unittest.TestCase):
         with self.assertRaisesRegex(MelodyError, 'ambiguous layer ownership'):
             compile_recipe(TimelineDocument(data))
 
-    def test_runtime_execution_fails_explicitly_until_mbr002_not_as_silent_dry(self):
+    def test_runtime_execution_is_real_and_bypass_is_exact(self):
+        import numpy as np
+        dry = render_phrase(compile_recipe(one_note()))
         for bypass in (False, True):
             data = one_note().to_dict(); project = Project.from_document(data['project'])
             saved = rack(project.head_recipe).to_dict(); saved['bypass'] = bypass
             project.set_rack(RackRecipe(saved)); data['project'] = project.to_document()
             compiled = compile_recipe(TimelineDocument(data))
-            with patch('zaaggenz_melody.render._production_preset_source') as source_renderer:
-                with self.assertRaisesRegex(MelodyError, 'MBR-002'):
-                    render_phrase(compiled)
-                source_renderer.assert_not_called()
+            actual = render_phrase(compiled)
+            self.assertIn('rack', actual.diagnostics)
+            if bypass:
+                np.testing.assert_array_equal(actual.mix, dry.mix)
+            else:
+                self.assertFalse(np.array_equal(actual.mix, dry.mix))
+                self.assertGreater(actual.diagnostics['rack']['bands'][1]['input']['rms'], 0)
 
     def test_factory_selection_cannot_silently_rebind_a_saved_rack(self):
         data = one_note().to_dict(); project = Project.from_document(data['project'])

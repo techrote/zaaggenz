@@ -24,7 +24,8 @@ def filter_metadata(crossovers,sample_rate_hz):
 def _rms(x):
     a=np.asarray(x,dtype=np.float64);return float(np.sqrt(np.mean(a*a))) if a.size else 0.
 
-def route_band_processors(x,sample_rate_hz,crossovers,processors,confine_flags=(True,True,True,True)):
+def route_band_processors(x,sample_rate_hz,crossovers,processors,confine_flags=(True,True,True,True),*,checkpoint=None,observer=None):
+    if checkpoint:checkpoint()
     if len(processors)!=4 or len(confine_flags)!=4:raise BandError('four processors and four confine flags required')
     source=np.asarray(x,dtype=np.float64)
     if source.ndim not in (1,2) or not np.isfinite(source).all():raise BandError('finite mono/stereo audio required')
@@ -32,13 +33,18 @@ def route_band_processors(x,sample_rate_hz,crossovers,processors,confine_flags=(
     if all(p is None for p in processors):return np.asarray(x).copy(),tuple(BandDeltaReport(name,False,bool(confine_flags[i]),0.,0.,0.,(0.,0.,0.,0.)) for i,name in enumerate(BAND_NAMES))
     bands=split_bands(source,sample_rate_hz,c);out=source.copy();reports=[]
     for i,(name,band,processor,confine) in enumerate(zip(BAND_NAMES,bands,processors,confine_flags)):
+        if checkpoint:checkpoint()
         if processor is None:
+            if observer:observer(i,band,band)
             reports.append(BandDeltaReport(name,False,bool(confine),_rms(band),0.,0.,(0.,0.,0.,0.)));continue
         changed=np.asarray(processor(np.asarray(band).copy()),dtype=np.float64)
         if changed.shape!=np.asarray(band).shape or not np.isfinite(changed).all():raise BandError('band processor changed shape or produced nonfinite samples')
+        if observer:observer(i,band,changed)
+        if checkpoint:checkpoint()
         raw=changed-np.asarray(band,dtype=np.float64)
         routed=split_bands(raw,sample_rate_hz,c)[i] if confine else raw
         out=out+routed
         leakage=tuple(_rms(v) for v in split_bands(routed,sample_rate_hz,c))
         reports.append(BandDeltaReport(name,True,bool(confine),_rms(band),_rms(raw),_rms(routed),leakage))
+    if checkpoint:checkpoint()
     return out,tuple(reports)

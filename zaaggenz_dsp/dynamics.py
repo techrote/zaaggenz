@@ -64,7 +64,8 @@ def _static_reduction(level_db,spec):
     z=over[middle]-lo;out[middle]=slope*z*z/(2.*k)
     return out
 
-def compress(x,sample_rate_hz,spec):
+def compress(x,sample_rate_hz,spec,*,checkpoint=None):
+    if checkpoint:checkpoint()
     if not isinstance(spec,CompressionSpec):raise DynamicsError('CompressionSpec required')
     if type(sample_rate_hz)is not int or not 8000<=sample_rate_hz<=192000:raise DynamicsError('sample rate out of range')
     a,mono=_audio(x);n=len(a)
@@ -74,7 +75,9 @@ def compress(x,sample_rate_hz,spec):
     detector_amp=np.max(np.abs(a),axis=1);detector_db=20.*np.log10(np.maximum(detector_amp,1e-15));static=_static_reduction(detector_db,spec)
     attack=math.exp(-1./(sample_rate_hz*spec.attack_ms*.001));release=math.exp(-1./(sample_rate_hz*spec.release_ms*.001));smooth=np.zeros(n,dtype=np.float64);state=0.
     for i,target in enumerate(static):
+        if checkpoint and i % 1024 == 0:checkpoint()
         coeff=attack if target>state else release;state=coeff*state+(1.-coeff)*target;smooth[i]=state
+    if checkpoint:checkpoint()
     gain=10.**((spec.makeup_db-smooth)/20.);wet_audio=a*gain[:,None];out=(1.-spec.wet)*a+spec.wet*wet_audio
     out=out[:,0] if mono else out
     return CompressionResult(np.asarray(out,dtype=np.float64),detector_db,static,smooth,spec)

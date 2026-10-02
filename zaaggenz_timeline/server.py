@@ -15,7 +15,7 @@ from zaaggenz_contracts.model import loads
 from zaaggenz_jobs import JobError
 from zaaggenz_web_release import (MISMATCH_MESSAGE, asset_request_matches, build_web_releases,
                                  cache_headers, fingerprint_html, frontend_release_matches,
-                                 instrument_entry_module)
+                                 instrument_entry_module, RELEASE_HEADER)
 from .model import default_document, exact
 from .service import TimelineService
 
@@ -139,22 +139,17 @@ class Handler(webapp.Handler):
                 if type(data['preset_id']) is not str:
                     raise ValueError('preset_id must be text')
                 result=self.server.timeline.apply_preset(data['document'],data['preset_id'])
-                session=getattr(self.server,'session',None)
-                if session is not None:result['session']=session.accept_document(result['document'])
                 return self._json(result)
             if path == '/api/timeline/validate':
                 exact(data, {'document'}, 'validation request')
                 result = self.server.timeline.validate(data['document'])
-                session = getattr(self.server, 'session', None)
-                if session is not None:
-                    result['session'] = session.accept_document(data['document'])
                 return self._json(result)
             if path == '/api/timeline/render':
                 exact(data, {'document', 'region', 'name'}, 'render request')
-                result = self.server.timeline.submit(data['document'], data['region'], data['name'])
-                session = getattr(self.server, 'session', None)
-                if session is not None:
-                    result['session'] = session.accept_document(data['document'])
+                # A Vocal proposal is derived state, never implicit Compose apply.
+                proposal = self.headers.get(RELEASE_HEADER) == self._release('vocal').release_id
+                result = self.server.timeline.submit(data['document'], data['region'], data['name'],
+                                                     authoritative=not proposal)
                 return self._json(result, 202)
             if path == '/api/timeline/cancel':
                 exact(data, {'job_id'}, 'cancellation request')
@@ -174,7 +169,9 @@ class TimelineServer(ThreadingHTTPServer):
         self.verbose = verbose
         self.web_releases = build_web_releases(ROOT)
         self.initial_document = default_document(sample_rate)
-        self.timeline = TimelineService()
+        from zaaggenz_runtime.session import RuntimeSession
+        self.session = RuntimeSession(self.initial_document)
+        self.timeline = TimelineService(session=self.session)
 
     def server_close(self):
         if hasattr(self, 'timeline'):
