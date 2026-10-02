@@ -24,7 +24,7 @@ def _s(**kwargs):return {**_COMMON,**kwargs}
 def _f(id,label,intent,macros,synth,expert,pitch,tuning,limitations,classification='candidate'):
     return ZaagFamilyRecipe(id,label,intent,classification,macros,synth,expert,pitch,tuning,tuple(limitations))
 
-FAMILIES=(
+_BASE_FAMILIES=(
  _f('zaag.bloom-bark','Bloom Bark','A slightly relaxed front edge that blooms into an asymmetric folded bark instead of a clean tonal twang.',
     ZaagMacros(attack_relax=.72,grit=.68),_s(attack_ms=4.8,decay_ms=420.,sweep_semitones=-2.3,harmonic_count=58,harmonic_decay=.55,roughness=.18,drive_db=21.,shaper_mix=.84,asymmetry=.2,hard_clip_mix=.56,wavefold=.96,preemphasis=.34,seed=3221),
     ExpertControls(grit_drive_db=9.,grit_mix=.34,grit_oversample=4,pitch_ratio_min=.5,pitch_ratio_max=2.,quality_cost='high'),
@@ -68,17 +68,45 @@ FAMILIES=(
     ExpertControls(pitch_ratio_min=.55,pitch_ratio_max=1.8,quality_cost='medium'),(28.,86.),'Contrast only; deliberately spreads energy across harmonic groups with little authored contour.',
     ['Intentional negative/control condition.','Harmonic density alone must not be treated as preference evidence.'],'contrast'))
 
+KRACH_CANDIDATES=(
+ _f('zaag.krach-black-mass','Krach Black Mass','A deliberately dark Krach source: the low body remains massive and continuous while a separately saturated surface shifts above it.',
+    ZaagMacros(complementary_motion=.12,grit=.5,harmonic_motion=.42),_s(harmonic_count=58,harmonic_decay=.78,odd_even_ratio=1.8,harmonic_tilt_db_per_oct=-.75,roughness=.16,noise_level=.01,drive_db=18.,shaper_mix=.78,asymmetry=.15,hard_clip_mix=.42,wavefold=.65,preemphasis=.08,decay_ms=420.,seed=3321),
+    ExpertControls(grit_drive_db=7.,grit_mix=.22,grit_oversample=4,pitch_ratio_min=.5,pitch_ratio_max=1.85,quality_cost='high'),
+    (23.,90.),'Keep the source low enough that the body reads as mass; use filters/EQ to expose different moving surface layers rather than brightening the whole source.',
+    ['Intentionally dark; wide upward transposition defeats the body/surface contrast.','The surface is animated independently, so dense chords can become cloudy.'],'krach-candidate'),
+ _f('zaag.krach-dark-bounce','Krach Dark Bounce','Bouncin-inspired dark mass with independently ratcheted mid/upper surfaces: obvious motion without turning the whole source bright.',
+    ZaagMacros(upper_bounce=.72,complementary_motion=.25,grit=.62,harmonic_motion=.66),_s(harmonic_count=62,harmonic_decay=.68,odd_even_ratio=1.95,harmonic_tilt_db_per_oct=-.45,roughness=.18,noise_level=.014,drive_db=21.,shaper_mix=.83,hard_clip_mix=.5,wavefold=.8,preemphasis=.16,decay_ms=350.,seed=3322),
+    ExpertControls(upper_bounce_depth_db=4.5,upper_bounce_rate_beats=.5,complementary_depth_db=2.5,grit_drive_db=9.,grit_mix=.3,grit_oversample=4,pitch_ratio_min=.5,pitch_ratio_max=2.,quality_cost='high'),
+    (24.,98.),'Designed for repeated root-note loops and live filter/EQ movement; the low body should stay legible while the surface provides the bounce.',
+    ['Fast surface ratchets can turn buzzy at extreme BPM.','Large chord stacks reduce the perceptual separation between body and moving surface.'],'krach-candidate'),
+ _f('zaag.krach-mid-shred','Krach Mid Shred','A moving destructive midrange that tears across a retained low body, aimed at rasping Krach motion rather than a static distortion tail.',
+    ZaagMacros(vowel_motion=.38,complementary_motion=.42,grit=.9,harmonic_motion=1.),_s(harmonic_count=76,harmonic_decay=.49,odd_even_ratio=2.35,harmonic_tilt_db_per_oct=-.05,roughness=.27,noise_level=.025,drive_db=25.,shaper_mix=.9,hard_clip_mix=.68,wavefold=1.,preemphasis=.34,decay_ms=345.,seed=3323),
+    ExpertControls(formant_start_hz=620.,formant_end_hz=2200.,formant_q=3.2,formant_boost_db=5.5,complementary_depth_db=4.5,grit_drive_db=15.,grit_mix=.5,grit_oversample=4,pitch_ratio_min=.5,pitch_ratio_max=1.95,quality_cost='high'),
+    (25.,94.),'Use when the moving midrange itself should carry the aggression; keep enough low register to preserve the body underneath the shred.',
+    ['The moving mid emphasis can mask melodic intervals faster than Dark Bounce.','Strong resonant motion is an engineered texture, not a reconstruction of any reference processing chain.'],'krach-candidate'),
+ _f('zaag.krach-air-teeth','Krach Air Teeth','The exposed-teeth endpoint: a stable dark body supports highly excited high-mid/air fragments with rapid reconfiguration and deliberate alias-like bite.',
+    ZaagMacros(upper_bounce=.46,grit=1.,harmonic_motion=.82),_s(harmonic_count=82,harmonic_decay=.43,odd_even_ratio=2.1,harmonic_tilt_db_per_oct=.28,roughness=.3,noise_level=.035,drive_db=27.,shaper_mix=.92,asymmetry=.22,hard_clip_mix=.72,hard_clip_level=.74,wavefold=1.,preemphasis=.46,decay_ms=300.,seed=3324),
+    ExpertControls(upper_bounce_depth_db=4.,upper_bounce_rate_beats=.25,grit_drive_db=17.,grit_mix=.58,grit_oversample=4,bit_depth=6,hold_samples=2,bitcrush_wet=.34,pitch_ratio_min=.55,pitch_ratio_max=1.9,quality_cost='high'),
+    (27.,92.),'The brightest Krach candidate; use filters/EQ to move between exposed teeth and the retained low body rather than treating brightness as the quality target.',
+    ['Deliberate upper-band images and bite are part of the sound.','Pitch clarity degrades earlier under large upward transposition or dense harmony.'],'krach-candidate'))
+
+FAMILIES=_BASE_FAMILIES+KRACH_CANDIDATES
+
+
 _BY_ID={x.id:x for x in FAMILIES}
 # Owner-approved on 2026-09-27 from the full-rate corrective #229 audition.
 # These are ordinary production presets; this does not select a replacement
 # default. locked_bloom remains the protected default/compatibility anchor.
-PRODUCTION_PRESET_IDS=tuple(x.id for x in FAMILIES if x.classification=='candidate')
+PRODUCTION_PRESET_IDS=(
+    'zaag.bloom-bark','zaag.formant-snarl','zaag.upper-chop',
+    'zaag.split-maul','zaag.crushed-teeth','zaag.harmonic-rip')
 
 def family(id):
     try:return _BY_ID[id]
     except KeyError as exc:raise KeyError('unknown zaag family '+str(id)) from exc
 
 def candidates():return tuple(x for x in FAMILIES if x.classification=='candidate')
+def krach_candidates():return tuple(x for x in FAMILIES if x.classification=='krach-candidate')
 def contrasts():return tuple(x for x in FAMILIES if x.classification=='contrast')
 def production_presets():return tuple(_BY_ID[x] for x in PRODUCTION_PRESET_IDS)
 def product_preset_catalogue():

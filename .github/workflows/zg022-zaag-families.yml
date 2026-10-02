@@ -5,8 +5,12 @@ on:
       - 'zaaggenz_zaag/**'
       - 'tests/zaag/**'
       - 'tools/zaag_family_report.py'
+      - 'tools/krach_family_report.py'
+      - 'references/krach_private_registry_v1.json'
+      - 'references/krach_texture_analysis_v1.json'
       - 'examples/zg022_zaag_family_examples.json'
       - 'docs/gesture/ZG022_ZAAG_FAMILIES.md'
+      - 'docs/gesture/ZG022_KRACH_FOLLOWUP.md'
       - '.github/workflows/zg022-zaag-families.yml'
   workflow_dispatch:
 permissions:
@@ -42,8 +46,10 @@ jobs:
         run: |
           python -m unittest discover -s tests/melody -v
           python -m unittest discover -s tests/gesture -v
-      - name: Reduced-rate reproducibility and audition pack
+      - name: Reduced-rate accepted-family evidence
         run: python tools/zaag_family_report.py --sample-rate 12000 --out zaag-family-evidence.json --audition-dir zaag-audition
+      - name: Reduced-rate #232 Krach audition evidence
+        run: python tools/krach_family_report.py --sample-rate 12000 --out krach-family-evidence.json --audition-dir krach-audition
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -51,6 +57,13 @@ jobs:
           path: |
             zaag-family-evidence.json
             zaag-audition/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg022-krach-audition-${{ matrix.os }}
+          path: |
+            krach-family-evidence.json
+            krach-audition/
   fullrate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -61,8 +74,10 @@ jobs:
         with: {python-version: '3.13'}
       - run: python baseline/recovered_source/materialize_v2.py --out .
       - run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt
-      - name: Full-rate source and short-example evidence
+      - name: Full-rate accepted-family source and short-example evidence
         run: python tools/zaag_family_report.py --sample-rate 48000 --skip-long --out zaag-family-evidence-48k.json --audition-dir zaag-audition-48k
+      - name: Full-rate #232 Krach audition evidence
+        run: python tools/krach_family_report.py --sample-rate 48000 --out krach-family-evidence-48k.json --audition-dir krach-audition-48k
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -70,3 +85,10 @@ jobs:
           path: |
             zaag-family-evidence-48k.json
             zaag-audition-48k/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg022-krach-audition-fullrate
+          path: |
+            krach-family-evidence-48k.json
+            krach-audition-48k/

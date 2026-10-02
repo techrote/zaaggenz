@@ -4,7 +4,7 @@ from copy import deepcopy
 import hashlib,math
 import numpy as np
 from .model import ZaagFamilyError,canonical_sha256
-from .registry import FAMILIES,LOCKED_BLOOM,family
+from .registry import LOCKED_BLOOM,candidates,contrasts,krach_candidates,family
 from .render import render_family_source
 
 ENDPOINTS=('bounce','melodic_identity','source_character','usefulness')
@@ -46,7 +46,7 @@ def build_owner_audition_pack(sample_rate_hz=48000,target_rms_dbfs=-14.):
     if sample_rate_hz not in (12000,48000):raise ZaagFamilyError('audition sample rate must be 12k or 48k')
     if not -30<=target_rms_dbfs<=-6:raise ZaagFamilyError('audition target outside safe engineering range')
     audio={};items=[]
-    for recipe in FAMILIES:
+    for recipe in (*candidates(),*contrasts()):
         raw=render_family_source(recipe,sample_rate_hz,beats=1).audio;matched,gain=_match(raw,target_rms_dbfs);key=recipe.id;audio[key]=matched
         items.append(AuditionItem(key,recipe.id,recipe.classification,gain,_db(_rms(matched)),float(np.max(np.abs(matched),initial=0.)),hashlib.sha256(matched.astype('<f4').tobytes()).hexdigest()))
     order=deterministic_order(tuple(audio))
@@ -54,11 +54,43 @@ def build_owner_audition_pack(sample_rate_hz=48000,target_rms_dbfs=-14.):
               'target_rms_dbfs':float(target_rms_dbfs),'matching':'whole-item RMS target with peak-safe gain reduction only; no compression or normalization',
               'protected_anchor':LOCKED_BLOOM.to_dict(),'anchor_audio_included':False,
               'anchor_note':'locked_bloom remains available in the recovered product; this generated pack does not rebuild it from remembered parameters.',
-              'order':list(order),'items':[x.to_dict() for x in items],'candidate_intents':{r.id:r.intent for r in FAMILIES if r.classification=='candidate'},
+              'order':list(order),'items':[x.to_dict() for x in items],'candidate_intents':{r.id:r.intent for r in candidates()},
               'companion_files_note':'Evidence tooling emits one-bar melodic demos for every candidate in addition to these matched one-beat source items.',
               'endpoints':[{'id':x,'scale':[1,7]} for x in ENDPOINTS],
               'questions':['Rate bounce separately from melodic identity.','Rate recognisable source character separately from usefulness.','Optional free-text reason for reject/keep.'],
               'decision_policy':'No acoustic descriptor or aggregate score changes defaults. Explicit owner approval is required.',
+              'owner_decisions':[],'rejected_variants_retained_as_evidence':True}
+    manifest['manifest_sha256']=canonical_sha256(manifest)
+    return AuditionPack(sample_rate_hz,float(target_rms_dbfs),audio,tuple(items),manifest)
+
+
+def build_krach_audition_pack(sample_rate_hz=48000,target_rms_dbfs=-14.):
+    if sample_rate_hz not in (12000,48000):raise ZaagFamilyError('audition sample rate must be 12k or 48k')
+    if not -30<=target_rms_dbfs<=-6:raise ZaagFamilyError('audition target outside safe engineering range')
+    audio={};items=[]
+    recipes=krach_candidates()
+    for recipe in recipes:
+        raw=render_family_source(recipe,sample_rate_hz,beats=1).audio
+        matched,gain=_match(raw,target_rms_dbfs);audio[recipe.id]=matched
+        items.append(AuditionItem(recipe.id,recipe.id,recipe.classification,gain,_db(_rms(matched)),
+            float(np.max(np.abs(matched),initial=0.)),hashlib.sha256(matched.astype('<f4').tobytes()).hexdigest()))
+    order=deterministic_order(tuple(audio),'zg022-krach-audition-232-v1')
+    manifest={'kind':'ZaagKrachAuditionPack','version':'1.0.0','status':'pending-owner',
+              'audition_revision':'zg022-krach-followup-232-v1','sample_rate_hz':sample_rate_hz,
+              'target_rms_dbfs':float(target_rms_dbfs),
+              'matching':'whole-item RMS target with peak-safe gain reduction only; no compression or normalization',
+              'private_reference_registry':'references/krach_private_registry_v1.json',
+              'reference_texture_analysis':'references/krach_texture_analysis_v1.json',
+              'protected_anchor':LOCKED_BLOOM.to_dict(),'anchor_audio_included':False,
+              'existing_production_presets_unchanged':True,'new_default':None,
+              'order':list(order),'items':[x.to_dict() for x in items],
+              'candidate_intents':{r.id:r.intent for r in recipes},
+              'design_axes':['dark stable mass','dark independently animated bounce','moving destructive midrange','exposed upper teeth/air'],
+              'companion_files_note':'Evidence tooling emits an identical-pattern melodic demo plus repeated-root loop and audition-only EQ-motion loop for every Krach candidate.',
+              'endpoints':[{'id':x,'scale':[1,7]} for x in ENDPOINTS],
+              'questions':['Rate bounce separately from melodic identity.','Rate source character separately from practical usefulness.',
+                           'Judge repeated-loop interest separately from simple brightness or loudness.','Optional free-text keep/reject rationale.'],
+              'decision_policy':'These four remain audition candidates until explicit owner approval. No descriptor, correlation, or aggregate score promotes a production preset or changes the default.',
               'owner_decisions':[],'rejected_variants_retained_as_evidence':True}
     manifest['manifest_sha256']=canonical_sha256(manifest)
     return AuditionPack(sample_rate_hz,float(target_rms_dbfs),audio,tuple(items),manifest)
