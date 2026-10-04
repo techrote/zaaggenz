@@ -1,0 +1,70 @@
+{
+  "format": "nyq-3b-preservation-capsule-v1",
+  "payload_id": "9ddc2b545929cf164186ca7ef380e713ac853ceb4187b0c3c483fc5dd241d5b7",
+  "base_commit": "b2f0d3f0e20fcef3ffbca162179a060ff9d625b4",
+  "base_tree": "97f10dbd2689af1c9e34bf53572c7760254a6ecb",
+  "capsule_sha256": "bdc70fc3a9169ff66c9c63351bd1a6f33a12257e88ce946ef59967e6368447b8",
+  "capsule_bytes": 75988,
+  "decompressed_sha256": "20fed81602c360b5199194835866db0a679e343498d3b48514c74872a53b6261",
+  "decompressed_bytes": 554656,
+  "parts": [
+    {
+      "path": "capsule/capsule-000.xzpart",
+      "bytes": 12288,
+      "sha256": "fc0d67c674e29e1746ec030214b27f3e15da84f58f68050e2181522cd77d2f46",
+      "git_blob": "dff4bc1ee477bf1b985107c6cfc025f1089e0b9d"
+    },
+    {
+      "path": "capsule/capsule-001.xzpart",
+      "bytes": 12288,
+      "sha256": "151b5c497c20550ce69497b7489fa012b53cce85fd8779e17a9a4fa4ba8a1622",
+      "git_blob": "eda520fcd3aa2676f7c3db28fa5e1545fa0a5abe"
+    },
+    {
+      "path": "capsule/capsule-002.xzpart",
+      "bytes": 12288,
+      "sha256": "dc72b3a2f3046dba5bc82b8883d303a5b3ca7fbd1e2fc858a8cd3cc1bf6e3637",
+      "git_blob": "e178a5fa1bc680b77b3d3e54108fdf38bd1eacdc"
+    },
+    {
+      "path": "capsule/capsule-003.xzpart",
+      "bytes": 12288,
+      "sha256": "2f3194c05ca994d86357c5db423dc8fd36ce4cca2a412a4d4953089df8065eca",
+      "git_blob": "0f500445bf5b877a8c5e46891e338376a42a5bee"
+    },
+    {
+      "path": "capsule/capsule-004.xzpart",
+      "bytes": 12288,
+      "sha256": "4e890e21414eb1d1016d4136d8740ac16ce74487ee80a10674b99be4550f522d",
+      "git_blob": "668bb6344d3aec3f6bbe9c382e9d03b089007deb"
+    },
+    {
+      "path": "capsule/capsule-005.xzpart",
+      "bytes": 12288,
+      "sha256": "0d9665d73125fbb53265752281df54a3b5884dac924e970a273949b6d4f58e3e",
+      "git_blob": "7005f9a97e3b1bf9da58fe1006e133eb9eb716c2"
+    },
+    {
+      "path": "capsule/capsule-006.xzpart",
+      "bytes": 2260,
+      "sha256": "7fd35680326ca63a87a9edd4184563d5521b895b4033e48b587d6f3c00023bef",
+      "git_blob": "cc26e419c952040ff5d4f06bf5b289bd6c93d6bd"
+    }
+  ],
+  "base_source_files": 37,
+  "original_files_3B": 87,
+  "preceding_files_3A": 74,
+  "novel_objects": 76,
+  "original_archives": {
+    "3A": {
+      "sha256": "f6bb7eae070cb8709b51510fe49b1681aa45183b495d64bc72323a996a67b893",
+      "bytes": 273404,
+      "prefix": "zaaggenz-3A/"
+    },
+    "3B": {
+      "sha256": "3bb3676e1f6411ef7504f679bde278519b57621bb37021152b310c35d4c1d500",
+      "bytes": 540111,
+      "prefix": "zaaggenz-3B/"
+    }
+  }
+}
