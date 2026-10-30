@@ -1,0 +1,26 @@
+@echo off
+setlocal
+cd /d "%~dp0"
+
+if not exist ".venv\Scripts\python.exe" goto :not_setup
+
+".venv\Scripts\python.exe" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)" >nul 2>nul
+if errorlevel 1 goto :not_setup
+
+".venv\Scripts\python.exe" -c "import zaaggenz_runtime" >nul 2>nul
+if errorlevel 1 goto :not_setup
+
+echo [ZaagGenZ] Launching Compose...
+echo Press Ctrl+C in this window to stop the server.
+echo.
+".venv\Scripts\python.exe" -m zaaggenz_runtime --workspace compose --open %*
+set "EXITCODE=%errorlevel%"
+
+if not "%EXITCODE%"=="0" echo [ZaagGenZ] Runtime exited with code %EXITCODE%.
+exit /b %EXITCODE%
+
+:not_setup
+echo.
+echo ERROR: ZaagGenZ is not set up with a Python 3.13 virtual environment.
+echo Run 0setup.bat first.
+exit /b 1
