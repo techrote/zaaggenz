@@ -1,1 +1,56 @@
-@echo off\r\nsetlocal\r\ncd /d "%~dp0"\r\n\r\necho.\r\necho [ZaagGenZ] Setup\r\necho.\r\n\r\nwhere py >nul 2>nul\r\nif errorlevel 1 goto :python_missing\r\n\r\npy -3.13 -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)" >nul 2>nul\r\nif errorlevel 1 goto :python_missing\r\n\r\nif exist ".venv\Scripts\python.exe" (\r\n    ".venv\Scripts\python.exe" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)" >nul 2>nul\r\n    if errorlevel 1 goto :venv_wrong_python\r\n) else (\r\n    echo [1/3] Creating Python 3.13 virtual environment...\r\n    py -3.13 -m venv .venv\r\n    if errorlevel 1 goto :failed\r\n)\r\n\r\necho [2/3] Updating pip...\r\n".venv\Scripts\python.exe" -m pip install --upgrade pip\r\nif errorlevel 1 goto :failed\r\n\r\necho [3/3] Installing ZaagGenZ in editable mode...\r\n".venv\Scripts\python.exe" -m pip install -e .\r\nif errorlevel 1 goto :failed\r\n\r\necho.\r\necho [ZaagGenZ] Setup complete.\r\necho Run 1run.bat to launch the Compose workspace.\r\nexit /b 0\r\n\r\n:python_missing\r\necho.\r\necho ERROR: Python 3.13 was not found through the Windows py launcher.\r\necho Install it with:\r\necho   winget install -e --id Python.Python.3.13\r\necho Then reopen this terminal and run 0setup.bat again.\r\nexit /b 1\r\n\r\n:venv_wrong_python\r\necho.\r\necho ERROR: .venv exists but is not using Python 3.13.\r\necho Remove or rename the existing .venv, then run 0setup.bat again.\r\nexit /b 1\r\n\r\n:failed\r\nset "EXITCODE=%errorlevel%"\r\nif "%EXITCODE%"=="0" set "EXITCODE=1"\r\necho.\r\necho [ZaagGenZ] Setup failed with exit code %EXITCODE%.\r\nexit /b %EXITCODE%\r\n
+@echo off
+setlocal
+cd /d "%~dp0"
+
+echo.
+echo [ZaagGenZ] Setup
+echo.
+
+where py >nul 2>nul
+if errorlevel 1 goto :python_missing
+
+py -3.13 -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)" >nul 2>nul
+if errorlevel 1 goto :python_missing
+
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)" >nul 2>nul
+    if errorlevel 1 goto :venv_wrong_python
+) else (
+    echo [1/3] Creating Python 3.13 virtual environment...
+    py -3.13 -m venv .venv
+    if errorlevel 1 goto :failed
+)
+
+echo [2/3] Updating pip...
+".venv\Scripts\python.exe" -m pip install --upgrade pip
+if errorlevel 1 goto :failed
+
+echo [3/3] Installing ZaagGenZ in editable mode...
+".venv\Scripts\python.exe" -m pip install -e .
+if errorlevel 1 goto :failed
+
+echo.
+echo [ZaagGenZ] Setup complete.
+echo Run 1run.bat to launch the Compose workspace.
+exit /b 0
+
+:python_missing
+echo.
+echo ERROR: Python 3.13 was not found through the Windows py launcher.
+echo Install it with:
+echo   winget install -e --id Python.Python.3.13
+echo Then reopen this terminal and run 0setup.bat again.
+exit /b 1
+
+:venv_wrong_python
+echo.
+echo ERROR: .venv exists but is not using Python 3.13.
+echo Remove or rename the existing .venv, then run 0setup.bat again.
+exit /b 1
+
+:failed
+set "EXITCODE=%errorlevel%"
+if "%EXITCODE%"=="0" set "EXITCODE=1"
+echo.
+echo [ZaagGenZ] Setup failed with exit code %EXITCODE%.
+exit /b %EXITCODE%
