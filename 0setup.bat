@@ -6,12 +6,39 @@ echo.
 echo [ZaagGenZ] Setup
 echo.
 
+:check_python
 where py >nul 2>nul
-if errorlevel 1 goto :python_missing
+if errorlevel 1 goto :offer_python_install
 
 py -3.13 -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)" >nul 2>nul
-if errorlevel 1 goto :python_missing
+if errorlevel 1 goto :offer_python_install
+goto :python_ready
 
+:offer_python_install
+echo Python 3.13 was not found through the Windows py launcher.
+echo.
+where winget >nul 2>nul
+if errorlevel 1 goto :winget_missing
+
+choice /C YN /N /M "Install Python 3.13 now with winget? [Y/N] "
+if errorlevel 2 goto :python_declined
+
+echo.
+echo [ZaagGenZ] Installing Python 3.13...
+winget install -e --id Python.Python.3.13 --accept-package-agreements --accept-source-agreements
+if errorlevel 1 goto :python_install_failed
+
+echo.
+echo [ZaagGenZ] Verifying Python 3.13...
+where py >nul 2>nul
+if errorlevel 1 goto :python_restart_required
+py -3.13 -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)" >nul 2>nul
+if errorlevel 1 goto :python_restart_required
+echo [ZaagGenZ] Python 3.13 is ready.
+echo.
+goto :python_ready
+
+:python_ready
 if exist ".venv\Scripts\python.exe" (
     ".venv\Scripts\python.exe" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)" >nul 2>nul
     if errorlevel 1 goto :venv_wrong_python
@@ -34,12 +61,32 @@ echo [ZaagGenZ] Setup complete.
 echo Run 1run.bat to launch the Compose workspace.
 exit /b 0
 
-:python_missing
+:winget_missing
 echo.
-echo ERROR: Python 3.13 was not found through the Windows py launcher.
-echo Install it with:
+echo ERROR: winget is not available, so Python 3.13 cannot be installed automatically.
+echo Install Python 3.13 manually, then run 0setup.bat again.
+exit /b 1
+
+:python_declined
+echo.
+echo Python 3.13 installation was skipped.
+echo To install it later, run:
 echo   winget install -e --id Python.Python.3.13
-echo Then reopen this terminal and run 0setup.bat again.
+exit /b 1
+
+:python_install_failed
+set "EXITCODE=%errorlevel%"
+if "%EXITCODE%"=="0" set "EXITCODE=1"
+echo.
+echo ERROR: winget could not install Python 3.13 ^(exit code %EXITCODE%^).
+echo You can retry manually with:
+echo   winget install -e --id Python.Python.3.13
+exit /b %EXITCODE%
+
+:python_restart_required
+echo.
+echo Python 3.13 was installed, but the py launcher is not visible in this terminal yet.
+echo Close and reopen PowerShell, then run 0setup.bat again.
 exit /b 1
 
 :venv_wrong_python
