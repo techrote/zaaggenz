@@ -43,16 +43,25 @@ if exist ".venv\Scripts\python.exe" (
     ".venv\Scripts\python.exe" -c "import sys; raise SystemExit(0 if sys.version_info[:2] == (3, 13) else 1)" >nul 2>nul
     if errorlevel 1 goto :venv_wrong_python
 ) else (
-    echo [1/3] Creating Python 3.13 virtual environment...
+    echo [1/5] Creating Python 3.13 virtual environment...
     py -3.13 -m venv .venv
     if errorlevel 1 goto :failed
 )
 
-echo [2/3] Updating pip...
+echo [2/5] Updating pip...
 ".venv\Scripts\python.exe" -m pip install --upgrade pip
 if errorlevel 1 goto :failed
 
-echo [3/3] Installing ZaagGenZ in editable mode...
+echo [3/5] Materializing authenticated recovered runtime...
+".venv\Scripts\python.exe" baseline\recovered_source\materialize.py
+if errorlevel 1 goto :failed
+if not exist "app\webapp.py" goto :materialize_missing
+
+echo [4/5] Installing recovered runtime requirements...
+".venv\Scripts\python.exe" -m pip install -r app\requirements.txt
+if errorlevel 1 goto :failed
+
+echo [5/5] Installing ZaagGenZ in editable mode...
 ".venv\Scripts\python.exe" -m pip install -e .
 if errorlevel 1 goto :failed
 
@@ -93,6 +102,12 @@ exit /b 1
 echo.
 echo ERROR: .venv exists but is not using Python 3.13.
 echo Remove or rename the existing .venv, then run 0setup.bat again.
+exit /b 1
+
+:materialize_missing
+echo.
+echo ERROR: recovered runtime materialization completed without app\webapp.py.
+echo The checkout may be incomplete or corrupted.
 exit /b 1
 
 :failed
