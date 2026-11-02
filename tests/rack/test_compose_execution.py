@@ -321,6 +321,40 @@ class RevisionPublicationTests(unittest.TestCase):
             self.assertEqual(service.artifact(request['job_id']).audio_bytes,a.audio_bytes)
         finally:service.close();scheduler.shutdown(cancel=True)
 
+    def test_validation_and_preset_admission_preserve_current_audio_on_memory_rejection(self):
+        # Validation is an authoritative edit, not a way around render admission.
+        limits=replace(SchedulerLimits(),max_job_memory_bytes=20*1024**2)
+        scheduler=JobScheduler(limits);service=TimelineService(scheduler,debounce_seconds=0)
+        try:
+            good=document(with_rack=False);good['end_beat']='1/1';good['notes']=good['notes'][:1]
+            request=service.submit(good);original=completed(service,request)
+            before=service.session.snapshot()
+            bad=document();bad['end_beat']='1/1';bad['notes']=bad['notes'][:1]
+            preset_input=document(with_rack=False);preset_input['end_beat']='16/1'
+            operations=(lambda:service.validate(bad), lambda:service.accept_document(bad),
+                        lambda:service.apply_preset(preset_input,'locked_bloom'))
+            for operation in operations:
+                with self.assertRaisesRegex(JobError,'memory'):operation()
+                self.assertEqual(service.session.snapshot(),before)
+                self.assertTrue(service.status(request['job_id'])['accepted'])
+                self.assertEqual(service.artifact(request['job_id']).audio_bytes,original.audio_bytes)
+                self.assertEqual(service.wave(request['job_id'])[1],request['revision_id'])
+        finally:service.close();scheduler.shutdown(cancel=True)
+
+    def test_larger_scheduler_cannot_bypass_the_rack_working_memory_policy(self):
+        limits=replace(SchedulerLimits(),max_job_memory_bytes=512*1024**2)
+        scheduler=JobScheduler(limits);service=TimelineService(scheduler,debounce_seconds=0)
+        try:
+            data=document(48000);data['end_beat']='40/1'
+            before=service.session.snapshot()
+            # This rack itself requires over 256 MiB, even without spectral work.
+            with patch('zaaggenz_melody.render.render_phrase',side_effect=AssertionError('no DSP')):
+                for operation in (service.validate,service.accept_document,service.submit):
+                    with self.assertRaisesRegex(ValueError,'working-memory'):operation(data)
+                    self.assertEqual(service.session.snapshot(),before)
+            self.assertEqual(len(scheduler._records),0)
+        finally:service.close();scheduler.shutdown(cancel=True)
+
     def test_full_queue_rejects_before_mutating_or_cancelling_coherent_revision(self):
         from zaaggenz_jobs import JobClass
         limits = replace(SchedulerLimits(), interactive_workers=1, background_workers=1,
@@ -414,11 +448,12 @@ class RackHTTPAudioTests(unittest.TestCase):
         data = document(48000, spectral=retune880()); data['end_beat'] = '64/1'
         before = self.server.session.snapshot()
         with patch('zaaggenz_melody.render.render_phrase', side_effect=AssertionError('no DSP before admission')):
-            with self.assertRaises(HTTPError) as caught:
-                self.request('/api/timeline/render', {'document': data, 'name': 'Too large',
-                    'region': {'start_beat': '0/1', 'end_beat': '1/4'}})
-        self.assertEqual(caught.exception.code, 400)
-        self.assertEqual(self.server.session.snapshot(), before)
+            for route,payload in (('/api/timeline/validate',{'document':data}),
+                                  ('/api/timeline/render',{'document':data,'name':'Too large',
+                                    'region':{'start_beat':'0/1','end_beat':'1/4'}})):
+                with self.assertRaises(HTTPError) as caught:self.request(route,payload)
+                self.assertEqual(caught.exception.code,400)
+                self.assertEqual(self.server.session.snapshot(),before)
 
     def test_vocal_preview_uses_same_executor_without_changing_runtime_owner(self):
         before=self.server.session.snapshot();data=document()

@@ -227,11 +227,14 @@ def memory_estimate(recipe):
     source = math.ceil(p['sr'] * 60 / p['bpm'] * p['beat_fill'])
     estimate = 16 * 1024**2 + (frames + source) * 96 + source * 512
     if 'rack' in d:
-        from zaaggenz_spectral.rack_executor import compile_rack, estimate_rack_resources
+        from zaaggenz_spectral.rack_executor import compile_rack, estimate_rack_resources, MAX_WORKING_BYTES
         # Full context, including the largest minimum roll-slice extension.
         # No region/chunk discount: zero-phase filters and detector state see
         # exactly the same context as saved-project rerender and export.
-        estimate += estimate_rack_resources(compile_rack(d['rack'], recipe), frames + 16)['estimated_live_bytes']
+        rack_bytes = estimate_rack_resources(compile_rack(d['rack'], recipe), frames + 16)['estimated_live_bytes']
+        if rack_bytes > MAX_WORKING_BYTES:
+            raise TimelineError('rack full-context memory estimate exceeds working-memory bound')
+        estimate += rack_bytes
     return estimate
 
 

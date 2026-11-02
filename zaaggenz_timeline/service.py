@@ -145,11 +145,24 @@ class TimelineService:
                     except JobError:pass  # evicted terminal evidence, never new work
         return snapshot
 
+    def _admit_recipe(self, recipe):
+        """Reject permanently unrenderable edits before replacing current audio.
+
+        Compose submits RENDER jobs on the interactive lane, so its permanent
+        capacity is the scheduler's per-job bound (not the PREVIEW reserve).
+        Validation does not reserve a queue slot; submit still checks current
+        queue capacity before accepting the authoritative document.
+        """
+        estimate = memory_estimate(recipe)
+        if estimate > self.scheduler.limits.max_job_memory_bytes:
+            raise JobError('timeline render memory estimate exceeds job memory bound')
+        return estimate
+
     def accept_document(self, data):
         """Validate/admit the complete document before changing session authority."""
         document = data if isinstance(data, TimelineDocument) else TimelineDocument(data)
         recipe = compile_recipe(document)
-        memory_estimate(recipe)
+        self._admit_recipe(recipe)
         with self._jobs_lock:
             return self._accept_locked(document)
 
@@ -159,7 +172,7 @@ class TimelineService:
     def apply_preset(self,data,preset_id):
         document=apply_source_preset(TimelineDocument(data),preset_id)
         recipe=compile_recipe(document)
-        estimate = memory_estimate(recipe)
+        estimate = self._admit_recipe(recipe)
         with self._jobs_lock:
             session = self._accept_locked(document)
         return {'document':document.to_dict(),**describe(document),'recipe_sha256':recipe.sha256,
@@ -168,7 +181,7 @@ class TimelineService:
     def validate(self, data):
         document = TimelineDocument(data)
         recipe = compile_recipe(document)
-        estimate = memory_estimate(recipe)
+        estimate = self._admit_recipe(recipe)
         with self._jobs_lock:
             session = self._accept_locked(document)
         return {**describe(document), 'recipe_sha256': recipe.sha256,
@@ -188,7 +201,7 @@ class TimelineService:
         revision = document.revision_id
         recipe = compile_recipe(document)
         region = render_region(recipe, region)
-        estimate = memory_estimate(recipe)  # never discount selected context
+        estimate = self._admit_recipe(recipe)  # never discount selected context
         key = region_cache_key(recipe, region)
         request_key = digest({'domain':'zaaggenz.timeline-owned-request-v1',
                               'owner':self._cache_namespace, 'revision':revision,

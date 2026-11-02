@@ -138,7 +138,13 @@ match revision, full recipe, cache key and product before acceptance.
 
 Admission precedes document replacement or cancellation of coherent work.
 Invalid, over-budget or queue-full requests therefore leave the last coherent
-project/audio intact. A worker checks its token and immutable session binding
+project/audio intact. Validation, preset application and direct document
+acceptance enforce the same permanent per-job memory bound as render admission;
+they cannot invalidate current audio with a document the scheduler could never
+render. The rack's separate 256 MiB working bound also applies when an injected
+scheduler permits larger jobs. Validation does not reserve a transient queue
+slot; actual render submission still checks queue capacity before acceptance.
+A worker checks its token and immutable session binding
 throughout DSP and before completion. Scheduler completion commits cancellation
 and cache insertion under its existing lock. Status exposes audio/meters only
 for the current accepted binding; WAV delivery guards both before and after
