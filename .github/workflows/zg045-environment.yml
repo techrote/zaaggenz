@@ -91,7 +91,8 @@ jobs:
             dist/
 
   browser-extra:
-    runs-on: ubuntu-latest
+    # Keep the pinned Playwright/browser release on its supported OS.
+    runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
       PYTHONUTF8: '1'

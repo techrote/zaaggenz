@@ -50,7 +50,8 @@ jobs:
           python -m unittest discover -s tests/vocal -p 'test_*.py' -v
   browser-evidence:
     needs: workspace-contract
-    runs-on: ubuntu-latest
+    # Keep the pinned Playwright/browser release on its supported OS.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       PYTHONUTF8: '1'

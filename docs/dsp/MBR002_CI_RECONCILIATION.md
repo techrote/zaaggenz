@@ -93,3 +93,21 @@ not change `9da1f1f521292f0dd0e2ca444521260aa91301526d9798573289149736b33e6a`.
 
 Exact-final-head native and reverse-dependency CI must pass after this append
 before PR #261 may merge or #240 may be closed.
+
+## Current-main browser runner correction
+
+Requalification of tree `ae80e912d3e3936f22cce05b7f00d942d68feee8` at
+`bfda3967f2e90085e72884687fa0eb6ae3b6ab3a` exposed CI image drift: ZG-009 run
+41548802821 and ZG-032 run 41548802835 failed before browser tests because
+`ubuntu-latest` selected Ubuntu 26.04, which the pinned Playwright 1.57.0 cannot
+install Chromium dependencies for. Their Windows jobs passed. This is a
+deterministic unsupported-runner failure, not an audio or browser-test result.
+
+The Linux browser jobs in ZG-009, ZG-015, ZG-023, ZG-032, ZG-041 and ZG-045 now
+select `ubuntu-24.04`, which the pinned package explicitly supports. Non-browser
+jobs retain their existing runner selection. Playwright/browser versions,
+platform coverage, test commands, thresholds and artifact contents remain
+unchanged; matrix-named Linux artifacts now identify their explicit 24.04 OS.
+This workflow-only correction changes no implementation/calibration identity.
+The corrected final head still requires successful actual Linux/Windows browser
+evidence and all direct/reverse checks before acceptance.
