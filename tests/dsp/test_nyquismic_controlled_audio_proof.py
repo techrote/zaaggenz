@@ -109,6 +109,31 @@ class ControlledAudioProofTests(unittest.TestCase):
             ).diagnostics['event_ledger_sha256'],
         )
 
+    def test_more_than_one_virtual_event_per_output_frame_is_not_dropped(self):
+        # 32 kHz virtual captures on an 8 kHz native numerical grid.
+        # The event count is four per output frame, not a rounded hold of one.
+        x = np.linspace(-.8, .8, 80, dtype='<f4')
+        source = FrozenInput.from_pcm(x, 8000)
+        spec = SonicSpec(clock=ClockSpec(rate=VirtualRate('32000/1')))
+        result = render_controlled_audio_proof(source, spec)
+        self.assertEqual(result.diagnostics['event_count_by_channel'], [320])
+        np.testing.assert_array_equal(result.audio, x.astype(np.float64))
+
+    def test_mid_render_cancellation_aborts_atomically_and_recovery_is_deterministic(self):
+        source, spec = ramp(), routed_spec()
+        counter = [0]
+        def abort():
+            counter[0] += 1
+            return counter[0] >= 18
+        with self.assertRaises(ClockCancelled):
+            render_controlled_audio_proof(source, spec, cancelled=abort)
+        self.assertGreaterEqual(counter[0], 18)
+        previous = render_controlled_audio_proof(source, spec)
+        resumed = render_controlled_audio_proof(source, spec)
+        self.assertEqual(previous.diagnostics['event_ledger_sha256'],
+                         resumed.diagnostics['event_ledger_sha256'])
+        np.testing.assert_array_equal(previous.audio, resumed.audio)
+
     def test_zero_wet_bypass_silence_and_admission_fail_closed(self):
         source = ramp()
         spec = routed_spec()
