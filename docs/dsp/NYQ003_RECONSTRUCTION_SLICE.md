@@ -194,8 +194,11 @@ available interval. Define `x[k]=(t-t[k])/h[k]`. For `0 < |x| < 8`,
 result is `sum(w[k]*capture[k]) / sum(w[k])`, with a fail-closed check for
 nonpositive/nonfinite mass. At an exact event time the capture itself is
 returned, avoiding the inverse-square singularity. The weights are positive,
-so this policy has unity DC for a constant captured signal and does not
-overshoot the convex hull of captured samples. It is continuous approaching
+so this policy has unity DC for a constant **captured event stream** and does not
+overshoot the convex hull of captured samples. A nominally constant original
+source with `zero_pad` can still yield nonconstant captures at its excluded
+last source-frame endpoint: the full-context kernel correctly preserves that
+separate capture-boundary policy rather than silently fabricating DC. It is continuous approaching
 event positions, but **not** a physically exact sinc or high-quality
 bandlimited reconstruction, nor a method for removing already formed
 aliases. The Hann taper is smooth at its physical-time support boundary.
