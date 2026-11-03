@@ -100,9 +100,15 @@ def convert_numerical_to_delivery(
                         window=('kaiser', 10.), pass_zero='lowpass')
         require(len(kernel) == taps and np.isfinite(kernel).all(),
                 'delivery FIR kernel is not finite')
-        result = resample_poly(
-            samples.astype(np.float64, copy=False), up, down,
-            axis=0, window=kernel, padtype='constant',
+        # SciPy's resample_poly rejects an empty input. An admitted empty
+        # physical extent instead maps to an empty, correctly shaped extent.
+        result = (
+            np.empty((0,) if samples.ndim == 1 else (0, channels), dtype=np.float64)
+            if frames == 0 else
+            resample_poly(
+                samples.astype(np.float64, copy=False), up, down,
+                axis=0, window=kernel, padtype='constant',
+            )
         )
     require(result.shape == (output_frames,) if samples.ndim == 1
             else result.shape == (output_frames, channels),
