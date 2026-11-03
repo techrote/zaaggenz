@@ -159,3 +159,40 @@ envelope/transient, upstream feature routes and sampler integration remain
 explicit #253 requirements.
 
 Run: `python -m unittest discover -s tests/contracts -p 'test_nyquismic_controls.py' -v`.
+
+## Versioned offline triangle LFO route-authoring source
+
+`SampledLfoSource` (`nyq.sampled-lfo-source.v1`) is an optional **control
+authoring** record for #253, separate from the sampler execution adapter.
+It compiles a deterministic bounded **triangular** LFO into the accepted
+`ModulationRoute` point vocabulary, not into a new renderer/session. Two
+physical-time modes are explicit: `free_hz` (cycles/s) and `beat_sync`
+(cycles/beat), with a strictly increasing saved step-tempo map (BPM).
+The phase integral is rational seconds or the exact sum of BPM/60 segment
+areas; grid evaluation and phase do not depend on numerical audio frame rate,
+worker scheduling or export rate. Phase at 0 cycles is -1, at 1/2 cycles +1;
+fractional phase and frequency values are accepted within hard bounds.
+
+The saved source holds version, mode, frequency, phase, origin, time grid,
+base BPM and tempo breakpoints. The compiled route holds explicit sample
+times, exact rational triangle values, `linear` interpolation, requested
+mapping and depth. **Store both** if later editing of the original LFO
+intent is required: the existing `SonicSpec` only stores its concrete
+`ModulationRoute` and does not yet contain a nested LFO-source identity.
+A sampled triangle is a piecewise-linear approximation if breakpoints are
+not placed at its turning points; no implicit bandlimited sinusoid, jitter,
+continuous beat-phase solver, audio-rate path or high-frequency guarantee
+is claimed. Each accepted route contains at most 256 points, with hard
+bounds on physical grid, frequency, BPM and total requested extent.
+Oversized authoring requests reject before materializing output; callers
+may explicitly choose a shorter extent or coarser physical grid.
+
+Evidence: `python -m unittest discover -s tests/contracts -p
+'test_nyquismic_sampled_lfo.py' -v` checks exact free-Hz quarter-cycle
+values, right-continuous tempo changes and accumulated beat phase, stable
+route serialization and hash identity, actual instantaneous evaluator
+consumption, partial endpoints, explicit budget failures and invalid
+rates/depths/modes. **No change** to the accepted NYQ-001/002
+`ClockPlan.require_geometry` rejection or original instrument path.
+Sampler phase integration and upstream/feature-derived controls remain
+outstanding; this authoring slice alone cannot close #253.
