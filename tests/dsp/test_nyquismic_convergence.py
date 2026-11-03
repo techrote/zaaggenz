@@ -111,6 +111,20 @@ class FrozenConvergenceTests(unittest.TestCase):
             evaluate_local_convergence(candidate, delivery_rate_hz=192000,
                 policy=FrozenConvergencePolicy(rates_hz=(48000, 96000, 192000)), **HASHES)
 
+    def test_all_conversion_ratios_are_preflighted_before_render(self):
+        calls = [0]
+        def expensive(rate):
+            calls[0] += 1
+            return candidate(rate)
+        with self.assertRaises(ContractError):
+            evaluate_local_convergence(
+                expensive, delivery_rate_hz=44100, **HASHES)
+        self.assertEqual(calls[0], 0)
+        with self.assertRaises(ContractError):
+            evaluate_local_convergence(
+                expensive, budget=ResourceBudget(max_filter_taps=96), **HASHES)
+        self.assertEqual(calls[0], 0)
+
     def test_cancellation_aborts_without_promoting_partial_results(self):
         with self.assertRaises(ClockCancelled):
             evaluate_local_convergence(candidate, cancelled=lambda: True, **HASHES)

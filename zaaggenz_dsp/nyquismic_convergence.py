@@ -141,6 +141,16 @@ def evaluate_local_convergence(
     integer(delivery_rate_hz, 'delivery rate Hz', 8000, 192000)
     require(policy.rates_hz[0] >= delivery_rate_hz,
             'all evaluation rates must be at least delivery rate')
+    # Qualify EVERY frozen conversion ratio before invoking an expensive
+    # renderer. Co-prime 192000 -> 44100 requires 15,361 Kaiser taps, far
+    # above the default 4,096-tap budget; never render then silently fail.
+    from math import gcd
+    for rate in policy.rates_hz:
+        common = gcd(rate, delivery_rate_hz)
+        up, down = delivery_rate_hz // common, rate // common
+        if up != down:
+            require(24 * max(up, down) + 1 <= budget.max_filter_taps,
+                    'frozen convergence rate requires unsupported delivery FIR taps')
 
     candidate_diagnostics = []
     converted = []
