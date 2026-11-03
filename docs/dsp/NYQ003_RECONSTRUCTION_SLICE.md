@@ -51,3 +51,40 @@ python -m unittest discover -s tests/contracts -p 'test_nyquismic*.py' -v
 export WAV conversion or product UI. Those remain the explicit #252/#256/#258
 work; numerical tests do not establish owner musical preference or Windows
 instrument acceptance.
+
+
+## Follow-up: explicit static source prefilter
+
+An opt-in `fir33_hann_static_0p45_v1` source filter is now available alongside
+`off_v1`. This is a real pre-capture filter, independent of `capture` and
+`reconstruction`, **not** a generic graph node or delivery antialias filter.
+
+- 33-tap symmetric linear-phase FIR, Hann window, ideal sinc prototype;
+  cutoff = exactly 9/20 of the saved static virtual rate in physical Hz.
+- Coefficients are computed in float64 and normalized to unity DC response;
+  the source PCM or rendered audio is never peak/RMS normalized or clipped.
+- Offline zero-delay alignment with 16 **source** frames of lookahead
+  and symmetric pre/post ringing. `zero_pad` or `edge_hold` applies to FIR
+  edge extension as well as the subsequent source interpolator.
+- Strict capability gate: static virtual rate below immutable source rate,
+  no changing base-Hz automation, at least 33 allowed filter taps.
+  Routed/quantized/jitter geometry remains unavailable until NYQ-004.
+- Filtered capture uses the original immutable `pcm-f32le-interleaved-v1`
+  source and never mutates that input. The `SonicSpec` opt-in setting
+  changes `sonic_sha256`; method, cutoff, source-frame support and
+  float64-le coefficient hash are exposed by sampler diagnostics.
+- All-bypass and zero-wet remain exact raw-source identity after admission.
+  The existing `off_v1` default and old bitcrusher/AA are untouched.
+
+Independent fixture command:
+
+```sh
+python -m unittest discover -s tests/dsp -p 'test_nyquismic_prefilter.py' -v
+```
+
+The fixture measures high-frequency capture suppression versus deliberate
+folding with no prefilter, passband fidelity, symmetric impulse response,
+stereo/silence/empty input, region identity, source immutability,
+serialization/fingerprint distinction and failure on unsupported dynamic
+cutoff or undersized tap budgets. This is not a guarded-clean filter or a
+numerical-convergence/final-conversion claim. Those remain part of #252.
