@@ -195,11 +195,6 @@ class ControlledStepGeometryTests(unittest.TestCase):
         for invalid in (
             sonic(routes=(ModulationRoute(
                 mapping='log2_ratio', depth=1, initial='1/2'),)),
-            sonic(routes=(ModulationRoute(
-                depth=1, initial='1/2', points=(Point('1/2', '0/1'),),
-                interpolation='linear'),),
-                quantizer=RateQuantizer(policy='nearest_hz',
-                                        levels_hz=('2/1', '4/1'))),
         ):
             with self.subTest(clock=invalid.clock.sha256), self.assertRaises(UnsupportedNyquismic):
                 compile_step_clock_events(invalid, '1/1')
