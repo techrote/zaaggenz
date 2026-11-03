@@ -155,3 +155,24 @@ traceable in diagnostics; legacy `off_v1` and `0p45_v1` are unchanged.
 These selections are **not** continuous user-editable cutoff/strength controls;
 that contract/UI and guarded-clean/filter-convergence evidence remain #252 work.
 Test: `python -m unittest discover -s tests/dsp -p 'test_nyquismic_prefilter.py' -v`.
+
+## Bounded pre-capture FIR and source-window cancellation
+
+The same versioned 33-tap FIR can now process an admitted immutable source in
+**8192-source-frame output windows**, rather than one uninterruptible
+full-channel convolution. Every window reads exactly 16 original source frames
+on each side through the same full-context `zero_pad`/`edge_hold` extension;
+the boundary between windows does not reset, pad, or truncate the signal.
+An independent two-channel reference fixture compares the resulting float64
+samples **bit-for-bit** with the previous monolithic convolution across two
+window boundaries and a short terminal window. The filtering operation checks
+the cancellation hook before each window, including the first, and publishes
+no partially filtered capture table on cancellation. This does not change the
+filter's 33-tap coefficient identity, source lookahead, sonic policy or numerical
+delivery behavior.
+
+Validation: `python -m unittest discover -s tests/dsp -p 'test_nyquismic_prefilter.py' -v`.
+The test instruments convolution input lengths and verifies an interrupted
+60,000-frame stereo request stops after only two source windows. It does
+**not** establish full instrument/Windows playback, rate-convergence or
+guarded-clean acceptance.
