@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from fractions import Fraction
 import hashlib
-import struct
 
 from zaaggenz_contracts import digest
 from zaaggenz_contracts.nyquismic import (
@@ -74,12 +73,22 @@ def evaluate_sampler_model_convergence(
             source, sonic, sampler_evaluation(rate, budget),
             frame_count=frame_counts[rate], cancelled=cancelled,
         )
+        # Versioned exact event ledger: the rounded float display timestamp
+        # cannot distinguish distinct Decimal80/exact-rational crossings.
         ledger = hashlib.sha256()
+        ledger.update(b'nyq.exact-physical-event-ledger.v1\\0')
         for i, event in enumerate(plan.events):
             if (i & 255) == 0 and cancelled is not None and cancelled():
                 raise ClockCancelled('same-model sampler event ledger cancelled')
-            ledger.update(struct.pack('<qqqd', event.index, event.epoch,
-                                      event.crossing, event.time_s))
+            coordinate = plan.clock.event_coordinate(i)
+            if isinstance(coordinate, Fraction):
+                timestamp = f'r:{coordinate.numerator}/{coordinate.denominator}'
+            else:
+                # ClockPlan's nonrational roots are Decimal80, never binary64.
+                timestamp = 'd:' + str(coordinate)
+            ledger.update(
+                f'{event.index}:{event.epoch}:{event.crossing}:{timestamp}\\n'.encode('ascii')
+            )
         current = ledger.hexdigest()
         if event_sha is None:
             event_sha, event_count = current, len(plan.events)
@@ -102,6 +111,7 @@ def evaluate_sampler_model_convergence(
         diagnostics={
             **result.diagnostics, 'sampler_bridge_method': METHOD,
             'event_ledger_sha256': event_sha, 'event_count': event_count,
+            'event_ledger_method': 'nyq.exact-physical-event-ledger.v1',
             'sampler_render_sha256_by_rate': dict(zip(policy.rates_hz, render_hashes)),
             'event_schedule_verified_across_rates': True,
             'same_model_execution': 'accepted-NYQ-002-SamplerPlan',
