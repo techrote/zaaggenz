@@ -4,6 +4,7 @@ This slice does not advertise prefiltering, sinc, delivery conversion or
 numerical convergence. Keep it independent from the legacy bitcrusher/AA paths.
 """
 from dataclasses import replace
+from decimal import Context, Decimal, localcontext
 from fractions import Fraction
 import unittest
 
@@ -42,18 +43,24 @@ class NonuniformReconstructionTests(unittest.TestCase):
                           interpolation='linear')
         plan = prepare(x, reconstruction='nearest_time_v1', clock=clock)
         actual = plan.render().audio
-        coords = [float(p) for p in plan._coordinates]
-        for n in range(480):
-            t = n / 48000
-            owners = [i for i, v in enumerate(coords) if v <= t + 1e-14]
-            if not owners:
-                expected = 0.
-            else:
-                i = owners[-1]
-                if i + 1 < len(coords) and t - coords[i] > (coords[i + 1] - coords[i]) / 2:
-                    i += 1
-                expected = float(plan.captures[i, 0])
-            self.assertAlmostEqual(float(actual[n]), expected, places=10)
+        # The reference selection uses physical-time arithmetic and strict
+        # half-interval membership, not rounded event display timestamps.
+        with localcontext(Context(prec=80)):
+            def dec(value):
+                return (Decimal(value.numerator) / Decimal(value.denominator)
+                        if type(value) is Fraction else value)
+            coords = [dec(p) for p in plan._coordinates]
+            for n in range(480):
+                t = Decimal(n) / Decimal(48000)
+                owners = [i for i, v in enumerate(coords) if v <= t]
+                if not owners:
+                    expected = 0.
+                else:
+                    i = owners[-1]
+                    if i + 1 < len(coords) and 2 * (t - coords[i]) > coords[i + 1] - coords[i]:
+                        i += 1
+                    expected = float(plan.captures[i, 0])
+                self.assertAlmostEqual(float(actual[n]), expected, places=10)
 
     def test_cubic_exact_endpoints_chunk_checkpoint_and_irregular_rate(self):
         t = np.arange(512, dtype=np.float64)
