@@ -21,13 +21,24 @@ also have explicit reverse-dependency ownership. No audio renderer, rack insert,
 Project migration or factory change is supplied. All audio execution fails
 explicitly, and unsupported routed/jitter/quantized clock geometry fails too.
 
-Reconciled main is `b76d22df189d176ea371e14e2fb0eff74cd2f7af`, containing accepted
+The original NYQ-001 implementation base was `b76d22df189d176ea371e14e2fb0eff74cd2f7af`, containing accepted
 #248 and documentation #259. Concurrent #240 owns execution/runtime/API/export;
 NYQ-001 stays on contract/oracle surfaces. This source note does not satisfy a
 merge gate: consult #250's exact-head CI and verified merge before starting #251.
 #251 should reuse the integrated phase/event authority and frozen independent
 fixtures, not introduce a competing rounded-hold or period-recurrence clock.
 #256 alone owns the future typed rack adaptation after #255 and accepted #242.
+
+## NYQ-002 kernel handoff
+
+NYQ-001 is accepted through merged PR #260; current foundation verification on
+main also retains its frozen oracles and legacy anchors. Read
+[NYQ002_SAMPLER.md](../dsp/NYQ002_SAMPLER.md) for the implemented fractional-event
+kernel, exact grid membership, immutable source, numerical method/filter pair,
+chunk/region/checkpoint contract, cancellation and independent audio evidence.
+Its final-head CI/merge record remains the #251 acceptance authority; do not start
+#252/#253 solely because a candidate kernel exists. Generic graph/rack execution,
+final conversion/convergence and routed/jitter/quantized clocks remain separate.
 
 ## Owner decisions to preserve
 

@@ -5,8 +5,12 @@ on:
     paths:
       - 'zaaggenz_*/**'
       - 'tests/contracts/test_nyquismic.py'
+      - 'tests/contracts/test_nyquismic_kernel_policy.py'
       - 'tests/contracts/nyquismic_oracles.py'
       - 'tests/contracts/fixtures/nyquismic*.json'
+      - 'tests/dsp/test_nyquismic_sampler.py'
+      - 'tests/dsp/nyquismic_audio_oracles.py'
+      - 'tools/nyq002_report.py'
       - 'baseline/recovered_source/**'
       - 'web/**'
       - 'research/**'

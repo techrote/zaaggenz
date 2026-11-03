@@ -7,6 +7,7 @@ on:
       - 'zaaggenz_contracts/multiband.py'
       - 'tests/dsp/**'
       - 'docs/dsp/**'
+      - 'tools/nyq002_report.py'
       - '.github/workflows/zg016-dsp.yml'
   workflow_dispatch:
 permissions:
@@ -22,6 +23,8 @@ jobs:
     env: {PYTHONUTF8: '1', OPENBLAS_NUM_THREADS: '1', OMP_NUM_THREADS: '1'}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with: {python-version: '3.13'}
       - name: Materialize authenticated baseline
@@ -30,3 +33,11 @@ jobs:
         run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt
       - name: DSP graph tests
         run: python -m unittest discover -s tests/dsp -v
+      - name: NYQ-002 numerical-domain PCM, checkpoint and audition evidence
+        run: python tools/nyq002_report.py --out nyq002-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: nyq002-evidence-${{ matrix.os }}
+          path: nyq002-evidence
+          if-no-files-found: error

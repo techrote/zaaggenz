@@ -107,8 +107,14 @@ class MBR002TransitionTests(unittest.TestCase):
                              for r in self.implementations), 1)
         self.assertEqual(sum(r['to_implementation_sha256'] == PREVIOUS
                              for r in self.validations), 1)
-        self.assertEqual(self.implementations[-1]['to_implementation_sha256'], SUCCESSOR)
-        self.assertEqual(self.validations[-1]['to_implementation_sha256'], SUCCESSOR)
+        # Later independently reviewed successors may append rows. Freeze the
+        # complete accepted MBR prefix instead of requiring it to remain last.
+        self.assertEqual(self.implementations[32]['to_implementation_sha256'], SUCCESSOR)
+        self.assertEqual(self.validations[7]['to_implementation_sha256'], SUCCESSOR)
+        self.assertEqual(digest(self.implementations[:33]),
+                         '85b4f1da52692f7a60560da6d7eaf97426cc25e54ad61bf0e1e63210fc7bf32f')
+        self.assertEqual(digest(self.validations[:8]),
+                         '024b8bc464e270dc1b960c4019101d6dcd3b0c256224f14c16533726a2834d18')
 
 
 if __name__ == '__main__':

@@ -18,11 +18,17 @@ It freezes 0.001–1,536,000 Hz virtual rates, a 1/1,536,000-second minimum gap,
 3600-second physical-time bounds, 1,000,000 admitted events, three nonnested
 stages, 16 routes/256 points per curve, 4096-tap support ceiling, 86,400-second
 read bound, 1,000,000 loop traversals and four additional reference passes.
-The exact-rational/Decimal80 clock calculates geometry only. All audio execution
-remains explicitly unavailable; routed/quantized/jitter clock geometry is also
+The exact-rational/Decimal80 clock calculates geometry only. Foundation-default
+and generic graph audio execution remain unavailable; routed/quantized/jitter geometry is also
 rejected until #253. No accepted rack/Project/RenderRecipe schema or legacy DSP
 behavior is changed. PR-head CI and the child merge record determine acceptance;
 this is not evidence of a finished Nyquismic instrument feature.
+
+The separately selected [NYQ-002 sampler kernel](NYQ002_SAMPLER.md) executes
+fractional capture and hold/time-aware linear reconstruction on an explicit
+numerical grid. It preserves the default-unavailable policy and old rack/graph
+behavior. Final conversion/convergence remain NYQ-003; the child's verified
+merge/check record governs implementation acceptance.
 
 ## Purpose and product boundary
 

@@ -90,6 +90,21 @@ class ReverseDependencyCI(unittest.TestCase):
         self.assertIn("tests/contracts/nyquismic_oracles.py", impact)
         self.assertIn("tests/contracts/fixtures/nyquismic*.json", impact)
 
+    def test_nyquismic_sampler_and_independent_audio_paths_are_routed(self) -> None:
+        for path in ("zaaggenz_dsp/nyquismic.py", "tests/dsp/test_nyquismic_sampler.py",
+                     "tests/dsp/nyquismic_audio_oracles.py", "tools/nyq002_report.py"):
+            with self.subTest(path=path):
+                result = ci.classify_changed_paths([path], ROOT)
+                self.assertIn("ZG-016", result["direct_stable_ids"])
+                self.assertIn("zg016-dsp.yml", result["native"])
+        policy = ci.classify_changed_paths(["tests/contracts/test_nyquismic_kernel_policy.py"], ROOT)
+        self.assertEqual(["ZG-002"], policy["direct_stable_ids"])
+        self.assertIn("zg002-contracts.yml", policy["native"])
+        impact = (ROOT / ".github/workflows/zg000-ci-impact.yml").read_text(encoding="utf-8")
+        for path in ("tests/dsp/test_nyquismic_sampler.py", "tests/dsp/nyquismic_audio_oracles.py",
+                     "tools/nyq002_report.py", "tests/contracts/test_nyquismic_kernel_policy.py"):
+            self.assertIn(path, impact)
+
     def test_broad_consumer_filter_does_not_claim_source_ownership(self) -> None:
         result = ci.classify_changed_paths(["zaaggenz_melody/render.py"], ROOT)
         self.assertEqual(["ZG-008"], result["direct_stable_ids"])
