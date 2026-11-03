@@ -1,0 +1,50 @@
+# ZG-000 — Superseded-Run and Exact-Head Dispatch Policy
+
+## Authority and scope
+
+ZG-000 retains the existing `tools/ci_reverse_dependencies.py` selector, source ownership configuration and programme dependency DAG. Direct/native feature workflows remain authoritative. This change does **not** alter musical behaviour, DSP, ZG-024a transitions, task-state evidence, owner gates or repository protections.
+
+## Concurrency and ownership
+
+Automatic `pull_request` generations are serialised using GitHub Actions concurrency grouped by repository, workflow identity and **PR number**, with `cancel-in-progress: true`. Newer PR updates supersede the previous orchestration generation. Different PRs and unrelated workflows remain independent.
+
+Manual `workflow_dispatch` of ZG-000 is **audit-only** and uses a unique run-scoped concurrency group. It never dispatches children and does not interrupt automatic generations.
+
+ZG-000 **never cancels independently triggered child workflows**, including direct PR tests, shared/manual tests and another orchestrator's work. Cancelled parent runs remain cancelled; the newest head is responsible for its own validation.
+
+## Dispatch and idempotency
+
+The original event's immutable `pull_request.head.sha` is compared with the live authoritative PR head before inventory, before dispatch, after each child is identified, between selected workflows and before final acceptance.
+
+For every required downstream workflow, list `workflow_dispatch` runs at the exact SHA. Require a matching source branch, event, workflow ID, workflow definition path, actual run SHA and attempt. A newer run/attempt supersedes an older run at the same SHA:
+
+- Latest completed success: reuse and verify.
+- Latest queued/running: watch without relaunching.
+- Latest failure: fail and require explicit repair/rerun; do not mask a recent red with an older green.
+- Latest cancelled: cannot certify; one new dispatch may be started.
+- Missing: dispatch one run.
+
+GitHub's 2026-03-10 workflow-dispatch `return_run_details` response supplies the created run ID. No timestamp/run-ID inference is used. An ambiguous POST or missing returned ID is never blindly retried, to avoid duplicate launches. GET and run-visibility checks have bounded retries.
+
+GitHub `workflow_dispatch` still targets a potentially moving branch, not an immutable SHA. If its actual `head_sha` changes between the head check and GitHub's scheduling, the obsolete parent rejects that child, stops further dispatch and **never certifies it for the old SHA**. There remains a narrow check-to-POST window in which some work may be wasted; it is explicitly not claimed to be eliminated.
+
+## Exact-head completion states
+
+- **qualified:** every selected reverse-dependency run completed successfully, with matching immutable SHA, source branch, workflow identity, event, run ID and unchanged attempt; the original PR head is still current; watcher matrix passed.
+- **superseded:** PR head or PR source identity changed.
+- **failed:** an authoritative required downstream run or watcher failed.
+- **cancelled:** indispensable execution was cancelled.
+- **pending:** required exact-head tests remain active.
+- **blocked:** API/dispatch identity, workflow definition, coverage or evidence could not be established.
+
+Only `qualified` is acceptable reverse-dependency evidence; none of these statuses substitutes for required native/direct checks. Non-qualified states exit nonzero when the parent is not already cancelled.
+
+## Audit and recovery
+
+Seven-day bounded Actions artifacts `zg000-dispatch-manifest` and `zg000-reconciliation-final` contain schema `zg000-dispatch-v1`, source PR/head, live head, required workflows, reused and dispatched run IDs/attempts, rejected identities, reasons, counts of dispatches avoided, and final state. A hard runner cancellation can prevent the final artifact; GitHub's cancelled-run conclusion remains authoritative.
+
+Interrupted/ambiguous dispatches require inspection of existing exact-head run records before any manual retry. Never cancel child runs without independently proving exclusive obsolete ownership.
+
+## Acceptance outstanding
+
+The deterministic tests mock API responses and inspect actual dispatch counts and identity; **they do not prove GitHub's live scheduler convergence**. Before merging, run an isolated rapid-push test on a disposable same-repo PR, inspect parent cancellation, child run IDs, attempt/source identities, manifests and absence of growing obsolete fan-out. Require exact-head Ubuntu/Windows tests and **independent read-only review**. Keep this PR draft if any requirement remains unverified.
