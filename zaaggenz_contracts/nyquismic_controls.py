@@ -506,3 +506,136 @@ class SampledLfoSource(_Record):
         return ModulationRoute(id=route_id, mapping=mapping, depth=depth,
                                initial=qtext(self.value_at(qtext(start))),
                                points=points, interpolation='linear')
+
+
+@dataclass(frozen=True)
+class EnvelopeGate(_Record):
+    """One physical-time gate; the release tail is owned by its source."""
+
+    on_s: str
+    off_s: str
+
+    def __post_init__(self):
+        onset = rational_value(self.on_s, 'envelope gate onset', 0, MAX_TIME_S)
+        offset = rational_value(self.off_s, 'envelope gate offset', 0, MAX_TIME_S)
+        require(offset > onset, 'envelope gate must have positive hold duration')
+        object.__setattr__(self, 'on_s', qtext(onset))
+        object.__setattr__(self, 'off_s', qtext(offset))
+
+
+@dataclass(frozen=True)
+class TriggeredEnvelopeSource(_Record):
+    """Finite, exact-time, linear ADSR gate authoring for existing routes.
+
+    Gate times are absolute physical seconds, not blocks or output samples.
+    A release starts at the instantaneous held value at note-off, even when
+    note-off interrupts attack or decay. Gate release tails must not overlap.
+    This is a *control source*, not input-audio envelope following or a
+    registered sampler/render path. Keep the source with the compiled route
+    to retain editable trigger intent.
+    """
+
+    version: str = 'nyq.triggered-envelope-source.v1'
+    origin_s: str = '0/1'
+    attack_s: str = '1/100'
+    decay_s: str = '1/10'
+    sustain: str = '1/2'
+    release_s: str = '1/10'
+    gates: tuple[EnvelopeGate, ...] = ()
+    _children = {'gates': (EnvelopeGate,)}
+
+    def __post_init__(self):
+        require(self.version == 'nyq.triggered-envelope-source.v1',
+                'unsupported triggered envelope version')
+        origin = rational_value(self.origin_s, 'envelope origin', 0, MAX_TIME_S)
+        attack = rational_value(self.attack_s, 'envelope attack seconds',
+                                Fraction(1, 1000000), MAX_TIME_S)
+        decay = rational_value(self.decay_s, 'envelope decay seconds',
+                               Fraction(1, 1000000), MAX_TIME_S)
+        sustain = rational_value(self.sustain, 'envelope sustain level', 0, 1)
+        release = rational_value(self.release_s, 'envelope release seconds',
+                                 Fraction(1, 1000000), MAX_TIME_S)
+        for name, value in (('origin_s', origin), ('attack_s', attack),
+                            ('decay_s', decay), ('sustain', sustain),
+                            ('release_s', release)):
+            object.__setattr__(self, name, qtext(value))
+        require(type(self.gates) is tuple and len(self.gates) <= MAX_POINTS,
+                'envelope gate count exceeds point budget')
+        available_at = origin
+        for gate in self.gates:
+            record(gate, EnvelopeGate, 'envelope gate')
+            onset, offset = Fraction(gate.on_s), Fraction(gate.off_s)
+            require(onset >= available_at,
+                    'envelope gates overlap release tails or precede origin')
+            require(offset + release <= MAX_TIME_S,
+                    'envelope release tail exceeds maximum physical time')
+            available_at = offset + release
+
+    def _held(self, gate: EnvelopeGate, t: Fraction) -> Fraction:
+        onset = Fraction(gate.on_s)
+        attack = Fraction(self.attack_s)
+        decay = Fraction(self.decay_s)
+        sustain = Fraction(self.sustain)
+        if t <= onset:
+            return Fraction(0)
+        if t < onset + attack:
+            return (t - onset) / attack
+        if t < onset + attack + decay:
+            return 1 - (1 - sustain) * (t - onset - attack) / decay
+        return sustain
+
+    def value_at(self, time_s: str) -> Fraction:
+        """Exact piecewise-linear level in [0, 1], with no hidden smoothing."""
+        t = rational_value(time_s, 'envelope sample time',
+                           Fraction(self.origin_s), MAX_TIME_S)
+        release = Fraction(self.release_s)
+        for gate in self.gates:
+            onset, offset = Fraction(gate.on_s), Fraction(gate.off_s)
+            if t < onset:
+                break
+            if t < offset:
+                return self._held(gate, t)
+            if t < offset + release:
+                return self._held(gate, offset) * (offset + release - t) / release
+        return Fraction(0)
+
+    def compile_route(self, end_s: str, *, route_id: str,
+                      mapping: str = 'add_hz', depth: float = 0.0,
+                      cancelled=None) -> ModulationRoute:
+        """Freeze each actual slope change into a standard linear route.
+
+        All gates and their tails must fit the requested extent; no clipped
+        envelope is silently published. Source + compiled route are separate
+        versioned records and must both be saved for editable provenance.
+        """
+        from .nyquismic_clock import ClockCancelled
+
+        require(cancelled is None or callable(cancelled),
+                'envelope cancellation hook must be callable')
+        if cancelled is not None and cancelled():
+            raise ClockCancelled('envelope compilation cancelled')
+        origin = Fraction(self.origin_s)
+        end = rational_value(end_s, 'envelope end seconds', origin, MAX_TIME_S)
+        attack, decay = Fraction(self.attack_s), Fraction(self.decay_s)
+        release = Fraction(self.release_s)
+        points: set[Fraction] = set()
+        for gate in self.gates:
+            if cancelled is not None and cancelled():
+                raise ClockCancelled('envelope compilation cancelled')
+            onset, offset = Fraction(gate.on_s), Fraction(gate.off_s)
+            require(offset + release <= end,
+                    'envelope gate/release exceeds requested control extent')
+            for stamp in (onset, min(onset + attack, offset),
+                          min(onset + attack + decay, offset),
+                          offset, offset + release):
+                if stamp > origin:
+                    points.add(stamp)
+            require(len(points) <= MAX_POINTS,
+                    'envelope compiled route exceeds point budget')
+        route_points = tuple(
+            Point(qtext(t), qtext(self.value_at(qtext(t))))
+            for t in sorted(points)
+        )
+        return ModulationRoute(id=route_id, mapping=mapping, depth=depth,
+                               initial='0/1', points=route_points,
+                               interpolation='linear')
