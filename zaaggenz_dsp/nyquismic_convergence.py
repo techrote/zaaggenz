@@ -81,6 +81,12 @@ class LocalConvergenceResult:
 
 def _metrics(a: np.ndarray, b: np.ndarray) -> dict:
     """Compare same-extent delivery-band PCM with three independent measures."""
+    # An empty timeline provides no spectral/temporal convergence evidence.
+    # Still return finite metrics for an explicit inconclusive outcome rather
+    # than allowing NumPy's zero-length FFT to throw an unclassified error.
+    if a.shape[0] == 0:
+        return {'relative_rms': 0.0, 'relative_spectrum': 0.0,
+                'relative_transient': 0.0, 'empty_extent': True}
     diff = a - b
     eps = 1e-12
     rms = lambda x: float(np.sqrt(np.mean(x * x))) if x.size else 0.0
@@ -176,7 +182,8 @@ def evaluate_local_convergence(
         if cancelled is not None and cancelled():
             raise ClockCancelled('convergence cancelled before comparison')
         metrics = _metrics(a, b)
-        good = (metrics['relative_rms'] <= policy.relative_rms_limit and
+        good = (not metrics.get('empty_extent', False) and
+                metrics['relative_rms'] <= policy.relative_rms_limit and
                 metrics['relative_spectrum'] <= policy.relative_spectrum_limit and
                 metrics['relative_transient'] <= policy.relative_transient_limit)
         comparisons.append({**metrics, 'within_limits': good})
