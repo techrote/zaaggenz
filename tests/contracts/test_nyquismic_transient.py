@@ -84,13 +84,11 @@ class UpstreamTransientTests(unittest.TestCase):
     def test_source_hash_topology_origin_and_policy_fail_closed(self):
         samples = np.array([0., .5, 0., -.5], dtype='<f4')
         p = policy(samples)
-        for bad in (
-            policy(samples, origin_s='1/8'),
-            UpstreamTransientPolicy(source=p.source, minimum_rise='1/1'),
-        ):
-            if bad.source.origin_s != '0/1':
-                with self.assertRaises(ContractError):
-                    compile_(samples, bad)
+        with self.assertRaises(ContractError):
+            policy(samples, origin_s='1/8')
+        self.assertEqual(
+            UpstreamTransientPolicy(source=p.source, minimum_rise='1/1').minimum_rise,
+            '1/1')
         with self.assertRaises(ContractError):
             UpstreamTransientPolicy(source=p.source, minimum_rise='-1/10')
         with self.assertRaises(ContractError):
