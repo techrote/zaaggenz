@@ -21,7 +21,7 @@ from zaaggenz_contracts import Contract, digest
 from zaaggenz_contracts.nyquismic import (
     MAX_DENOMINATOR, MAX_FRAMES, MAX_TIME_S, MAX_EVENTS, VERSION,
     SAMPLER_AUDIO_METHOD, SAMPLER_NUMERICAL_FILTER,
-    STATIC_FIR_PREFILTER_POLICIES,
+    STATIC_FIR_PREFILTER_POLICIES, GUARDED_CLEAN_PREFILTER,
     SonicSpec, EvaluationPolicy, ResourceBudget, RenderIdentity,
     UnsupportedNyquismic, _Record, require, record, integer, hash_value,
     qtext, bind_render_identity,
@@ -165,6 +165,7 @@ def _fir33_kernel(source_rate_hz: int, virtual_hz: Fraction, policy: str = 'fir3
     mix is implemented in the kernel itself (delta at the middle tap), which
     keeps unity DC, zero phase and one coefficient/identity authority.
     """
+    require(policy != GUARDED_CLEAN_PREFILTER, 'guarded comparator requires a Kaiser kernel')
     cutoff_ratio, strength = STATIC_FIR_PREFILTER_POLICIES[policy]
     cutoff_hz = cutoff_ratio * virtual_hz
     require(Fraction(0) < cutoff_hz < Fraction(source_rate_hz, 2),
@@ -181,13 +182,41 @@ def _fir33_kernel(source_rate_hz: int, virtual_hz: Fraction, policy: str = 'fir3
     return kernel, cutoff_hz
 
 
+def _fir_guarded_comparison(source_rate_hz: int, virtual_hz: Fraction) -> tuple[np.ndarray, Fraction]:
+    """Finite 129-tap Kaiser low-pass for a narrowly admitted static comparison.
+
+    This is an opt-in source prefilter, not a universal alias-free theorem.
+    Restrict the clock so that a real stopband can be measured before capture.
+    """
+    require(Fraction(source_rate_hz, 8) <= virtual_hz <= Fraction(source_rate_hz, 2),
+            'guarded FIR requires virtual rate between 1/8 and 1/2 source Hz')
+    cutoff_hz = Fraction(2, 5) * virtual_hz
+    x = np.arange(129, dtype=np.float64) - 64
+    fraction = float(cutoff_hz / source_rate_hz)
+    kernel = (2 * fraction) * np.sinc(2 * fraction * x) * np.kaiser(129, 10.0)
+    dc = float(np.sum(kernel))
+    require(np.isfinite(dc) and dc > 0, 'guarded Kaiser normalization invalid')
+    kernel /= dc
+    return kernel, cutoff_hz
+
+
+def _static_fir_kernel(source_rate_hz: int, virtual_hz: Fraction,
+                       policy: str) -> tuple[np.ndarray, Fraction]:
+    if policy == GUARDED_CLEAN_PREFILTER:
+        return _fir_guarded_comparison(source_rate_hz, virtual_hz)
+    return _fir33_kernel(source_rate_hz, virtual_hz, policy)
+
+
 def _prefilter_static_source(pcm: np.ndarray, kernel: np.ndarray, boundary: str,
                              cancelled=None) -> np.ndarray:
-    """Offline zero-phase FIR; 16 source-frame lookahead and matching padding."""
+    """Offline zero-phase symmetric FIR, with bounded exact source context."""
     _cancel(cancelled)
+    require(type(kernel) is np.ndarray and kernel.ndim == 1 and len(kernel) in (33, 129)
+            and np.isfinite(kernel).all(), 'unsupported/nonfinite static FIR coefficient array')
+    half = (len(kernel) - 1) // 2
     if not len(pcm):
         return np.zeros(pcm.shape, dtype=np.float64)
-    padding = ((16, 16), (0, 0))
+    padding = ((half, half), (0, 0))
     padded = np.pad(np.asarray(pcm, dtype=np.float64), padding,
                     mode='edge' if boundary == 'edge_hold' else 'constant')
     result = np.empty(pcm.shape, dtype=np.float64)
@@ -195,11 +224,8 @@ def _prefilter_static_source(pcm: np.ndarray, kernel: np.ndarray, boundary: str,
         for start in range(0, len(pcm), _SOURCE_FIR_BLOCK):
             _cancel(cancelled)
             stop = min(start + _SOURCE_FIR_BLOCK, len(pcm))
-            # A 33-tap symmetric FIR needs exactly 16 source frames on
-            # either side. Each bounded block sees the same full-context
-            # padded data as the original monolithic convolution; no
-            # boundary reset, signal trimming or source mutation occurs.
-            window = padded[start:stop + 32, channel]
+            # Full source-context convolution; 33-tap output is unchanged.
+            window = padded[start:stop + 2 * half, channel]
             result[start:stop, channel] = np.convolve(window, kernel, mode='valid')
     require(np.isfinite(result).all(), 'static Nyquismic FIR produced nonfinite samples')
     _cancel(cancelled)
@@ -382,9 +408,10 @@ class SamplerPlan:
             require(not spec.clock.points_hz, 'static FIR prefilter rejects modulated virtual rate')
             require(spec.clock.rate.hz < source.sample_rate_hz,
                     'static FIR prefilter requires virtual rate below source rate')
-            require(evaluation.budget.max_filter_taps >= 33,
+            taps = 129 if spec.prefilter == GUARDED_CLEAN_PREFILTER else 33
+            require(evaluation.budget.max_filter_taps >= taps,
                     'static FIR exceeds admitted tap budget')
-            _fir33_kernel(source.sample_rate_hz, spec.clock.rate.hz, spec.prefilter)
+            _static_fir_kernel(source.sample_rate_hz, spec.clock.rate.hz, spec.prefilter)
         active = not spec.is_boundary_identity
         require(active or rate == source.sample_rate_hz, 'exact bypass requires matched source/numerical grids; no hidden resampling')
         if context_sha256 is None:
@@ -406,7 +433,7 @@ class SamplerPlan:
         pcm = source.pcm.reshape(asset['frame_count'], spec.channels)
         capture_pcm = pcm
         if active and spec.prefilter in STATIC_FIR_PREFILTER_POLICIES:
-            kernel, _ = _fir33_kernel(source.sample_rate_hz, spec.clock.rate.hz, spec.prefilter)
+            kernel, _ = _static_fir_kernel(source.sample_rate_hz, spec.clock.rate.hz, spec.prefilter)
             capture_pcm = _prefilter_static_source(pcm, kernel, spec.input_boundary, cancelled)
         for i in range(len(events)):
             if i % _BLOCK == 0:
@@ -655,14 +682,17 @@ class SamplerPlan:
                                       else 'hann_symmetric_radius_8_local_shepard_inverse_square_v1'
                                       if self.spec.reconstruction == 'shepard8_hann_local_time_v1' else None),
             'prefilter': self.spec.prefilter,
-            'prefilter_support_source_frames': 16 if self.spec.prefilter != 'off_v1' else 0,
+            'prefilter_support_source_frames': (64 if self.spec.prefilter == GUARDED_CLEAN_PREFILTER
+                                                 else 16 if self.spec.prefilter != 'off_v1' else 0),
+            'prefilter_window': ('kaiser_beta10_129_v1' if self.spec.prefilter == GUARDED_CLEAN_PREFILTER
+                                 else 'hann_33_v1' if self.spec.prefilter != 'off_v1' else None),
             'prefilter_cutoff_hz': (float(STATIC_FIR_PREFILTER_POLICIES[self.spec.prefilter][0] *
                                           self.spec.clock.rate.hz)
                                     if self.spec.prefilter != 'off_v1' else None),
             'prefilter_strength': (float(STATIC_FIR_PREFILTER_POLICIES[self.spec.prefilter][1])
                                    if self.spec.prefilter != 'off_v1' else None),
             'prefilter_coefficients_sha256': (
-                hashlib.sha256(_fir33_kernel(self.source.sample_rate_hz,
+                hashlib.sha256(_static_fir_kernel(self.source.sample_rate_hz,
                                             self.spec.clock.rate.hz, self.spec.prefilter)[0].astype('<f8').tobytes()).hexdigest()
                 if self.spec.prefilter != 'off_v1' else None),
             'input_boundary': self.spec.input_boundary, 'stereo_link': self.spec.stereo_link,
