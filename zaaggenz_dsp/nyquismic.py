@@ -351,6 +351,13 @@ class SamplerPlan:
         # This admits the FULL render, even when the caller will later ask for a
         # small region, and validates unsupported clocks and latent bypasses.
         clock = admit_foundation(spec, qtext(end), evaluation.budget)[0]
+        if spec.reconstruction == 'sinc8_hann_uniform_v1':
+            require(not spec.clock.points_hz and not spec.clock.resets and
+                    not spec.clock.routes and spec.clock.quantizer.policy == 'none' and
+                    spec.clock.jitter.model == 'none',
+                    'sinc8 Hann reconstruction requires a static uniform event lattice')
+            require(evaluation.budget.max_filter_taps >= 17,
+                    'sinc8 Hann reconstruction exceeds admitted kernel support')
         if spec.prefilter == 'fir33_hann_static_0p45_v1':
             require(not spec.clock.points_hz, 'static FIR prefilter rejects modulated virtual rate')
             require(spec.clock.rate.hz < source.sample_rate_hz,
@@ -491,7 +498,32 @@ class SamplerPlan:
                         step = _ratio(Fraction(1, self.sample_rate_hz), duration)
                         alpha = alpha0 + (frames[mask] - anchor) * step
                         right = self.captures[owner + 1]
-                        if self.spec.reconstruction == 'nearest_time_v1':
+                        if self.spec.reconstruction == 'sinc8_hann_uniform_v1':
+                            # Static uniform grid only (admitted at prepare).
+                            # Evaluate physical-time cardinal-sinc with a
+                            # symmetric Hann window, support |x| < 8 events.
+                            # Renormalize the truncated edge kernel for
+                            # declared constant-signal DC response; this
+                            # does not perform global peak normalization.
+                            positions = np.flatnonzero(mask)
+                            for j, relative in zip(positions, alpha):
+                                if relative == 0:
+                                    block[j] = left  # exact event capture
+                                    continue
+                                lo = max(0, owner - 7)
+                                hi = min(len(self.events), owner + 9)
+                                offsets = np.arange(lo, hi, dtype=np.float64) - owner
+                                x = relative - offsets
+                                support = np.abs(x) < 8
+                                weights = np.zeros(len(offsets), dtype=np.float64)
+                                weights[support] = (np.sinc(x[support]) *
+                                    (0.5 + 0.5 * np.cos(np.pi * x[support] / 8)))
+                                dc = float(np.sum(weights))
+                                require(math.isfinite(dc) and abs(dc) > 1e-12,
+                                        'uniform Hann sinc local DC normalization invalid')
+                                block[j] = np.sum(self.captures[lo:hi] *
+                                                  weights[:, None], axis=0) / dc
+                        elif self.spec.reconstruction == 'nearest_time_v1':
                             # Decide ties using exact/Decimal80 event coordinates;
                             # a binary64 midpoint comparison can choose the
                             # wrong event near a sub-sample rational boundary.
@@ -556,6 +588,11 @@ class SamplerPlan:
             'origin_s': self.spec.clock.origin_s, 'initial_phase_cycles': self.spec.clock.phase_cycles,
             'resets': [r.to_dict() for r in self.spec.clock.resets],
             'capture': self.spec.capture, 'reconstruction': self.spec.reconstruction,
+            'reconstruction_support_events': (8 if self.spec.reconstruction == 'sinc8_hann_uniform_v1'
+                                              else 2 if self.spec.reconstruction == 'cubic_time_v1'
+                                              else 1 if self.spec.reconstruction != 'hold_v1' else 0),
+            'reconstruction_window': ('hann_symmetric_radius_8_v1'
+                                      if self.spec.reconstruction == 'sinc8_hann_uniform_v1' else None),
             'prefilter': self.spec.prefilter,
             'prefilter_support_source_frames': 16 if self.spec.prefilter != 'off_v1' else 0,
             'prefilter_cutoff_hz': (float(Fraction(9, 20) * self.spec.clock.rate.hz)
