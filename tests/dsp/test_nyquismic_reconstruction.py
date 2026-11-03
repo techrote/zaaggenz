@@ -52,11 +52,12 @@ class NonuniformReconstructionTests(unittest.TestCase):
             coords = [dec(p) for p in plan._coordinates]
             for n in range(480):
                 t = Decimal(n) / Decimal(48000)
-                owners = [i for i, v in enumerate(coords) if v <= t]
-                if not owners:
+                # Event ownership is exact phase membership, not a
+                # rounded Decimal80 approximation to an irrational crossing.
+                i = plan.clock.capture_count_at(Fraction(n, 48000), inclusive=True) - 1
+                if i < 0:
                     expected = 0.
                 else:
-                    i = owners[-1]
                     if i + 1 < len(coords) and 2 * (t - coords[i]) > coords[i + 1] - coords[i]:
                         i += 1
                     expected = float(plan.captures[i, 0])
