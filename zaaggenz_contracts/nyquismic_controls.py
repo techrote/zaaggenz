@@ -14,8 +14,8 @@ from decimal import Context, Decimal, localcontext
 from fractions import Fraction
 
 from .nyquismic import (
-    MAX_TIME_S, MIN_RATE_HZ, MAX_RATE_HZ, MAX_LEVELS, Point, SonicSpec,
-    RateQuantizer, _Record, clock_cell_value, integer, record, require,
+    MAX_TIME_S, MIN_RATE_HZ, MAX_RATE_HZ, MAX_LEVELS, MAX_POINTS, Point, SonicSpec,
+    ModulationRoute, RateQuantizer, _Record, clock_cell_value, integer, record, require,
     rational_value, qtext,
 )
 
@@ -377,3 +377,90 @@ def compile_step_clock_events(
     if cancelled is not None and cancelled():
         raise ClockCancelled('controlled clock cancelled; no partial event publication')
     return tuple(events)
+
+
+@dataclass(frozen=True)
+class SampledLfoSource(_Record):
+    """NYQ-004 finite exact-rational triangular LFO source and tempo map.
+
+    Compilation creates explicit, saved, linearly interpolated ModulationRoute
+    points, not a hidden render-block evaluator. It is an optional offline
+    route-authoring source, not audio-rate/feature routing or a sampler adapter.
+    Preserve this source record with the compiled route for editable intent.
+    """
+    version: str = 'nyq.sampled-lfo-source.v1'
+    mode: str = 'free_hz'
+    frequency: str = '1/1'  # Hz in free_hz; cycles/beat in beat_sync
+    phase_cycles: str = '0/1'
+    origin_s: str = '0/1'
+    grid_s: str = '1/1000'
+    base_bpm: str = '120/1'
+    tempo_points: tuple[Point, ...] = ()
+    _children = {'tempo_points': (Point,)}
+
+    def __post_init__(self):
+        require(self.version == 'nyq.sampled-lfo-source.v1', 'unsupported sampled LFO source version')
+        require(self.mode in ('free_hz', 'beat_sync'), 'sampled LFO mode')
+        for field, lo, hi in (
+            ('frequency', Fraction(1, 1024), Fraction(64)),
+            ('phase_cycles', Fraction(0), Fraction(1)),
+            ('origin_s', Fraction(0), Fraction(MAX_TIME_S)),
+            ('grid_s', Fraction(1, 1000000), Fraction(MAX_TIME_S)),
+            ('base_bpm', Fraction(20), Fraction(360)),
+        ):
+            value = rational_value(getattr(self, field), 'sampled LFO ' + field, lo, hi)
+            if field == 'phase_cycles':
+                require(value < 1, 'sampled LFO phase must be in [0, 1)')
+            object.__setattr__(self, field, qtext(value))
+        require(type(self.tempo_points) is tuple and len(self.tempo_points) <= MAX_POINTS,
+                'sampled LFO tempo map point bound')
+        previous = Fraction(self.origin_s)
+        for point in self.tempo_points:
+            record(point, Point, 'sampled LFO tempo point')
+            t = Fraction(point.time_s)
+            require(t > previous, 'sampled LFO tempo times must increase after origin')
+            rational_value(point.value, 'sampled LFO BPM', 20, 360)
+            previous = t
+        require(self.mode == 'beat_sync' or not self.tempo_points,
+                'inactive free-Hz LFO cannot store a tempo map')
+
+    def _cycles(self, t: Fraction) -> Fraction:
+        elapsed = t - Fraction(self.origin_s)
+        freq = Fraction(self.frequency)
+        if self.mode == 'free_hz':
+            return freq * elapsed
+        bpm = Fraction(self.base_bpm)
+        start = Fraction(self.origin_s)
+        beats = Fraction(0)
+        for point in self.tempo_points:
+            at = Fraction(point.time_s)
+            if at > t:
+                break
+            beats += bpm * (at - start) / 60
+            bpm, start = Fraction(point.value), at
+        return freq * (beats + bpm * (t - start) / 60)
+
+    def value_at(self, time_s: str) -> Fraction:
+        t = rational_value(time_s, 'sampled LFO time', Fraction(self.origin_s), MAX_TIME_S)
+        phase = (Fraction(self.phase_cycles) + self._cycles(t)) % 1
+        # Exact triangle: phase 0=-1, 1/2=+1; no floating trigonometry,
+        # phase accumulation by output frame or platform-dependent seeds.
+        return Fraction(1) - 4 * abs(phase - Fraction(1, 2))
+
+    def compile_route(self, end_s: str, *, route_id: str, mapping: str = 'add_hz',
+                      depth: float = 0.0) -> ModulationRoute:
+        """Freeze a bounded, explicit physical-time LFO point lane.
+
+        Interpolation is precisely the accepted route's piecewise linear
+        interpolation, not an assertion of bandlimited waveform fidelity.
+        """
+        start = Fraction(self.origin_s)
+        end = rational_value(end_s, 'sampled LFO end seconds', start, MAX_TIME_S)
+        grid = Fraction(self.grid_s)
+        count = -((start - end) // grid)  # exact ceil((end-start)/grid)
+        require(count <= MAX_POINTS, 'sampled LFO point budget exceeded; shorten span or enlarge grid')
+        times = [min(start + k * grid, end) for k in range(1, count + 1)]
+        points = tuple(Point(qtext(t), qtext(self.value_at(qtext(t)))) for t in times)
+        return ModulationRoute(id=route_id, mapping=mapping, depth=depth,
+                               initial=qtext(self.value_at(qtext(start))),
+                               points=points, interpolation='linear')
