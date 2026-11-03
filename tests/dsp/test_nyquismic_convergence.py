@@ -69,6 +69,16 @@ class FrozenConvergenceTests(unittest.TestCase):
         self.assertIsNone(result.selected_audio)
         self.assertFalse(result.diagnostics['successive_metrics'][-1]['within_limits'])
 
+    def test_empty_extent_is_explicitly_inconclusive_not_fft_error(self):
+        def empty(rate):
+            return NumericalCandidate(rate, np.zeros((0, 2)), **HASHES)
+        result = evaluate_local_convergence(empty, **HASHES)
+        self.assertEqual(result.status, 'inconclusive')
+        self.assertIsNone(result.selected_audio)
+        self.assertEqual(result.diagnostics['passes'], 3)
+        self.assertTrue(all(x['empty_extent'] and not x['within_limits']
+                            for x in result.diagnostics['successive_metrics']))
+
     def test_identity_extent_and_rate_switches_fail_closed(self):
         for callback in (
             lambda r: NumericalCandidate(r + 1, np.zeros(r // 50), **HASHES),
