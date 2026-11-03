@@ -452,7 +452,8 @@ class SonicSpec(_Record):
         choice(self.capture, 'capture interpolation', ('linear_v1', 'nearest_left_tie_v1'))
         choice(self.prefilter, 'prefilter', ('off_v1', 'fir33_hann_static_0p45_v1'))
         choice(self.reconstruction, 'reconstruction', ('hold_v1', 'linear_time_v1',
-                                                      'nearest_time_v1', 'cubic_time_v1'))
+                                                      'nearest_time_v1', 'cubic_time_v1',
+                                                      'sinc8_hann_uniform_v1'))
         integer(self.channels, 'channels', 1, 2)
         choice(self.stereo_link, 'stereo clock linking', ('linked', 'independent'))
         if self.clock_group is not None:
