@@ -46,6 +46,8 @@ class FakeAPI:
             return {"state":"open","head":{"sha":self.sha,"ref":self.ref,
                                               "repo":{"full_name":self.repo}}}
         if path.endswith("/dispatches"):
+            if payload != {"ref": self.ref}:
+                raise ReconcileError("2026-03-10 workflow dispatch request contains unsupported fields")
             self.posts.append(payload)
             if self.post_error:
                 raise ReconcileError("POST timed out; ambiguous mutation")
@@ -245,6 +247,13 @@ class ZG000RegressionTests(unittest.TestCase):
         api=FakeAPI(); rec=make(api); selected=rec.dispatch()[0]
         api.runs[selected["run_id"]].update(status="completed",conclusion="success",run_attempt=3)
         with self.assertRaises(ReconcileError): rec.finalize("success")
+
+    def test_29_current_api_dispatch_returns_run_id_without_removed_parameter(self):
+        api = FakeAPI()
+        selected = make(api).dispatch()
+        self.assertEqual([{"ref": REF}], api.posts)
+        self.assertEqual(1000, selected[0]["run_id"])
+        self.assertEqual("dispatched", selected[0]["decision"])
 
 
 if __name__ == "__main__":

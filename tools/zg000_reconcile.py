@@ -200,7 +200,7 @@ class Reconciler:
     def dispatch_one(self, row: dict) -> dict:
         workflow = row["workflow"]
         response = self.api.request("POST", self.api_path(f"actions/workflows/{workflow}/dispatches"),
-                                    {"ref": self.ref, "return_run_details": True})
+                                    {"ref": self.ref})
         run_id = response.get("workflow_run_id")
         if not isinstance(run_id, int) or run_id < 1:
             raise ReconcileError(f"{workflow}: dispatch returned no authoritative run ID; do not retry")

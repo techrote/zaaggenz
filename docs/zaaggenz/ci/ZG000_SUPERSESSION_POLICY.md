@@ -24,7 +24,7 @@ For every required downstream workflow, list `workflow_dispatch` runs at the exa
 - Latest cancelled: cannot certify; one new dispatch may be started.
 - Missing: dispatch one run.
 
-GitHub's 2026-03-10 workflow-dispatch `return_run_details` response supplies the created run ID. No timestamp/run-ID inference is used. An ambiguous POST or missing returned ID is never blindly retried, to avoid duplicate launches. GET and run-visibility checks have bounded retries.
+GitHub REST API version `2026-03-10` removed the `return_run_details` request parameter and always returns `200` with `workflow_run_id`. Dispatch sends only the moving source `ref` (and no removed parameter). The returned run ID is verified against GitHub's authoritative actual run source; no timestamp/run-ID inference is used. An ambiguous POST or missing returned ID is never blindly retried, to avoid duplicate launches. GET and run-visibility checks have bounded retries.
 
 GitHub `workflow_dispatch` still targets a potentially moving branch, not an immutable SHA. If its actual `head_sha` changes between the head check and GitHub's scheduling, the obsolete parent rejects that child, stops further dispatch and **never certifies it for the old SHA**. There remains a narrow check-to-POST window in which some work may be wasted; it is explicitly not claimed to be eliminated.
 
