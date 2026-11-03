@@ -123,8 +123,14 @@ class TriggeredEnvelopeTests(unittest.TestCase):
                 if t <= a:
                     break
                 right = min(t, b)
+                # A certified irrational event root can have a rational
+                # enclosure denominator well beyond the saved-control bound.
+                # The oracle interpolates independently between admitted
+                # physical-time knots; it must not reserialize that root as
+                # a user-authored control timestamp.
                 f0 = 4 + 4 * source.value_at(q(a))
-                f1 = 4 + 4 * source.value_at(q(right))
+                fb = 4 + 4 * source.value_at(q(b))
+                f1 = f0 + (fb - f0) * (right - a) / (b - a)
                 total += (f0 + f1) * (right - a) / 2
                 if right == t:
                     break
