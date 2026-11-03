@@ -101,14 +101,17 @@ def compile_upstream_rms_route(
     require(samples.shape[0] == policy.frames and samples.size <= MAX_FRAMES,
             'upstream PCM frame budget or snapshot mismatch')
     require(np.isfinite(samples).all(), 'upstream PCM must be finite')
-    raw = np.ascontiguousarray(samples, dtype='<f4')
+    # Force a private canonical PCM snapshot *before* the hash. A caller
+    # may hold a mutable contiguous NumPy buffer; reading it again after
+    # validation would otherwise allow hash/level TOCTOU divergence.
+    raw = np.array(samples, dtype='<f4', order='C', copy=True)
     require(hashlib.sha256(raw.tobytes()).hexdigest() == policy.source_sha256,
             'upstream source content hash mismatch')
     windows = (policy.frames + policy.window_frames - 1) // policy.window_frames
     # The accepted route has <=256 actual points. The initial window
     # supplies route.initial; windows after the first supply points.
     require(windows <= MAX_POINTS + 1, 'upstream RMS control budget exceeded')
-    source = samples if samples.ndim == 1 else samples[:, policy.channel]
+    source = raw if raw.ndim == 1 else raw[:, policy.channel]
     scale = float(Fraction(policy.reference_amplitude))
     levels = []
     for k in range(windows):

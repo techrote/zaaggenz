@@ -99,6 +99,23 @@ class InputEnvelopeTests(unittest.TestCase):
         with self.assertRaises(ContractError):
             UpstreamRmsPolicy.from_dict({**policy.to_dict(), 'other': 'x'})
 
+    def test_caller_mutation_after_hash_cannot_change_compiled_signal(self):
+        source = np.full(8, .25, dtype='<f4')
+        policy = make(source, window=4)
+        calls = [0]
+        def caller_mutates():
+            calls[0] += 1
+            if calls[0] == 2:
+                # This callback fires after successful source hashing.
+                # A source alias must never be consumed after the check.
+                source[:] = 0
+            return False
+        result = compile_(source, policy, cancelled=caller_mutates)
+        self.assertEqual(result.route.initial, '1/4')
+        self.assertEqual(tuple(x.value for x in result.route.points), ('1/4',))
+        self.assertTrue(np.all(source == 0))
+        self.assertEqual(result.diagnostics['source_sha256'], policy.source_sha256)
+
     def test_windows_bound_and_cancellation_preserve_atomicity(self):
         signal = np.zeros(258, dtype='<f4')
         with self.assertRaises(ContractError):
