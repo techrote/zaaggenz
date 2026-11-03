@@ -268,8 +268,8 @@ def compile_step_clock_events(
     end = rational_value(end_s, 'step clock end seconds', origin, MAX_TIME_S)
     linear = (clock.interpolation == 'linear' and bool(clock.points_hz)) or any(
         r.interpolation == 'linear' and bool(r.points) for r in clock.routes)
-    if linear and clock.quantizer.policy != 'none':
-        raise UnsupportedNyquismic('quantized linear-Hz ramp switch crossings need a separate exact solver')
+    quantized_linear = linear and clock.quantizer.policy == 'nearest_hz'
+
     for route in clock.routes:
         if route.mapping != 'add_hz':
             raise UnsupportedNyquismic('controlled clock logarithmic route integration not implemented')
@@ -293,6 +293,33 @@ def compile_step_clock_events(
         require(cells <= min(MAX_EVENTS, budget.max_events),
                 'step clock jitter-cell admission budget exceeded')
         cuts.update(origin + i * width for i in range(1, cells))
+    if quantized_linear:
+        # The unquantized additive-Hz curve is affine between every existing
+        # breakpoint. Nearest-ladder changes occur at exact midpoints of
+        # adjacent saved Hz levels, never at an output-buffer boundary.
+        # Include all these switch times before integrating clock phase.
+        from bisect import bisect_left, bisect_right
+        levels = tuple(Fraction(hz) for hz in clock.quantizer.levels_hz)
+        thresholds = tuple((a + b) / 2 for a, b in zip(levels, levels[1:]))
+        original_cuts = sorted(cuts)
+        for left, right in zip(original_cuts, original_cuts[1:]):
+            if cancelled is not None and cancelled():
+                raise ClockCancelled('controlled clock cancelled; no partial event publication')
+            midpoint = (left + right) / 2
+            start_hz = Fraction(evaluate_instantaneous_rate(
+                spec, qtext(left), channel=channel).routed_hz)
+            mid_hz = Fraction(evaluate_instantaneous_rate(
+                spec, qtext(midpoint), channel=channel).routed_hz)
+            delta_hz = 2 * (mid_hz - start_hz)
+            if not delta_hz:
+                continue
+            lower, upper = sorted((start_hz, start_hz + delta_hz))
+            for threshold in thresholds[bisect_right(thresholds, lower):bisect_left(thresholds, upper)]:
+                switch = left + (threshold - start_hz) * (right - left) / delta_hz
+                if left < switch < right:
+                    cuts.add(switch)
+                    require(len(cuts) <= min(MAX_EVENTS, budget.max_events) + 2,
+                            'quantized clock switch-segment budget exceeded')
     require(len(cuts) <= MAX_EVENTS + 2, 'step clock segment budget exceeded')
     ordered = sorted(cuts)
     phase = Fraction(clock.phase_cycles)
@@ -308,14 +335,20 @@ def compile_step_clock_events(
         # The evaluator must return an exact rational in this supported subset.
         # In particular, no exponential Decimal80 result is silently rounded
         # to the numerical evaluation grid.
-        rate = Fraction(evaluate_instantaneous_rate(spec, qtext(a), channel=channel).realized_hz)
-        require(rate > 0, 'controlled clock rate must be positive')
-        # Every linear breakpoint, step and jitter-cell boundary is a cut.
-        # Thus inside [a,b) the realized rate is affine; the midpoint is an
-        # exact independent sample for its slope, even when routes overlap.
         midpoint = (a + b) / 2
+        # Nearest-Hz quantizers are piecewise constant even over a linear
+        # underlying ramp. At an exact ascending ladder tie the instantaneous
+        # evaluator deliberately selects the LOWER value, but the open
+        # interval to its right owns the HIGHER rate. A midpoint sample
+        # selects that right-hand interval value for continuous phase.
+        rate_at = midpoint if quantized_linear else a
+        rate = Fraction(evaluate_instantaneous_rate(
+            spec, qtext(rate_at), channel=channel).realized_hz)
+        require(rate > 0, 'controlled clock rate must be positive')
+        # All affine and discontinuity boundaries have already been cut.
         middle_rate = (Fraction(evaluate_instantaneous_rate(
-            spec, qtext(midpoint), channel=channel).realized_hz) if linear else rate)
+            spec, qtext(midpoint), channel=channel).realized_hz)
+                       if linear and not quantized_linear else rate)
         endpoint_rate = 2 * middle_rate - rate
         require(endpoint_rate > 0, 'controlled clock endpoint rate must be positive')
         slope = (endpoint_rate - rate) / (b - a)
