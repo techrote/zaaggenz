@@ -444,8 +444,15 @@ class SamplerPlan:
                         alpha = alpha0 + (frames[mask] - anchor) * step
                         right = self.captures[owner + 1]
                         if self.spec.reconstruction == 'nearest_time_v1':
-                            # Exact half-interval ties belong to the earlier event.
-                            block[mask] = np.where((alpha <= 0.5)[:, None], left, right)
+                            # Decide ties using exact/Decimal80 event coordinates;
+                            # a binary64 midpoint comparison can choose the
+                            # wrong event near a sub-sample rational boundary.
+                            before_midpoint = np.fromiter(
+                                (2 * _difference(Fraction(int(frame), self.sample_rate_hz),
+                                                 self._coordinates[owner]) <= duration
+                                 for frame in frames[mask]),
+                                dtype=bool, count=int(np.count_nonzero(mask)))
+                            block[mask] = np.where(before_midpoint[:, None], left, right)
                         elif self.spec.reconstruction == 'cubic_time_v1':
                             # Nonuniform cubic Hermite: slopes use physical event
                             # spacing, not source/evaluation sample indices.
