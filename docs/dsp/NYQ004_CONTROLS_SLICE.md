@@ -208,3 +208,46 @@ rates/depths/modes. **No change** to the accepted NYQ-001/002
 `ClockPlan.require_geometry` rejection or original instrument path.
 Sampler phase integration and upstream/feature-derived controls remain
 outstanding; this authoring slice alone cannot close #253.
+
+
+## NYQ-004 continuation: exact-time triggered ADSR gate authoring
+
+The opt-in frozen source record `TriggeredEnvelopeSource`
+(`nyq.triggered-envelope-source.v1`) and its `EnvelopeGate(on_s, off_s)`
+records compile physical-second attack/decay/sustain/release envelopes into
+the **existing** serializable `ModulationRoute` representation. No parallel
+automation/session engine, new graph registry entry, or sampler capability is
+introduced. Gate offsets interrupt attack/decay correctly: release starts
+from the **actual instantaneous value** at note-off rather than jumping to
+the stored sustain level. All four segments are exactly piecewise-linear,
+with no evaluation-frame snapping, block smoothing or hidden resampling.
+
+The authoring record stores an origin, strictly positive rational
+attack/decay/release seconds, rational sustain in [0, 1] and ordered
+absolute-time gates. A gate's release must finish before the next gate;
+overlapping release tails and gates that exceed the saved time extent reject.
+The compiler inserts only true physical-time slope-change points, including
+truncated attack/decay points on early note-off. The total compiled route is
+strictly bounded to the existing 256-point limit; excess gates reject instead
+of truncating. Optional cancellation aborts without publishing a partial
+route. Every field participates in full-snapshot JSON and source identity.
+Save **both the editable source and the compiled route**: the existing
+`SonicSpec` stores only the route itself. A zero-depth compiled route
+preserves the static Nyquismic clock rather than automatically bypassing it.
+
+This is **triggered envelope authoring**, not input-envelope following, a
+spectral feature tap, a gate detector or cross-band modulation. It does not
+make the accepted NYQ-002 sampler execute routed control; its
+`ClockPlan.require_geometry()` guard remains in place. The independent
+`test_nyquismic_triggered_envelope.py` covers early release, exact level
+geometry, two-gate continuity, strict serialization and bounds, point budget,
+cancellation, existing instantaneous-rate inspection and analytic
+affine-Hz event integrals. Use:
+
+```sh
+python -m unittest discover -s tests/contracts -p 'test_nyquismic_triggered_envelope.py' -v
+```
+
+No full instrument, save/reopen UI, WAV/FLAC or human listening acceptance is
+claimed. Input-audio/upstream controls and production audio clock integration
+are still required to close #253.
