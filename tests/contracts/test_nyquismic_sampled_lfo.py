@@ -71,6 +71,11 @@ class SampledLfoTests(unittest.TestCase):
         for kwargs in bad_specs:
             with self.subTest(kwargs=kwargs), self.assertRaises(ContractError):
                 SampledLfoSource(**kwargs)
+        for lfo in (SampledLfoSource(frequency='10/1', grid_s='1/8'),
+                    SampledLfoSource(mode='beat_sync', base_bpm='360/1',
+                                     grid_s='1/8', frequency='1/1')):
+            with self.subTest(underresolved=lfo.mode), self.assertRaises(ContractError):
+                lfo.compile_route('1/8', route_id='aliasing')
         source = SampledLfoSource()
         with self.assertRaises(ContractError):
             source.compile_route('1/1', route_id='oversized')
