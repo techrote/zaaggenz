@@ -33,6 +33,7 @@ from zaaggenz_contracts.nyquismic_clock import (
 CHECKPOINT_VERSION = 'nyq.sampler-checkpoint.v1'
 EXECUTION_DOMAIN = 'zaaggenz.nyquismic.sampler-execution.v1'
 _BLOCK = 256
+_SOURCE_FIR_BLOCK = 8192  # pre-capture FIR: cancellation between bounded source windows
 _NO_RACK = digest({'domain': EXECUTION_DOMAIN, 'rack': None})
 _NO_GRAPH = digest({'domain': EXECUTION_DOMAIN, 'graph': None})
 
@@ -191,8 +192,15 @@ def _prefilter_static_source(pcm: np.ndarray, kernel: np.ndarray, boundary: str,
                     mode='edge' if boundary == 'edge_hold' else 'constant')
     result = np.empty(pcm.shape, dtype=np.float64)
     for channel in range(pcm.shape[1]):
-        _cancel(cancelled)
-        result[:, channel] = np.convolve(padded[:, channel], kernel, mode='valid')
+        for start in range(0, len(pcm), _SOURCE_FIR_BLOCK):
+            _cancel(cancelled)
+            stop = min(start + _SOURCE_FIR_BLOCK, len(pcm))
+            # A 33-tap symmetric FIR needs exactly 16 source frames on
+            # either side. Each bounded block sees the same full-context
+            # padded data as the original monolithic convolution; no
+            # boundary reset, signal trimming or source mutation occurs.
+            window = padded[start:stop + 32, channel]
+            result[start:stop, channel] = np.convolve(window, kernel, mode='valid')
     require(np.isfinite(result).all(), 'static Nyquismic FIR produced nonfinite samples')
     _cancel(cancelled)
     return result
