@@ -1,9 +1,11 @@
-"""NYQ-004 bounded instantaneous-rate control and rate-ladder evaluator.
+"""NYQ-004 deterministic rate controls and experimental clock geometry.
 
-A saved-rate inspector for NYQ-004. It is intentionally NOT a virtual-clock
-phase integrator, event scheduler, sampler adapter, feature tap or audio path.
-The NYQ-001/002 geometry rejection remains authoritative until full NYQ-004
-event integration is validated. No silent approximate event times.
+The instantaneous-rate inspector and separately bounded affine/step event
+compiler share saved SonicSpec controls. The compiler integrates phase and
+reports certified timestamp uncertainty, but is NOT a registered ClockPlan,
+SamplerPlan adapter, feature tap, rack node or delivered audio path.
+The accepted NYQ-001/002 clock geometry rejection remains authoritative
+until actual sampler integration is independently qualified.
 """
 from __future__ import annotations
 
