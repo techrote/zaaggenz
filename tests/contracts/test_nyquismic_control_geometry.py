@@ -144,11 +144,55 @@ class ControlledStepGeometryTests(unittest.TestCase):
         self.assertTrue(all(e.coordinate_error_bound_s <= Fraction(1, 10**18)
                             for e in events))
 
+    def test_linear_hz_quantizer_exact_switch_and_boundary_tie(self):
+        # Underlying f(t)=4+4t reaches the 6 Hz ladder midpoint at t=1/2.
+        # Actual virtual clock is 4 Hz on the first half and 8 Hz on the
+        # second: no smoothed ramp, buffer-rate quantization or phase reset.
+        from zaaggenz_contracts.nyquismic_controls import evaluate_instantaneous_rate
+        request = sonic('4/1', points_hz=(Point('1/1', '8/1'),),
+                        interpolation='linear', quantizer=RateQuantizer(
+                            policy='nearest_hz', levels_hz=('4/1', '8/1')))
+        self.assertEqual(evaluate_instantaneous_rate(request, '1/2').realized_hz, '4/1')
+        expected = [Fraction(0), Fraction(1, 4), Fraction(1, 2),
+                    Fraction(5, 8), Fraction(3, 4), Fraction(7, 8)]
+        actual = compile_step_clock_events(request, '1/1')
+        self.assertEqual([event.coordinate_s for event in actual], expected)
+        self.assertTrue(all(event.coordinate_error_bound_s == 0 for event in actual))
+        self.assertEqual(compile_step_clock_events(request, '3/4'), actual[:4])
+
+    def test_quantized_affine_route_falling_and_reset_at_exact_switch(self):
+        # Unlike an upward tie, an exact downward 6 Hz tie selects the
+        # right-hand 4 Hz segment. Reset and ladder switch share a boundary.
+        route = ModulationRoute(id='fall', mapping='add_hz', depth=-4.,
+                                initial='0/1', points=(Point('1/1', '1/1'),),
+                                interpolation='linear')
+        quantizer = RateQuantizer(policy='nearest_hz', levels_hz=('4/1', '8/1'))
+        request = sonic('8/1', routes=(route,), quantizer=quantizer,
+                        resets=(Reset(time_s='1/2', phase_cycles='0/1'),))
+        actual = compile_step_clock_events(request, '1/1')
+        self.assertEqual([event.coordinate_s for event in actual],
+                         [Fraction(0), Fraction(1, 8), Fraction(1, 4),
+                          Fraction(3, 8), Fraction(1, 2), Fraction(3, 4)])
+        self.assertEqual([event.epoch for event in actual], [0, 0, 0, 0, 1, 1])
+        self.assertEqual([event.crossing for event in actual], [0, 1, 2, 3, 0, 1])
+
+    def test_multiple_quantized_ramp_switches_preserve_exact_phase(self):
+        request = sonic('4/1', points_hz=(Point('1/1', '10/1'),),
+                        interpolation='linear', quantizer=RateQuantizer(
+                            policy='nearest_hz', levels_hz=('5/1', '7/1', '9/1')))
+        expected = [Fraction(0), Fraction(1, 5), Fraction(8, 21),
+                    Fraction(11, 21), Fraction(2, 3),
+                    Fraction(7, 9), Fraction(8, 9)]
+        actual = compile_step_clock_events(request, '1/1')
+        self.assertEqual([event.coordinate_s for event in actual], expected)
+        self.assertEqual([event.crossing for event in actual], list(range(7)))
+        self.assertEqual(actual, compile_step_clock_events(request, '1/1'))
+        with self.assertRaises(ContractError):
+            compile_step_clock_events(request, '1/1',
+                                      budget=ResourceBudget(max_events=4))
+
     def test_unimplemented_geometry_rejects_before_publication(self):
         for invalid in (
-            sonic(points_hz=(Point('1/2', '6/1'),), interpolation='linear',
-                  quantizer=RateQuantizer(policy='nearest_hz',
-                                          levels_hz=('4/1', '6/1'))),
             sonic(routes=(ModulationRoute(
                 mapping='log2_ratio', depth=1, initial='1/2'),)),
             sonic(routes=(ModulationRoute(
