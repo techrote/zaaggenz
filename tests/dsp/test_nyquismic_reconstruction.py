@@ -28,7 +28,7 @@ class NonuniformReconstructionTests(unittest.TestCase):
         actual = plan.render().audio
         # Time-domain midpoints between event captures (four source frames).
         # n=0,1,2 => event 0; n=3..6 => event 4, etc.
-        expected = x[np.minimum(((np.arange(480) + 1) // 4) * 4, 479)]
+        expected = x[np.minimum(((np.arange(480) + 1) // 4) * 4, 476)]
         self.assertEqual(actual[0], 0)
         self.assertEqual(actual[1], 0)
         self.assertEqual(actual[2], 0)
