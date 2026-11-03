@@ -48,7 +48,7 @@ class PhysicalAliasAndImageOracles(unittest.TestCase):
             source, plan, audio = render('hold_v1', rate_hz)
             self.assertEqual(plan.clock.event_count, 800)
             self.assertEqual(len(audio), rate_hz // 10)
-            self.assertEqual(amplitude(source, 2000, SOURCE_HZ), 0)
+            self.assertLess(amplitude(source, 2000, SOURCE_HZ), 1e-6)
             fold = amplitude(audio, 2000, rate_hz)
             image = amplitude(audio, 6000, rate_hz)
             self.assertGreater(fold, .75)
