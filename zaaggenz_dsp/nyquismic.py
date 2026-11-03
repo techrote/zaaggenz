@@ -442,7 +442,34 @@ class SamplerPlan:
                         alpha0 = _ratio(_difference(Fraction(anchor, self.sample_rate_hz), self._coordinates[owner]), duration)
                         step = _ratio(Fraction(1, self.sample_rate_hz), duration)
                         alpha = alpha0 + (frames[mask] - anchor) * step
-                        block[mask] = left + alpha[:, None] * (self.captures[owner + 1] - left)
+                        right = self.captures[owner + 1]
+                        if self.spec.reconstruction == 'nearest_time_v1':
+                            # Exact half-interval ties belong to the earlier event.
+                            block[mask] = np.where((alpha <= 0.5)[:, None], left, right)
+                        elif self.spec.reconstruction == 'cubic_time_v1':
+                            # Nonuniform cubic Hermite: slopes use physical event
+                            # spacing, not source/evaluation sample indices.
+                            span = float(duration)
+                            if owner > 0:
+                                previous_span = float(_difference(self._coordinates[owner + 1],
+                                                                 self._coordinates[owner - 1]))
+                                slope_left = (right - self.captures[owner - 1]) / previous_span
+                            else:
+                                slope_left = (right - left) / span
+                            if owner + 2 < len(self.events):
+                                next_span = float(_difference(self._coordinates[owner + 2],
+                                                             self._coordinates[owner]))
+                                slope_right = (self.captures[owner + 2] - left) / next_span
+                            else:
+                                slope_right = (right - left) / span
+                            u = alpha[:, None]
+                            u2, u3 = u * u, u * u * u
+                            block[mask] = ((2*u3 - 3*u2 + 1)*left
+                                           + (u3 - 2*u2 + u)*span*slope_left
+                                           + (-2*u3 + 3*u2)*right
+                                           + (u3 - u2)*span*slope_right)
+                        else:
+                            block[mask] = left + alpha[:, None] * (right - left)
                 if self.spec.wet != 1:
                     dry = self._dry(a, b)
                     block = (1.0 - self.spec.wet) * dry + self.spec.wet * block
