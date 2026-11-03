@@ -88,3 +88,48 @@ stereo/silence/empty input, region identity, source immutability,
 serialization/fingerprint distinction and failure on unsupported dynamic
 cutoff or undersized tap budgets. This is not a guarded-clean filter or a
 numerical-convergence/final-conversion claim. Those remain part of #252.
+
+## Follow-up: strict static-uniform windowed-sinc reconstruction
+
+`sinc8_hann_uniform_v1` is an additional **opt-in** `SonicSpec.reconstruction`
+value. The supported clock must be genuinely static/uniform: no Hz points,
+phase resets, routes, quantizer or jitter. These capabilities are checked
+during `SamplerPlan.prepare` even if the node will be bypassed. A separate,
+physically time-aware nonuniform sinc policy remains unimplemented and is
+**never** silently approximated using this uniform kernel.
+
+For each numerical output time in an admitted capture interval, the
+reconstruction sums captured event amplitudes with normalized weights
+
+`w(x) = sinc(x) * (0.5 + 0.5*cos(pi*x/8))` for `|x| < 8`,
+and zero otherwise, where `x=(t-t_capture)*f_virtual` counts fractional
+virtual-event spacings. The window radius is **8 virtual samples**, with
+nominal 17 event positions and 16 nonzero off-grid taps at most;
+`budget.max_filter_taps >= 17` is required. The truncated kernel is
+normalized by its own coefficient sum to preserve a constant input at source
+edges; there is no overall audio-level normalization, clipping, or cleaning
+of intentionally formed aliases.
+
+The original zero-before-first-capture and last-capture hold boundary
+conventions remain in force. The kernel uses admitted full-context captures,
+not independent per-request or per-block edge padding, so resumed/region
+renders are sample-exact relative to a full run. It introduces up to eight
+virtual events of interpolation support (including pre/post ringing) but
+does not change the requested output extent or perform a final delivery
+conversion. Coefficient evaluation uses float64 NumPy sine/cosine; results
+have numeric tolerance expectations rather than cross-platform bit identity.
+
+The focused suite proves DC gain including truncated edges, exact event-grid
+capture, Fourier suppression of a hold image at 11 kHz, preservation of an
+intentional 7kHz-to-5kHz virtual alias, stereo, region/checkpoint identity,
+zero-wet/bypass, cancellation, budget admission and irregular-clock rejection:
+
+```sh
+python -m unittest discover -s tests/dsp -p 'test_nyquismic_sinc.py' -v
+```
+
+This narrows the remaining #252 work but does **not** satisfy it. In particular,
+finite adjustable prefilter cutoff/strength, guarded-clean baseline,
+nonuniform reconstruction, local evaluation/final-conversion policy,
+numerical convergence and frozen independent quality evidence remain
+outstanding. All outputs still stay in the numerical sampler domain.
