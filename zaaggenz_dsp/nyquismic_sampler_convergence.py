@@ -76,7 +76,7 @@ def evaluate_sampler_model_convergence(
         # Versioned exact event ledger: the rounded float display timestamp
         # cannot distinguish distinct Decimal80/exact-rational crossings.
         ledger = hashlib.sha256()
-        ledger.update(b'nyq.exact-physical-event-ledger.v1\\0')
+        ledger.update(b'nyq.exact-physical-event-ledger.v1\0')
         for i, event in enumerate(plan.events):
             if (i & 255) == 0 and cancelled is not None and cancelled():
                 raise ClockCancelled('same-model sampler event ledger cancelled')
@@ -87,7 +87,7 @@ def evaluate_sampler_model_convergence(
                 # ClockPlan's nonrational roots are Decimal80, never binary64.
                 timestamp = 'd:' + str(coordinate)
             ledger.update(
-                f'{event.index}:{event.epoch}:{event.crossing}:{timestamp}\\n'.encode('ascii')
+                f'{event.index}:{event.epoch}:{event.crossing}:{timestamp}\n'.encode('ascii')
             )
         current = ledger.hexdigest()
         if event_sha is None:
