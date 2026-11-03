@@ -100,7 +100,7 @@ class InputEnvelopeTests(unittest.TestCase):
             UpstreamRmsPolicy.from_dict({**policy.to_dict(), 'other': 'x'})
 
     def test_windows_bound_and_cancellation_preserve_atomicity(self):
-        signal = np.zeros(257, dtype='<f4')
+        signal = np.zeros(258, dtype='<f4')
         with self.assertRaises(ContractError):
             compile_(signal, make(signal, window=1))
         signal = np.ones(20, dtype='<f4') * .25
