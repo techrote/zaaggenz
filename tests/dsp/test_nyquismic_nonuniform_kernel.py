@@ -5,6 +5,7 @@ final delivery-rate conversion. All comparisons use the same immutable source.
 """
 from dataclasses import replace
 from fractions import Fraction
+from decimal import Context, Decimal, localcontext
 import math
 import unittest
 
@@ -31,29 +32,33 @@ def expected_local_capture(plan, frame):
     """Independent scalar/reference implementation of positive local weights."""
     t = Fraction(frame, 48000)
     times = plan._coordinates
+    def dec(v):
+        return (Decimal(v.numerator) / Decimal(v.denominator)
+                if type(v) is Fraction else v)
     k0 = plan.clock.capture_count_at(t, inclusive=True) - 1
     if k0 < 0:
         return 0.0
     if k0 >= len(times) - 1:
         return float(plan.captures[k0, 0])
-    if t == times[k0]:
-        return float(plan.captures[k0, 0])
-    weighted = 0.0
-    mass = 0.0
-    for k in range(max(0, k0 - 8), min(len(times), k0 + 9)):
-        if k == 0:
-            scale = times[1] - times[0]
-        elif k == len(times) - 1:
-            scale = times[-1] - times[-2]
-        else:
-            scale = (times[k+1] - times[k-1]) / 2
-        x = float((t - times[k]) / scale)
-        if x == 0:
-            return float(plan.captures[k, 0])
-        if abs(x) < 8:
-            w = (1 + math.cos(math.pi * x / 8)) / (2 * x * x)
-            mass += w
-            weighted += w * float(plan.captures[k, 0])
+    with localcontext(Context(prec=80)):
+        if dec(t) == dec(times[k0]):
+            return float(plan.captures[k0, 0])
+        weighted = 0.0
+        mass = 0.0
+        for k in range(max(0, k0 - 8), min(len(times), k0 + 9)):
+            if k == 0:
+                scale = dec(times[1]) - dec(times[0])
+            elif k == len(times) - 1:
+                scale = dec(times[-1]) - dec(times[-2])
+            else:
+                scale = (dec(times[k+1]) - dec(times[k-1])) / 2
+            x = float((dec(t) - dec(times[k])) / scale)
+            if x == 0:
+                return float(plan.captures[k, 0])
+            if abs(x) < 8:
+                w = (1 + math.cos(math.pi * x / 8)) / (2 * x * x)
+                mass += w
+                weighted += w * float(plan.captures[k, 0])
     if not mass:
         raise AssertionError('missing nonuniform kernel mass')
     return weighted / mass
