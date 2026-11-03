@@ -155,6 +155,43 @@ def sampler_evaluation(rate: int, budget: ResourceBudget = ResourceBudget()) -> 
                             numerical_filter=SAMPLER_NUMERICAL_FILTER, budget=budget)
 
 
+
+def _fir33_kernel(source_rate_hz: int, virtual_hz: Fraction) -> tuple[np.ndarray, Fraction]:
+    """Named symmetric 33-tap Hann-windowed low-pass, 0.45 * virtual Hz.
+
+    Its DC normalization is a filter-coefficient convention; audio is never
+    normalized, clipped or made dependent on numerical evaluation rate.
+    """
+    cutoff_hz = Fraction(9, 20) * virtual_hz
+    require(Fraction(0) < cutoff_hz < Fraction(source_rate_hz, 2),
+            'static Nyquismic FIR cutoff must lie below source Nyquist')
+    fraction = float(cutoff_hz / source_rate_hz)
+    indices = np.arange(33, dtype=np.float64) - 16
+    kernel = (2 * fraction) * np.sinc(2 * fraction * indices) * np.hanning(33)
+    norm = float(np.sum(kernel))
+    require(np.isfinite(norm) and norm > 0, 'static Nyquismic FIR normalization invalid')
+    kernel /= norm
+    return kernel, cutoff_hz
+
+
+def _prefilter_static_source(pcm: np.ndarray, kernel: np.ndarray, boundary: str,
+                             cancelled=None) -> np.ndarray:
+    """Offline zero-phase FIR; 16 source-frame lookahead and matching padding."""
+    _cancel(cancelled)
+    if not len(pcm):
+        return np.zeros(pcm.shape, dtype=np.float64)
+    padding = ((16, 16), (0, 0))
+    padded = np.pad(np.asarray(pcm, dtype=np.float64), padding,
+                    mode='edge' if boundary == 'edge_hold' else 'constant')
+    result = np.empty(pcm.shape, dtype=np.float64)
+    for channel in range(pcm.shape[1]):
+        _cancel(cancelled)
+        result[:, channel] = np.convolve(padded[:, channel], kernel, mode='valid')
+    require(np.isfinite(result).all(), 'static Nyquismic FIR produced nonfinite samples')
+    _cancel(cancelled)
+    return result
+
+
 def _sample_at(pcm: np.ndarray, position: Fraction | Decimal, capture: str, boundary: str) -> np.ndarray:
     """Evaluate canonical PCM at an exact/Decimal80 fractional sample index."""
     left = math.floor(position)
@@ -314,6 +351,13 @@ class SamplerPlan:
         # This admits the FULL render, even when the caller will later ask for a
         # small region, and validates unsupported clocks and latent bypasses.
         clock = admit_foundation(spec, qtext(end), evaluation.budget)[0]
+        if spec.prefilter == 'fir33_hann_static_0p45_v1':
+            require(not spec.clock.points_hz, 'static FIR prefilter rejects modulated virtual rate')
+            require(spec.clock.rate.hz < source.sample_rate_hz,
+                    'static FIR prefilter requires virtual rate below source rate')
+            require(evaluation.budget.max_filter_taps >= 33,
+                    'static FIR exceeds admitted tap budget')
+            _fir33_kernel(source.sample_rate_hz, spec.clock.rate.hz)
         active = not spec.is_boundary_identity
         require(active or rate == source.sample_rate_hz, 'exact bypass requires matched source/numerical grids; no hidden resampling')
         if context_sha256 is None:
@@ -333,6 +377,10 @@ class SamplerPlan:
         timestamp_rounding = 0.0
         captured = np.empty((len(events), spec.channels), dtype=np.float64)
         pcm = source.pcm.reshape(asset['frame_count'], spec.channels)
+        capture_pcm = pcm
+        if active and spec.prefilter == 'fir33_hann_static_0p45_v1':
+            kernel, _ = _fir33_kernel(source.sample_rate_hz, spec.clock.rate.hz)
+            capture_pcm = _prefilter_static_source(pcm, kernel, spec.input_boundary, cancelled)
         for i in range(len(events)):
             if i % _BLOCK == 0:
                 _notify(progress, i / max(len(events), 1), cancelled)
@@ -348,7 +396,7 @@ class SamplerPlan:
             coordinates.append(relative)
             first_frames.append(_first_frame(clock, i, coordinate, origin, rate, frame_count))
             with localcontext(Context(prec=80)):
-                captured[i] = _sample_at(pcm, relative * source.sample_rate_hz, spec.capture, spec.input_boundary)
+                captured[i] = _sample_at(capture_pcm, relative * source.sample_rate_hz, spec.capture, spec.input_boundary)
         require(np.isfinite(captured).all(), 'capture produced nonfinite audio')
         _notify(progress, 1.0, cancelled)
         values = dict(source=source, spec=spec, evaluation=evaluation, identity=identity,
@@ -508,6 +556,14 @@ class SamplerPlan:
             'origin_s': self.spec.clock.origin_s, 'initial_phase_cycles': self.spec.clock.phase_cycles,
             'resets': [r.to_dict() for r in self.spec.clock.resets],
             'capture': self.spec.capture, 'reconstruction': self.spec.reconstruction,
+            'prefilter': self.spec.prefilter,
+            'prefilter_support_source_frames': 16 if self.spec.prefilter != 'off_v1' else 0,
+            'prefilter_cutoff_hz': (float(Fraction(9, 20) * self.spec.clock.rate.hz)
+                                    if self.spec.prefilter != 'off_v1' else None),
+            'prefilter_coefficients_sha256': (
+                hashlib.sha256(_fir33_kernel(self.source.sample_rate_hz,
+                                            self.spec.clock.rate.hz)[0].astype('<f8').tobytes()).hexdigest()
+                if self.spec.prefilter != 'off_v1' else None),
             'input_boundary': self.spec.input_boundary, 'stereo_link': self.spec.stereo_link,
             'channel_identities': ['mono'] if self.spec.channels == 1 else ['left', 'right'],
             'context': 'complete admitted render including next-capture lookahead; no region budget discount',
