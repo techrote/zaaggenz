@@ -39,6 +39,14 @@ MAX_DENOMINATOR = 1_000_000_000
 MAX_NUMERATOR = 9_999_999_999_999
 SAMPLER_AUDIO_METHOD = 'fractional_event_sampler_v1'
 SAMPLER_NUMERICAL_FILTER = 'point_evaluation_no_conversion_v1'
+# Opt-in physical-frequency FIR policies.  These are discrete, versioned
+# choices in the existing 1.0.0 snapshot, not unsaved implicit controls.
+# Values are (cutoff / virtual_Hz, filtered fraction of the capture source).
+STATIC_FIR_PREFILTER_POLICIES = {
+    'fir33_hann_static_0p45_v1': (Fraction(9, 20), Fraction(1)),
+    'fir33_hann_static_0p30_v1': (Fraction(3, 10), Fraction(1)),
+    'fir33_hann_static_0p45_mix0p5_v1': (Fraction(9, 20), Fraction(1, 2)),
+}
 
 
 class UnsupportedNyquismic(ContractError):
@@ -450,7 +458,7 @@ class SonicSpec(_Record):
             else:
                 require(self.playback is None, 'sampler does not contain an implicit playback warp')
         choice(self.capture, 'capture interpolation', ('linear_v1', 'nearest_left_tie_v1'))
-        choice(self.prefilter, 'prefilter', ('off_v1', 'fir33_hann_static_0p45_v1'))
+        choice(self.prefilter, 'prefilter', ('off_v1', *STATIC_FIR_PREFILTER_POLICIES))
         choice(self.reconstruction, 'reconstruction', ('hold_v1', 'linear_time_v1',
                                                       'nearest_time_v1', 'cubic_time_v1',
                                                       'sinc8_hann_uniform_v1'))

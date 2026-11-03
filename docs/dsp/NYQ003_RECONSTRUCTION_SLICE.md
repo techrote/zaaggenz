@@ -133,3 +133,25 @@ finite adjustable prefilter cutoff/strength, guarded-clean baseline,
 nonuniform reconstruction, local evaluation/final-conversion policy,
 numerical convergence and frozen independent quality evidence remain
 outstanding. All outputs still stay in the numerical sampler domain.
+
+
+## Opt-in static FIR cutoff/strength selections
+
+The static source FIR now also admits two discrete versioned policy strings:
+
+| Saved `prefilter` | Cutoff | Filtered fraction |
+| --- | --- | --- |
+| `fir33_hann_static_0p45_v1` | 0.45 × saved virtual Hz | 1.0 (original unchanged) |
+| `fir33_hann_static_0p30_v1` | 0.30 × saved virtual Hz | 1.0 |
+| `fir33_hann_static_0p45_mix0p5_v1` | 0.45 × saved virtual Hz | 0.5 |
+
+The half-strength mode adds a 0.5 unit impulse to the centre of the
+0.5-strength DC-normalized kernel. It is therefore exactly a linear dry/FIR
+capture-source blend, without modifying wet/dry output routing. All variants
+retain 33 symmetric taps, 16-frame context, source-rate interpolation,
+static-only admission, and final extent. Policy name, cutoff, mix fraction,
+sonic identity and actual float64 coefficient bytes are explicit and
+traceable in diagnostics; legacy `off_v1` and `0p45_v1` are unchanged.
+These selections are **not** continuous user-editable cutoff/strength controls;
+that contract/UI and guarded-clean/filter-convergence evidence remain #252 work.
+Test: `python -m unittest discover -s tests/dsp -p 'test_nyquismic_prefilter.py' -v`.

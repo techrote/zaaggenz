@@ -21,6 +21,7 @@ from zaaggenz_contracts import Contract, digest
 from zaaggenz_contracts.nyquismic import (
     MAX_DENOMINATOR, MAX_FRAMES, MAX_TIME_S, MAX_EVENTS, VERSION,
     SAMPLER_AUDIO_METHOD, SAMPLER_NUMERICAL_FILTER,
+    STATIC_FIR_PREFILTER_POLICIES,
     SonicSpec, EvaluationPolicy, ResourceBudget, RenderIdentity,
     UnsupportedNyquismic, _Record, require, record, integer, hash_value,
     qtext, bind_render_identity,
@@ -156,13 +157,15 @@ def sampler_evaluation(rate: int, budget: ResourceBudget = ResourceBudget()) -> 
 
 
 
-def _fir33_kernel(source_rate_hz: int, virtual_hz: Fraction) -> tuple[np.ndarray, Fraction]:
-    """Named symmetric 33-tap Hann-windowed low-pass, 0.45 * virtual Hz.
+def _fir33_kernel(source_rate_hz: int, virtual_hz: Fraction, policy: str = 'fir33_hann_static_0p45_v1') -> tuple[np.ndarray, Fraction]:
+    """A versioned symmetric 33-tap FIR with an explicit cutoff and dry mix.
 
-    Its DC normalization is a filter-coefficient convention; audio is never
-    normalized, clipped or made dependent on numerical evaluation rate.
+    A mix of one preserves the accepted 0p45 policy bit for bit.  A partial
+    mix is implemented in the kernel itself (delta at the middle tap), which
+    keeps unity DC, zero phase and one coefficient/identity authority.
     """
-    cutoff_hz = Fraction(9, 20) * virtual_hz
+    cutoff_ratio, strength = STATIC_FIR_PREFILTER_POLICIES[policy]
+    cutoff_hz = cutoff_ratio * virtual_hz
     require(Fraction(0) < cutoff_hz < Fraction(source_rate_hz, 2),
             'static Nyquismic FIR cutoff must lie below source Nyquist')
     fraction = float(cutoff_hz / source_rate_hz)
@@ -171,6 +174,9 @@ def _fir33_kernel(source_rate_hz: int, virtual_hz: Fraction) -> tuple[np.ndarray
     norm = float(np.sum(kernel))
     require(np.isfinite(norm) and norm > 0, 'static Nyquismic FIR normalization invalid')
     kernel /= norm
+    if strength != 1:
+        kernel *= float(strength)
+        kernel[16] += float(1 - strength)
     return kernel, cutoff_hz
 
 
@@ -358,13 +364,13 @@ class SamplerPlan:
                     'sinc8 Hann reconstruction requires a static uniform event lattice')
             require(evaluation.budget.max_filter_taps >= 17,
                     'sinc8 Hann reconstruction exceeds admitted kernel support')
-        if spec.prefilter == 'fir33_hann_static_0p45_v1':
+        if spec.prefilter in STATIC_FIR_PREFILTER_POLICIES:
             require(not spec.clock.points_hz, 'static FIR prefilter rejects modulated virtual rate')
             require(spec.clock.rate.hz < source.sample_rate_hz,
                     'static FIR prefilter requires virtual rate below source rate')
             require(evaluation.budget.max_filter_taps >= 33,
                     'static FIR exceeds admitted tap budget')
-            _fir33_kernel(source.sample_rate_hz, spec.clock.rate.hz)
+            _fir33_kernel(source.sample_rate_hz, spec.clock.rate.hz, spec.prefilter)
         active = not spec.is_boundary_identity
         require(active or rate == source.sample_rate_hz, 'exact bypass requires matched source/numerical grids; no hidden resampling')
         if context_sha256 is None:
@@ -385,8 +391,8 @@ class SamplerPlan:
         captured = np.empty((len(events), spec.channels), dtype=np.float64)
         pcm = source.pcm.reshape(asset['frame_count'], spec.channels)
         capture_pcm = pcm
-        if active and spec.prefilter == 'fir33_hann_static_0p45_v1':
-            kernel, _ = _fir33_kernel(source.sample_rate_hz, spec.clock.rate.hz)
+        if active and spec.prefilter in STATIC_FIR_PREFILTER_POLICIES:
+            kernel, _ = _fir33_kernel(source.sample_rate_hz, spec.clock.rate.hz, spec.prefilter)
             capture_pcm = _prefilter_static_source(pcm, kernel, spec.input_boundary, cancelled)
         for i in range(len(events)):
             if i % _BLOCK == 0:
@@ -595,11 +601,14 @@ class SamplerPlan:
                                       if self.spec.reconstruction == 'sinc8_hann_uniform_v1' else None),
             'prefilter': self.spec.prefilter,
             'prefilter_support_source_frames': 16 if self.spec.prefilter != 'off_v1' else 0,
-            'prefilter_cutoff_hz': (float(Fraction(9, 20) * self.spec.clock.rate.hz)
+            'prefilter_cutoff_hz': (float(STATIC_FIR_PREFILTER_POLICIES[self.spec.prefilter][0] *
+                                          self.spec.clock.rate.hz)
                                     if self.spec.prefilter != 'off_v1' else None),
+            'prefilter_strength': (float(STATIC_FIR_PREFILTER_POLICIES[self.spec.prefilter][1])
+                                   if self.spec.prefilter != 'off_v1' else None),
             'prefilter_coefficients_sha256': (
                 hashlib.sha256(_fir33_kernel(self.source.sample_rate_hz,
-                                            self.spec.clock.rate.hz)[0].astype('<f8').tobytes()).hexdigest()
+                                            self.spec.clock.rate.hz, self.spec.prefilter)[0].astype('<f8').tobytes()).hexdigest()
                 if self.spec.prefilter != 'off_v1' else None),
             'input_boundary': self.spec.input_boundary, 'stereo_link': self.spec.stereo_link,
             'channel_identities': ['mono'] if self.spec.channels == 1 else ['left', 'right'],

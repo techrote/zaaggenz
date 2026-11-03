@@ -104,6 +104,51 @@ class StaticFIRPrefilterTests(unittest.TestCase):
         empty = prepare(np.zeros(0, dtype=np.float32))
         self.assertEqual(empty.render().audio.size, 0)
 
+    def test_named_cutoff_and_strength_are_separate_opt_in_sonic_choices(self):
+        n = 4800
+        time = np.arange(n, dtype=np.float64) / 48000
+        high = np.sin(2 * np.pi * 11000 * time).astype(np.float32)
+        dry = prepare(high, policy='off_v1').captures[:, 0]
+        wide = prepare(high, policy=FILTER).captures[:, 0]
+        narrow_plan = prepare(high, policy='fir33_hann_static_0p30_v1')
+        half_plan = prepare(high, policy='fir33_hann_static_0p45_mix0p5_v1')
+        narrow = narrow_plan.captures[:, 0]
+        half = half_plan.captures[:, 0]
+        # A 50% wet FIR is exactly the 50/50 source-filter blend for a
+        # linear capture operator; no hidden amplitude normalization.
+        np.testing.assert_allclose(half, (dry + wide) / 2, atol=2e-14, rtol=0)
+        self.assertGreater(np.max(np.abs(dry[20:-20] - wide[20:-20])), .1)
+        self.assertGreater(np.max(np.abs(dry[20:-20] - half[20:-20])), .05)
+        self.assertNotEqual(narrow_plan.spec.sonic_sha256, half_plan.spec.sonic_sha256)
+        self.assertNotEqual(narrow_plan.render().diagnostics['prefilter_coefficients_sha256'],
+                            half_plan.render().diagnostics['prefilter_coefficients_sha256'])
+        self.assertEqual(narrow_plan.render().diagnostics['prefilter_cutoff_hz'], 2400)
+        self.assertEqual(half_plan.render().diagnostics['prefilter_cutoff_hz'], 3600)
+        self.assertEqual(half_plan.render().diagnostics['prefilter_strength'], .5)
+        for plan in (narrow_plan, half_plan):
+            full = plan.render().audio
+            np.testing.assert_array_equal(
+                np.concatenate([plan.render(0, 117).audio,
+                                plan.render(117, 2401).audio,
+                                plan.render(2401, n).audio]), full)
+            self.assertEqual(SonicSpec.from_json(plan.spec.to_json()), plan.spec)
+        with self.assertRaises(ContractError):
+            SonicSpec(prefilter='fir33_hann_static_0p12_v1')
+
+    def test_named_cutoff_changes_spectral_character_without_touching_bypass(self):
+        time = np.arange(4800, dtype=np.float64) / 48000
+        signal = np.sin(2 * np.pi * 3000 * time).astype(np.float32)
+        narrow = prepare(signal, policy='fir33_hann_static_0p30_v1').captures[:, 0]
+        wide = prepare(signal, policy=FILTER).captures[:, 0]
+        self.assertGreater(float(np.sqrt(np.mean((narrow[20:-20] -
+                                                   wide[20:-20]) ** 2))), 1e-3)
+        original = FrozenInput.from_pcm(signal, 48000)
+        for policy in ('fir33_hann_static_0p30_v1',
+                       'fir33_hann_static_0p45_mix0p5_v1'):
+            spec = SonicSpec(prefilter=policy, wet=0.)
+            plan = SamplerPlan.prepare(original, spec, sampler_evaluation(48000))
+            np.testing.assert_array_equal(plan.render().audio, signal)
+
 
 if __name__ == '__main__':
     unittest.main()
