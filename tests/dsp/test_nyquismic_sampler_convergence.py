@@ -1,5 +1,7 @@
 """NYQ-003 real NYQ-002 sampler-backed numerical convergence tests."""
 import unittest
+import hashlib
+from fractions import Fraction
 
 import numpy as np
 
@@ -96,6 +98,23 @@ class SamplerBackedConvergenceTests(unittest.TestCase):
             evaluate_sampler_model_convergence(
                 source, sonic, cancelled=cancel_after_first_pass)
         self.assertGreaterEqual(checks[0], 20)
+
+    def test_full_precision_event_ledger_matches_independent_clock_coordinates(self):
+        source, sonic = setup(np.linspace(-1, 1, 96, dtype='<f4'))
+        result = evaluate_sampler_model_convergence(source, sonic)
+        plan = SamplerPlan.prepare(
+            source, sonic, sampler_evaluation(192000), frame_count=384)
+        h = hashlib.sha256()
+        h.update(b'nyq.exact-physical-event-ledger.v1\0')
+        for index, event in enumerate(plan.events):
+            physical = plan.clock.event_coordinate(index)
+            stamp = (f'r:{physical.numerator}/{physical.denominator}'
+                     if isinstance(physical, Fraction) else 'd:' + str(physical))
+            h.update(f'{event.index}:{event.epoch}:{event.crossing}:{stamp}\n'.encode('ascii'))
+        self.assertEqual(result.diagnostics['event_ledger_sha256'], h.hexdigest())
+        self.assertEqual(result.diagnostics['event_ledger_method'],
+                         'nyq.exact-physical-event-ledger.v1')
+        self.assertEqual(result.diagnostics['event_count'], len(plan.events))
 
     def test_empty_extent_cannot_qualify_audio(self):
         source, sonic = setup(np.zeros(0, dtype='<f4'))
