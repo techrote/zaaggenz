@@ -82,14 +82,80 @@ class ControlledStepGeometryTests(unittest.TestCase):
             [e.coordinate_s for e in compile_step_clock_events(independent, '1/1', channel=1)],
         )
 
+    def test_linear_hz_ramp_has_analytic_integral_and_certified_roots(self):
+        # f(t)=3+4t, phase(t)=3t+2t^2. Integer crossing two is
+        # exactly t=1/2; the other crossings generally have irrational roots.
+        request = sonic('3/1', points_hz=(Point('1/1', '7/1'),),
+                        interpolation='linear')
+        events = compile_step_clock_events(request, '1/1')
+        self.assertEqual([e.crossing for e in events], list(range(5)))
+        self.assertEqual(events[2].coordinate_s, Fraction(1, 2))
+        self.assertEqual(events[2].coordinate_error_bound_s, Fraction(0))
+        self.assertGreater(events[1].coordinate_error_bound_s, 0)
+        for event in events:
+            t = event.coordinate_s
+            self.assertLessEqual(abs(3 * t + 2 * t * t - event.crossing),
+                                 7 * event.coordinate_error_bound_s)
+            self.assertLessEqual(event.coordinate_error_bound_s, Fraction(1, 10**18))
+        self.assertTrue(all(a.coordinate_s < b.coordinate_s
+                            for a, b in zip(events, events[1:])))
+
+        # Decreasing slope must select the forward root, not the other
+        # quadratic branch: f(t)=7-4t, phase(t)=7t-2t^2.
+        falling = sonic('7/1', points_hz=(Point('1/1', '3/1'),),
+                        interpolation='linear')
+        events = compile_step_clock_events(falling, '1/1')
+        self.assertEqual(events[3].coordinate_s, Fraction(1, 2))
+        self.assertEqual([e.crossing for e in events], list(range(5)))
+        for event in events:
+            t = event.coordinate_s
+            self.assertLessEqual(abs(7 * t - 2 * t * t - event.crossing),
+                                 7 * event.coordinate_error_bound_s)
+
+    def test_linear_route_is_not_block_sampled_and_reset_is_continuous_after_reset(self):
+        route = ModulationRoute(id='ramp', mapping='add_hz', depth=4.,
+                                initial='0/1', points=(Point('1/1', '1/1'),),
+                                interpolation='linear')
+        routed = sonic('3/1', routes=(route,))
+        equivalent = sonic('3/1', points_hz=(Point('1/1', '7/1'),),
+                           interpolation='linear')
+        self.assertEqual(
+            [e.coordinate_s for e in compile_step_clock_events(routed, '1/1')],
+            [e.coordinate_s for e in compile_step_clock_events(equivalent, '1/1')],
+        )
+        reset = sonic('3/1', points_hz=(Point('1/1', '7/1'),),
+                      interpolation='linear',
+                      resets=(Reset(time_s='1/2', phase_cycles='0/1'),))
+        events = compile_step_clock_events(reset, '1/1')
+        self.assertEqual([(e.epoch, e.crossing) for e in events],
+                         [(0, 0), (0, 1), (1, 0), (1, 1), (1, 2)])
+        self.assertEqual(events[2].coordinate_s, Fraction(1, 2))
+        self.assertEqual(events, compile_step_clock_events(reset, '1/1'))
+
+    def test_ramped_jitter_cells_are_reproducible_and_bounded(self):
+        jitter = JitterSpec(model='uniform_frequency_cells_v1', amount=.05,
+                            cell_s='1/4', seed='199', stream='linear')
+        request = sonic('3/1', points_hz=(Point('1/1', '7/1'),),
+                        interpolation='linear', jitter=jitter)
+        events = compile_step_clock_events(request, '1/1')
+        self.assertEqual(events, compile_step_clock_events(request, '1/1'))
+        self.assertTrue(all(a.coordinate_s < b.coordinate_s
+                            for a, b in zip(events, events[1:])))
+        self.assertTrue(all(e.coordinate_error_bound_s <= Fraction(1, 10**18)
+                            for e in events))
+
     def test_unimplemented_geometry_rejects_before_publication(self):
         for invalid in (
-            sonic(points_hz=(Point('1/2', '6/1'),), interpolation='linear'),
+            sonic(points_hz=(Point('1/2', '6/1'),), interpolation='linear',
+                  quantizer=RateQuantizer(policy='nearest_hz',
+                                          levels_hz=('4/1', '6/1'))),
             sonic(routes=(ModulationRoute(
                 mapping='log2_ratio', depth=1, initial='1/2'),)),
             sonic(routes=(ModulationRoute(
                 depth=1, initial='1/2', points=(Point('1/2', '0/1'),),
-                interpolation='linear'),)),
+                interpolation='linear'),),
+                quantizer=RateQuantizer(policy='nearest_hz',
+                                        levels_hz=('2/1', '4/1'))),
         ):
             with self.subTest(clock=invalid.clock.sha256), self.assertRaises(UnsupportedNyquismic):
                 compile_step_clock_events(invalid, '1/1')
