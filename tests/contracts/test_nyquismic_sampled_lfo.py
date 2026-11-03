@@ -55,9 +55,57 @@ class SampledLfoTests(unittest.TestCase):
         route = source.compile_route('3/10', route_id='partial', depth=3.)
         self.assertEqual(route.initial, source.value_at('1/8').numerator.__str__() + '/' + str(source.value_at('1/8').denominator))
         self.assertEqual(Fraction(route.points[-1].time_s), Fraction(3, 10))
-        self.assertEqual(len(route.points), 3)
+        # The exact peak at 7/24 seconds falls between 1/16-second grid
+        # samples, and must now be preserved in the compiled route.
+        self.assertEqual(len(route.points), 4)
+        self.assertIn(Fraction(7, 24), {Fraction(p.time_s) for p in route.points})
         self.assertEqual(Fraction(route.points[-1].value), source.value_at('3/10'))
         self.assertEqual(len(source.compile_route('1/8', route_id='empty').points), 0)
+
+    def test_non_grid_turning_points_are_exact_at_intermediate_times(self):
+        source = SampledLfoSource(frequency='3/2', grid_s='1/10')
+        route = source.compile_route('1/1', route_id='cusps', depth=20.)
+        stamps = {Fraction(p.time_s) for p in route.points}
+        self.assertTrue({Fraction(1, 3), Fraction(2, 3), Fraction(1)} <= stamps)
+        self.assertEqual(len(stamps), len(route.points))
+        spec = SonicSpec(clock=ClockSpec(rate=VirtualRate('100/1'), routes=(route,)))
+        for t in (Fraction(1, 20), Fraction(1, 4), Fraction(1, 3),
+                  Fraction(7, 20), Fraction(11, 20), Fraction(2, 3),
+                  Fraction(3, 4), Fraction(19, 20)):
+            with self.subTest(time=str(t)):
+                actual = Fraction(evaluate_instantaneous_rate(
+                    spec, f'{t.numerator}/{t.denominator}').realized_hz)
+                expected = Fraction(100) + 20 * source.value_at(
+                    f'{t.numerator}/{t.denominator}')
+                self.assertEqual(actual, expected)
+
+    def test_off_grid_tempo_change_is_a_saved_slope_discontinuity(self):
+        source = SampledLfoSource(mode='beat_sync', frequency='1/1',
+                                  base_bpm='120/1', grid_s='1/8',
+                                  tempo_points=(Point('1/3', '60/1'),))
+        route = source.compile_route('1/1', route_id='tempo', depth=10.)
+        stamps = {Fraction(p.time_s) for p in route.points}
+        self.assertTrue({Fraction(1, 4), Fraction(1, 3),
+                         Fraction(2, 3)} <= stamps)
+        spec = SonicSpec(clock=ClockSpec(rate=VirtualRate('100/1'), routes=(route,)))
+        for t in (Fraction(1, 5), Fraction(1, 4), Fraction(7, 24),
+                  Fraction(1, 3), Fraction(3, 8), Fraction(1, 2),
+                  Fraction(2, 3), Fraction(11, 12)):
+            with self.subTest(time=str(t)):
+                actual = Fraction(evaluate_instantaneous_rate(
+                    spec, f'{t.numerator}/{t.denominator}').realized_hz)
+                expected = Fraction(100) + 10 * source.value_at(
+                    f'{t.numerator}/{t.denominator}')
+                self.assertEqual(actual, expected)
+        self.assertEqual(len(route.points), len(stamps))
+        self.assertEqual(SampledLfoSource.from_json(source.to_json()), source)
+
+    def test_turning_point_enrichment_respects_total_lane_budget(self):
+        # The grid alone fits 256 points, but exact cusps raise the total
+        # above that bound and must reject instead of being silently dropped.
+        source = SampledLfoSource(frequency='64/1', grid_s='1/260')
+        with self.assertRaises(ContractError):
+            source.compile_route('63/64', route_id='overfull')
 
     def test_invalid_time_tempo_numerics_and_budget_fail_closed(self):
         bad_specs = (
