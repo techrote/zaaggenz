@@ -9,10 +9,13 @@ on:
       - 'zaaggenz_timeline/**'
       - 'zaaggenz_melody/**'
       - 'tests/rack/**'
+      - 'zaaggenz_components/**'
+      - 'docs/dsp/MBR002_COMPOSE_EXECUTION.md'
       - 'docs/dsp/MBR001_EDITABLE_RACK.md'
       - 'tests/dsp/**'
       - 'tests/spectral/**'
       - 'tools/band_selective_report.py'
+      - 'tools/mbr002_report.py'
       - 'examples/zg021_band_selective.json'
       - 'docs/dsp/ZG021_BAND_SELECTIVE_DSP.md'
       - '.github/workflows/zg021-band-selective.yml'
@@ -43,12 +46,16 @@ jobs:
         run: python -m unittest discover -s tests/dsp -v
       - name: Spectral acceptance and regressions
         run: python -m unittest discover -s tests/spectral -v
-      - name: MBR-001 saved rack, legacy parity and Compose contract handoff
+      - name: MBR-001/002 saved rack, numerical parity and real Compose API execution
         run: python -m unittest discover -s tests/rack -v
       - name: Frozen 48 kHz band isolation evidence
         run: python tools/band_selective_report.py --out band-selective-evidence.json
+      - name: MBR-002 actual Compose 12/48 kHz WAV and context evidence
+        run: python tools/mbr002_report.py --out mbr002-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: band-selective-evidence-${{ matrix.os }}
-          path: band-selective-evidence.json
+          path: |
+            band-selective-evidence.json
+            mbr002-evidence/

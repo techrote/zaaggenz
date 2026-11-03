@@ -100,6 +100,19 @@ class JobScheduler:
     def cached_preview(self,dedupe_key):
         if type(dedupe_key)is not str:return None
         with self._cv:return self._cache.get(dedupe_key)
+    def cached_render(self,dedupe_key,*,job_id):
+        """Read the shared bounded cache for an admitted keyed RENDER job.
+
+        The caller must still validate its complete artifact identity and run
+        its publication/cancellation gate. No new cache or worker is created.
+        """
+        with self._cv:
+            rec=self._records.get(job_id)
+            if rec is None or rec.job_class is not JobClass.RENDER or rec.dedupe_key!=dedupe_key or rec.state is not JobState.RUNNING:
+                raise JobError('render cache lookup requires the matching running job')
+            value=self._cache.get(dedupe_key)
+            if value is not None:rec.cache_hit=True
+            return value
     def _trim_history(self):
         if len(self._records)<=self.limits.max_history_jobs:return
         kept=[]
@@ -130,7 +143,7 @@ class JobScheduler:
         if rec.token.cancelled or rec.state is JobState.CANCEL_REQUESTED:
             rec.result=None;rec.state=JobState.CANCELLED;rec.finished_at=time.monotonic();return False
         rec.result=result;rec.progress=1.;rec.state=JobState.COMPLETED;rec.finished_at=time.monotonic()
-        if rec.job_class is JobClass.PREVIEW and rec.dedupe_key:self._cache.put(rec.dedupe_key,result)
+        if rec.job_class in (JobClass.PREVIEW,JobClass.RENDER) and rec.dedupe_key:self._cache.put(rec.dedupe_key,result)
         return True
     def _worker(self,lane):
         while True:

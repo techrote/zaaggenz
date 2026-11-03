@@ -25,7 +25,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          # Keep the pinned Playwright/browser release on its supported OS.
+          - os: ubuntu-24.04
             pythonpath: 'app:.'
           - os: windows-latest
             pythonpath: 'app;.'

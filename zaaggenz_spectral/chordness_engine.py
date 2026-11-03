@@ -35,7 +35,7 @@ def apply_chordness(analysis,request,*,checkpoint=None,progress=None):
     if changed==0:
         audio=exact_bypass(analysis.source);sin=np.asarray(analysis.sinusoidal,dtype=np.float32).copy()
     else:
-        raw=np.asarray(reconstruct_components(bundle),dtype=np.float32);mask=np.asarray(analysis.transient_mask,dtype=np.float32)
+        raw=np.asarray(reconstruct_components(bundle,checkpoint=checkpoint),dtype=np.float32);mask=np.asarray(analysis.transient_mask,dtype=np.float32)
         sin=raw*(1-mask if raw.ndim==1 else (1-mask[:,None]))
         audio=sin+np.asarray(analysis.transient,dtype=np.float32)+np.asarray(analysis.residual,dtype=np.float32)
     after=evaluate_union(bundle,selected,tolerance_cents=request.tolerance_cents)

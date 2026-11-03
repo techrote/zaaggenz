@@ -81,7 +81,7 @@ class ZaaggenzServer(ThreadingHTTPServer):
         try:
             initial=default_document(sample_rate);self.initial_document=initial;self.session=RuntimeSession(initial)
             self.scheduler=JobScheduler(scheduler_limits())
-            self.timeline=TimelineService(self.scheduler)
+            self.timeline=TimelineService(self.scheduler,session=self.session)
             self.listening=ListeningService(self.timeline)
             self.inspector=InspectorService(sample_rate,demo_fixture=demo_fixture,scheduler=self.scheduler,current_revision_provider=self.session.current_revision_id)
             self.vocal=VocalService()

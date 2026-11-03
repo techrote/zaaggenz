@@ -80,30 +80,70 @@ class BandSelectiveResult:
     @property
     def inspection(self):return {'request':self.request.to_dict(self.sample_rate_hz),'diagnostics':self.diagnostics}
 
+def process_builtin_stage(audio, sample_rate_hz, stage, spec, *, checkpoint=None, collect_decisions=False):
+    """One existing ZG-021 primitive; shared by legacy slots and saved racks.
+
+    No new DSP or implicit outer wet is introduced here. In particular the
+    legacy spectral boundary still consumes float32 component-analysis PCM.
+    """
+    if checkpoint: checkpoint()
+    current = np.asarray(audio, dtype=np.float64)
+    row = None
+    if stage == 'gain':
+        if spec != 0:
+            current = current * 10. ** (spec / 20.)
+            row = {'stage': stage, 'gain_db': spec, 'declared_latency_samples': 0}
+    elif stage == 'compression':
+        if spec is not None:
+            result = compress(current, sample_rate_hz, spec, checkpoint=checkpoint)
+            current = np.asarray(result.audio, dtype=np.float64)
+            row = {'stage': stage, 'spec': spec.to_dict(), 'diagnostics': result.diagnostics}
+    elif stage == 'bitcrush':
+        if spec is not None:
+            result = bitcrush(current, spec)
+            current = np.asarray(result.audio, dtype=np.float64)
+            row = {'stage': stage, 'spec': spec.to_dict(), 'diagnostics': result.diagnostics,
+                   'alias_policy': 'intentional unfiltered quantization/sample-hold images; crossover delta confinement is the spill control'}
+    elif stage == 'spectral':
+        if spec is not None:
+            analysis = analyse_components(np.asarray(current, dtype=np.float32), sample_rate_hz,
+                                          checkpoint=checkpoint)
+            if isinstance(spec, SpectralRetuneRequest):
+                result = retune_components(analysis, spec, checkpoint=checkpoint)
+            else:
+                result = apply_chordness(analysis, spec, checkpoint=checkpoint)
+            current = np.asarray(result.audio, dtype=np.float64)
+            row = {'stage': stage, 'request': spec.to_dict(), 'diagnostics': deepcopy(result.diagnostics)}
+            if collect_decisions:
+                from collections import Counter
+                decisions = result.plan.decisions if isinstance(spec, SpectralRetuneRequest) else result.decisions
+                def bounds(values):
+                    values = [float(value) for value in values if value is not None]
+                    return [min(values), max(values)] if values else None
+                row['analysis'] = deepcopy(analysis.diagnostics)
+                row['decision_counts_by_reason'] = dict(Counter(d.reason for d in decisions))
+                row['pitch_observations'] = {
+                    'estimated_hz_range': bounds(d.source_hz for d in decisions),
+                    'requested_hz_range': bounds(getattr(d, 'requested_hz', getattr(d, 'target_hz', None)) for d in decisions),
+                    'realised_hz_range': bounds(d.realised_hz for d in decisions),
+                    'confidence_range': bounds(d.confidence for d in decisions),
+                    'sample_policy': 'first-16-decisions-in-stored-order; counts-cover-all',
+                    'sample': [d.to_dict() for d in decisions[:16]]}
+
+    else:
+        raise BandSelectiveError('unknown stage')
+    if checkpoint: checkpoint()
+    return current, row
+
+
 def _process_slot(audio,sample_rate_hz,slot):
     source=np.asarray(audio)
     if slot.identity:return source.copy(),{'identity_path':True,'stage_order':list(slot.stage_order),'stages':[]}
     current=np.asarray(source,dtype=np.float64);rows=[]
     for stage in slot.stage_order:
-        if stage=='gain':
-            if slot.gain_db!=0:
-                current=current*10.**(slot.gain_db/20.);rows.append({'stage':'gain','gain_db':slot.gain_db,'declared_latency_samples':0})
-        elif stage=='compression':
-            if slot.compression is not None:
-                result=compress(current,sample_rate_hz,slot.compression);current=np.asarray(result.audio,dtype=np.float64)
-                rows.append({'stage':'compression','spec':slot.compression.to_dict(),'diagnostics':result.diagnostics})
-        elif stage=='bitcrush':
-            if slot.bitcrush is not None:
-                result=bitcrush(current,slot.bitcrush);current=np.asarray(result.audio,dtype=np.float64)
-                rows.append({'stage':'bitcrush','spec':slot.bitcrush.to_dict(),'diagnostics':result.diagnostics,
-                             'alias_policy':'intentional unfiltered quantization/sample-hold images; crossover delta confinement is the spill control'})
-        elif stage=='spectral':
-            if slot.spectral is not None:
-                analysis=analyse_components(np.asarray(current,dtype=np.float32),sample_rate_hz)
-                if isinstance(slot.spectral,SpectralRetuneRequest):result=retune_components(analysis,slot.spectral)
-                else:result=apply_chordness(analysis,slot.spectral)
-                current=np.asarray(result.audio,dtype=np.float64);rows.append({'stage':'spectral','request':slot.spectral.to_dict(),'diagnostics':deepcopy(result.diagnostics)})
-        else:raise BandSelectiveError('unknown stage')
+        spec = getattr(slot, 'gain_db' if stage == 'gain' else stage)
+        current, row = process_builtin_stage(current, sample_rate_hz, stage, spec)
+        if row is not None: rows.append(row)
     return current,{'identity_path':bool(np.array_equal(source,current)),'stage_order':list(slot.stage_order),'stages':rows}
 
 def process_band_selective(source,sample_rate_hz,request):

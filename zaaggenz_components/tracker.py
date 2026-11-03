@@ -55,7 +55,8 @@ def _fit_candidates(a,sr,result,i,frequencies,base_confidences,ambiguity_flags):
         rows.append(dict(frame=i,anchor=anchor,start=s0,end=s1,frequency_hz=float(f),amplitudes=tuple(float(max(0,x)) for x in amps),phases=tuple(float((x+math.pi)%(2*math.pi)-math.pi) for x in ph),confidence=conf,ambiguous=bool(ambiguity_flags[j]),condition=cond))
     return rows
 
-def _candidate_frames(a,sr,spec):
+def _candidate_frames(a,sr,spec,checkpoint=None):
+    if checkpoint:checkpoint()
     n=_pow2(sr*spec.window_seconds);hop=max(1,n//spec.hop_fraction);nfft=n*spec.fft_factor
     r=stft(a,sr,STFTSpec(n,hop,nfft,role='observation'));freqs=r.frequencies_hz();rows=[];abstained=0
     hi=min(spec.max_hz,sr*.499);band=np.where((freqs>=spec.min_hz)&(freqs<=hi))[0]
@@ -64,6 +65,7 @@ def _candidate_frames(a,sr,spec):
     # Zero padding interpolates that lobe; it does not create extra resolution.
     min_peak_bins=max(1,int(2*nfft/n))
     for i in range(len(r.anchors)):
+        if checkpoint:checkpoint()
         if r.valid_fraction[i]<spec.min_support_fraction:rows.append([]);abstained+=1;continue
         mag=np.sqrt(np.sum(np.abs(r.spectra[i])**2,axis=0));bmag=mag[band];power=bmag*bmag;mean=float(np.mean(power))
         if mean<=1e-24:rows.append([]);abstained+=1;continue
@@ -94,9 +96,10 @@ def _prediction(track,frame):
         prev=track['rows'][-2];steps=max(1,last['frame']-prev['frame']);ahead=max(1,frame-last['frame']);ratio=max(.5,min(2.,last['frequency_hz']/prev['frequency_hz']));pred*=ratio**(ahead/steps)
     return pred
 
-def _track(frame_rows,spec):
+def _track(frame_rows,spec,checkpoint=None):
     active=[];done=[];serial=0
     for frame,cands in enumerate(frame_rows):
+        if checkpoint:checkpoint()
         preds=[_prediction(t,frame) for t in active]
         # A real merge/crossing requires competition between established trajectories
         # that were both observed on the immediately preceding frame. A stale fragment
@@ -147,14 +150,16 @@ def _transient_mask(a,sr,spec):
     for x in anchors:mask[max(0,x-guard):min(n,x+guard+1)]=1
     return mask,len(set(anchors)),status
 
-def _track_bundle(source,sr,tracks,spec,r,transient_mask,residual,transient,detector):
+def _track_bundle(source,sr,tracks,spec,r,transient_mask,residual,transient,detector,checkpoint=None):
     source1=source[:,0] if source.shape[1]==1 else source;residual1=residual[:,0] if residual.shape[1]==1 else residual;transient1=transient[:,0] if transient.shape[1]==1 else transient
     asset=pcm_asset_ref(source1,sr);resasset=pcm_asset_ref(residual1,sr);transasset=pcm_asset_ref(transient1,sr);exported=[];transform_frames=0;ambiguous_tracks=0;allow_transform=detector['transform_eligibility']=='normal'
     for idx,t in enumerate(tracks,1):
+        if checkpoint:checkpoint()
         continuity='unknown' if t['ambiguous'] else ('reanchored' if t['had_gap'] else 'continuous')
         if continuity=='unknown':ambiguous_tracks+=1
         frames=[]
         for row in t['rows']:
+            if checkpoint:checkpoint()
             action='transform' if allow_transform and continuity=='continuous' and row['confidence']>=spec.transform_confidence and transient_mask[row['anchor']]<.5 else 'preserve'
             if action=='transform':transform_frames+=1
             frames.append(dict(support=dict(start_sample=row['start'],end_sample=row['end'],anchor_sample=row['anchor'],padding='zero'),frequency_hz=row['frequency_hz'],amplitudes=list(row['amplitudes']),phases_radians=list(row['phases']),confidence=row['confidence'],action=action))
@@ -165,15 +170,19 @@ def _track_bundle(source,sr,tracks,spec,r,transient_mask,residual,transient,dete
             transient_transform_eligibility=detector['transform_eligibility'])
     return Contract(dict(kind='PartialTrackBundle',version='1.0.0',asset=asset,method=dict(id=METHOD,version='1.0.0',configuration=conf),phase_convention='cosine-at-anchor-radians-v1',channel_policy='shared-frequency-independent-channel-coefficients',data_origin='estimated',tracks=exported,residual_asset=resasset,transient_asset=transasset,remainder_policy='additive-owned-remainders-v1')),transform_frames,ambiguous_tracks
 
-def analyse_components(x,sample_rate_hz,spec=ComponentTrackerSpec()):
+def analyse_components(x,sample_rate_hz,spec=ComponentTrackerSpec(),*,checkpoint=None):
+    if checkpoint:checkpoint()
     if not isinstance(spec,ComponentTrackerSpec):raise ComponentError('ComponentTrackerSpec required')
     if type(sample_rate_hz)is not int or not 8000<=sample_rate_hz<=192000:raise ComponentError('sample rate out of range')
     a,mono=_audio(x);source32=np.asarray(a,dtype=np.float32);n=len(a)
     if n==0:
-        detector=_detector_status('empty-source-v1',False,'empty-source','data-level-abstention');dummy=type('R',(),{'spec':type('S',(),{'window_samples':_pow2(sample_rate_hz*spec.window_seconds),'hop_samples':1,'fft_samples':_pow2(sample_rate_hz*spec.window_seconds)*spec.fft_factor})()})();z=np.zeros_like(source32);mask=np.zeros(0,dtype=np.float32);bundle,_,_=_track_bundle(source32,sample_rate_hz,[],spec,dummy,mask,z,z,detector);src=source32[:,0] if mono else source32
+        detector=_detector_status('empty-source-v1',False,'empty-source','data-level-abstention');dummy=type('R',(),{'spec':type('S',(),{'window_samples':_pow2(sample_rate_hz*spec.window_seconds),'hop_samples':1,'fft_samples':_pow2(sample_rate_hz*spec.window_seconds)*spec.fft_factor})()})();z=np.zeros_like(source32);mask=np.zeros(0,dtype=np.float32);bundle,_,_=_track_bundle(source32,sample_rate_hz,[],spec,dummy,mask,z,z,detector,checkpoint);src=source32[:,0] if mono else source32
         return ComponentAnalysis(bundle,src,src.copy(),src.copy(),src.copy(),mask,dict(method=METHOD,tracks=0,tracked_frames=0,transform_frames=0,abstained_frames=0,ambiguous_tracks=0,detected_transient_onsets=0,transient_fraction=0.,reconstruction_rms_error=0.,transient_detector=dict(detector)),sample_rate_hz)
-    r,frames,abstained=_candidate_frames(a,sample_rate_hz,spec);tracks=_track(frames,spec);mask,onsets,detector=_transient_mask(a,sample_rate_hz,spec);zero=np.zeros_like(source32);temp,_,_=_track_bundle(source32,sample_rate_hz,tracks,spec,r,mask,zero,zero,detector)
-    source_view=source32[:,0] if mono else source32;raw=reconstruct_components(temp,source=source_view,sample_rate_hz=sample_rate_hz);raw2=raw[:,None] if raw.ndim==1 else raw;sinusoidal=np.asarray(raw2*(1-mask[:,None]),dtype=np.float32);transient=np.asarray(source32*mask[:,None],dtype=np.float32);residual=np.asarray(source32-sinusoidal-transient,dtype=np.float32);bundle,transform_frames,ambiguous_tracks=_track_bundle(source32,sample_rate_hz,tracks,spec,r,mask,residual,transient,detector)
+    r,frames,abstained=_candidate_frames(a,sample_rate_hz,spec,checkpoint);tracks=_track(frames,spec,checkpoint)
+    if checkpoint:checkpoint()
+    mask,onsets,detector=_transient_mask(a,sample_rate_hz,spec);zero=np.zeros_like(source32);temp,_,_=_track_bundle(source32,sample_rate_hz,tracks,spec,r,mask,zero,zero,detector,checkpoint)
+    source_view=source32[:,0] if mono else source32;raw=reconstruct_components(temp,source=source_view,sample_rate_hz=sample_rate_hz,checkpoint=checkpoint);raw2=raw[:,None] if raw.ndim==1 else raw;sinusoidal=np.asarray(raw2*(1-mask[:,None]),dtype=np.float32);transient=np.asarray(source32*mask[:,None],dtype=np.float32);residual=np.asarray(source32-sinusoidal-transient,dtype=np.float32);bundle,transform_frames,ambiguous_tracks=_track_bundle(source32,sample_rate_hz,tracks,spec,r,mask,residual,transient,detector,checkpoint)
+    if checkpoint:checkpoint()
     reconstruction=np.asarray(sinusoidal,dtype=np.float64)+np.asarray(transient,dtype=np.float64)+np.asarray(residual,dtype=np.float64);err=float(np.sqrt(np.mean((reconstruction-np.asarray(source32,dtype=np.float64))**2))) if source32.size else 0.;tracked=sum(len(t['rows']) for t in tracks);source_rms=float(np.sqrt(np.mean(source32.astype(np.float64)**2))) if source32.size else 0.
     diag=dict(method=METHOD,tracks=len(tracks),tracked_frames=tracked,transform_frames=transform_frames,abstained_frames=abstained,ambiguous_tracks=ambiguous_tracks,detected_transient_onsets=onsets,transient_fraction=float(np.mean(mask)) if n else 0.,source_rms=source_rms,sinusoidal_rms=float(np.sqrt(np.mean(sinusoidal.astype(np.float64)**2))) if sinusoidal.size else 0.,residual_rms=float(np.sqrt(np.mean(residual.astype(np.float64)**2))) if residual.size else 0.,reconstruction_rms_error=err,window_samples=r.spec.window_samples,hop_samples=r.spec.hop_samples,fft_samples=r.spec.fft_samples,transient_detector=dict(detector))
     src=source32[:,0] if mono else source32;sin=sinusoidal[:,0] if mono else sinusoidal;tra=transient[:,0] if mono else transient;res=residual[:,0] if mono else residual

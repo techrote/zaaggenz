@@ -130,8 +130,11 @@ class InspectorHTTPTests(unittest.TestCase):
     def post(self,path,payload,token=None):
         req=urllib.request.Request(self.base+path,data=json.dumps(payload).encode(),method='POST',headers={'Content-Type':'application/json',**({'X-Zaaggenz-Token':token} if token else {})})
         with urllib.request.urlopen(req,timeout=10) as r:return r.status,json.loads(r.read())
+    def remember_timeline_job(self,jid,revision,request_key):
+        generation,_=self.server.timeline.session.current_identity()
+        self.server.timeline._remember_job(jid,{'generation':generation,'revision_id':revision,'request_key':request_key,'authoritative':False,'revoked':False})
     def publish_artifact(self,artifact):
-        jid=self.server.timeline.scheduler.submit(JobClass.RENDER,artifact.revision_id,lambda ctx:artifact,estimated_memory_bytes=8*1024*1024);self.server.timeline.scheduler.wait(jid,10);self.server.timeline._remember_job(jid);return jid
+        jid=self.server.timeline.scheduler.submit(JobClass.RENDER,artifact.revision_id,lambda ctx:artifact,estimated_memory_bytes=8*1024*1024);self.server.timeline.scheduler.wait(jid,10);self.remember_timeline_job(jid,artifact.revision_id,artifact.cache_key);return jid
     def test_bootstrap_bind_static_audio_and_csrf_gate(self):
         code,raw,_=self.get('/api/inspector/bootstrap');self.assertEqual(code,200);boot=json.loads(raw);self.assertFalse(boot['state']['bound'])
         artifact=make_artifact(fixture_source(12000,variant=4),seed='http');jid=self.publish_artifact(artifact)
@@ -145,7 +148,7 @@ class InspectorHTTPTests(unittest.TestCase):
         _,raw,_=self.get('/api/inspector/bootstrap');token=json.loads(raw)['token']
         with self.assertRaises(urllib.error.HTTPError) as cm:self.post('/api/inspector/bind',{'job_id':'0'*32},token)
         self.assertEqual(cm.exception.code,400)
-        revision='a'*64;jid=self.server.timeline.scheduler.submit(JobClass.RENDER,revision,lambda ctx:{'not':'artifact'},estimated_memory_bytes=8*1024*1024);self.server.timeline.scheduler.wait(jid,10);self.server.timeline._remember_job(jid)
+        revision='a'*64;jid=self.server.timeline.scheduler.submit(JobClass.RENDER,revision,lambda ctx:{'not':'artifact'},estimated_memory_bytes=8*1024*1024);self.server.timeline.scheduler.wait(jid,10);self.remember_timeline_job(jid,revision,'inspector-nonartifact-test:'+jid)
         with self.assertRaises(urllib.error.HTTPError) as cm:self.post('/api/inspector/bind',{'job_id':jid},token)
         self.assertEqual(cm.exception.code,400)
         foreign=make_artifact(fixture_source(12000,variant=5),seed='foreign');jid=self.server.timeline.scheduler.submit(JobClass.RENDER,foreign.revision_id,lambda ctx:foreign,estimated_memory_bytes=8*1024*1024);self.server.timeline.scheduler.wait(jid,10)

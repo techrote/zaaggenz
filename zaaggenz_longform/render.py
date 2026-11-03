@@ -285,6 +285,10 @@ def _section_progression(document, section, tuning):
 def compile_sections(document):
     if not isinstance(document, LongformDocument):
         raise LongformError("LongformDocument required")
+    # MBR-002 accepts whole-context Compose, not independently reset sections.
+    # Preserve the old fail-closed boundary until long-form has its own policy.
+    if "rack" in document.base_recipe.to_dict():
+        raise LongformError("saved rack requires whole-context Compose rendering; long-form section context is not yet supported")
     data = document.to_dict()
     motifs = document.motif_map
     tunings = document.tuning_map

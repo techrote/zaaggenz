@@ -134,6 +134,7 @@ _COMMON_PROTOCOL_PATHS = (
     + _JOB_PROTOCOL_PATHS
     + _PROJECT_PROTOCOL_PATHS
     + _TIMELINE_PROTOCOL_PATHS
+    + ("zaaggenz_runtime/session.py",)
 )
 _BACKEND_PATHS = {
     "timeline": _COMMON_PROTOCOL_PATHS,
@@ -142,16 +143,16 @@ _BACKEND_PATHS = {
     "vocal": _COMMON_PROTOCOL_PATHS + _VOCAL_PROTOCOL_PATHS + _TEXTGESTURE_PROTOCOL_PATHS,
 }
 _PROTOCOL_PACKAGES = {
-    "timeline": frozenset(("zaaggenz_contracts", "zaaggenz_jobs", "zaaggenz_project", "zaaggenz_timeline")),
-    "listening": frozenset(("zaaggenz_contracts", "zaaggenz_jobs", "zaaggenz_project", "zaaggenz_timeline", "zaaggenz_listening")),
-    "inspector": frozenset(("zaaggenz_contracts", "zaaggenz_jobs", "zaaggenz_project", "zaaggenz_timeline", "zaaggenz_inspector")),
-    "vocal": frozenset(("zaaggenz_contracts", "zaaggenz_jobs", "zaaggenz_project", "zaaggenz_timeline", "zaaggenz_vocal", "zaaggenz_textgesture")),
+    "timeline": frozenset(("zaaggenz_runtime", "zaaggenz_contracts", "zaaggenz_jobs", "zaaggenz_project", "zaaggenz_timeline")),
+    "listening": frozenset(("zaaggenz_runtime", "zaaggenz_contracts", "zaaggenz_jobs", "zaaggenz_project", "zaaggenz_timeline", "zaaggenz_listening")),
+    "inspector": frozenset(("zaaggenz_runtime", "zaaggenz_contracts", "zaaggenz_jobs", "zaaggenz_project", "zaaggenz_timeline", "zaaggenz_inspector")),
+    "vocal": frozenset(("zaaggenz_runtime", "zaaggenz_contracts", "zaaggenz_jobs", "zaaggenz_project", "zaaggenz_timeline", "zaaggenz_vocal", "zaaggenz_textgesture")),
 }
 _EXECUTION_ONLY_PACKAGES = {
-    "timeline": frozenset(("zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_zaag")),
-    "listening": frozenset(("zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_zaag")),
-    "inspector": frozenset(("zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_components", "zaaggenz_spectral", "zaaggenz_zaag")),
-    "vocal": frozenset(("zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_analysis", "zaaggenz_gesture", "zaaggenz_zaag")),
+    "timeline": frozenset(("zaaggenz_spectral", "zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_zaag")),
+    "listening": frozenset(("zaaggenz_spectral", "zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_zaag")),
+    "inspector": frozenset(("zaaggenz_spectral", "zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_components", "zaaggenz_zaag")),
+    "vocal": frozenset(("zaaggenz_spectral", "zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_analysis", "zaaggenz_gesture", "zaaggenz_zaag")),
 }
 _HELPER_PATH = "zaaggenz_web_release/__init__.py"
 
