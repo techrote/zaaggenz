@@ -203,7 +203,8 @@ class ReverseDependencyCI(unittest.TestCase):
     def test_dispatch_failure_identity_and_discovery_are_fail_closed(self) -> None:
         workflow = (ROOT / ".github/workflows/zg000-ci-impact.yml").read_text(encoding="utf-8")
         helper = (ROOT / "tools/zg000_reconcile.py").read_text(encoding="utf-8")
-        self.assertIn("return_run_details", helper)
+        self.assertNotIn("return_run_details", helper)
+        self.assertIn("X-GitHub-Api-Version: 2026-03-10", helper)
         self.assertIn("workflow_run_id", helper)
         self.assertIn("run_attempt", helper)
         self.assertIn("head_sha", helper)
