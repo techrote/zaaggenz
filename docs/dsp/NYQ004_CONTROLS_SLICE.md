@@ -101,10 +101,26 @@ than `1e-18 s`. Segment ownership and minimum event spacing are tested using
 the whole uncertainty interval, not just the rounded midpoint.
 
 The original step/static paths still return exact fractions with zero
-uncertainty. Piecewise-linear ramps with **nearest-Hz quantization** are
-explicitly rejected: their ladder-crossing times need separately certified
-switch segmentation. Nonlinear/logarithmic routes, LFOs, envelopes, features
-and actual `SamplerPlan` integration also remain unsupported. These source
+uncertainty. Piecewise-linear **additive-Hz ramps with nearest-Hz quantization** are now
+admitted by a separate exact-rational switch solver. The unquantized additive
+curve is affine between declared automation points, resets and jitter-cell
+boundaries. Each adjacent ascending ladder pair has a threshold equal to the
+exact arithmetic midpoint of its two stored Hz values. The solver inserts
+every strictly interior crossing of those thresholds as a physical-time cut;
+it then integrates the selected quantized Hz as a constant over each open
+segment, including any admitted cellwise jitter multiplier. This is true
+zero-duration step switching, not a once-per-buffer approximation or a
+smoothed transition. An exact upward tie returns the **lower** Hz to the
+instantaneous inspector, while the phase integral over the following open
+interval uses its midpoint/right-hand value; the isolated tie instant has
+zero phase measure. The same segmentation handles falling ramps and resets.
+All such events are exact Fraction timestamps (zero root uncertainty).
+
+Admitted work is bounded by the declared event/segment budget, and no change
+is made to the accepted NYQ-001/002 clock execution guard. Nonlinear/
+logarithmic routes, LFOs, envelopes, features and actual `SamplerPlan`
+integration remain unsupported. This is a numerical event proof, not a
+production sampler/audio implementation. These source
 changes do not alter the frozen `ClockPlan` admission guard.
 
 Independent test command:
@@ -114,7 +130,7 @@ python -m unittest discover -s tests/contracts -p 'test_nyquismic_control_geomet
 The tests cover analytically integrated increasing/decreasing linear rates,
 an exact half-second crossing, irrational crossings with certified residual
 bounds, additive-route equivalence, reset epochs, stable jitter cells,
-quantized-ramp rejection, cancellation and resource budgets. A passing pure
+rising/falling/multilevel quantized-ramp switch boundaries, exact phase and resets, unsupported logarithmic integration, cancellation and resource budgets. A passing pure
 geometry oracle is **not** saved-instrument acceptance or a verified
 listening/render/export result.
 
