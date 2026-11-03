@@ -49,21 +49,28 @@ class NonuniformReconstructionTests(unittest.TestCase):
             def dec(value):
                 return (Decimal(value.numerator) / Decimal(value.denominator)
                         if type(value) is Fraction else value)
-            coords = [dec(p) for p in plan._coordinates]
+            coords = plan._coordinates
             for n in range(480):
-                t = Decimal(n) / Decimal(48000)
-                # Event ownership is exact phase membership, not a
-                # rounded Decimal80 approximation to an irrational crossing.
-                i = plan.clock.capture_count_at(Fraction(n, 48000), inclusive=True) - 1
+                t = Fraction(n, 48000)
+                # ClockPlan's exact crossing membership is authoritative.
+                # For rational event coordinates, use Fraction for ties:
+                # Decimal80 rounding of two equal half-interval distances
+                # may erroneously select the later capture.
+                i = plan.clock.capture_count_at(t, inclusive=True) - 1
                 if i < 0:
                     expected = 0.
                 else:
-                    if i + 1 < len(coords) and 2 * (t - coords[i]) > coords[i + 1] - coords[i]:
-                        i += 1
+                    if i + 1 < len(coords):
+                        left, right = coords[i:i+2]
+                        if type(left) is Fraction and type(right) is Fraction:
+                            next_is_nearer = 2 * (t - left) > right - left
+                        else:
+                            next_is_nearer = 2 * (dec(t) - dec(left)) > dec(right) - dec(left)
+                        if next_is_nearer:
+                            i += 1
                     expected = float(plan.captures[i, 0])
                 self.assertAlmostEqual(float(actual[n]), expected, places=10,
-                    msg=f'n={n} owner={plan.clock.capture_count_at(Fraction(n, 48000), inclusive=True)-1} '
-                        f'current={coords[max(i, 0)]} next={coords[min(max(i,0)+1,len(coords)-1)]}')
+                                       msg=f'frame={n}, capture={i}')
 
     def test_cubic_exact_endpoints_chunk_checkpoint_and_irregular_rate(self):
         t = np.arange(512, dtype=np.float64)
