@@ -451,7 +451,8 @@ class SonicSpec(_Record):
                 require(self.playback is None, 'sampler does not contain an implicit playback warp')
         choice(self.capture, 'capture interpolation', ('linear_v1', 'nearest_left_tie_v1'))
         choice(self.prefilter, 'prefilter', ('off_v1',))
-        choice(self.reconstruction, 'reconstruction', ('hold_v1', 'linear_time_v1'))
+        choice(self.reconstruction, 'reconstruction', ('hold_v1', 'linear_time_v1',
+                                                      'nearest_time_v1', 'cubic_time_v1'))
         integer(self.channels, 'channels', 1, 2)
         choice(self.stereo_link, 'stereo clock linking', ('linked', 'independent'))
         if self.clock_group is not None:
