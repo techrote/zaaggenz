@@ -219,3 +219,43 @@ weights on a changing-rate clock, exact captured samples, mono/stereo DC,
 finite/convex-hull behavior, chunk/checkpoint identity, bypass, short/empty,
 budget failure and cancellation. Final-head CI and independent acoustic
 evaluation remain outstanding. No default sound or preset is promoted.
+
+## Opt-in guarded-clean finite-filter comparison (static, bounded)
+
+`fir129_kaiser_guarded_0p40_v1` adds a separate **129-tap symmetric
+Kaiser-windowed source FIR**, beta 10.0, cutoff `0.40 * saved_virtual_Hz`,
+DC-normalized with no hidden output gain/limiter and 100% filtered capture
+source. It runs before virtual event capture and is explicitly a *cleaner
+comparison*, not a universal alias-free or mathematically ideal reconstruction
+policy. It admits **static-only** virtual rates from `source_rate/8` through
+`source_rate/2`, with at least 129 available filter taps, and rejects
+modulated rate points, out-of-range source/clock ratios and insufficient
+budgets before preparing captures. Dynamic/irregular clean sampling and
+measured convergence still belong to NYQ-003.
+
+The exact symmetric kernel has 64 source-frame lookbehind/lookahead,
+zero phase, and explicit `zero_pad` or `edge_hold` padding at asset
+boundaries; 8,192-frame processing windows retain the identical complete
+context. No filter tail extends the requested output extent. The result may
+still ring near transients, and finite transition width cannot make every
+possible high-frequency source clean. Its `prefilter_window`,
+`prefilter_cutoff_hz`, `prefilter_strength`,
+`prefilter_support_source_frames` and SHA-256 of little-endian float64
+coefficients are included in diagnostics. Its policy identifier participates
+in the sonic hash. All three original 33-tap policies, legacy bitcrusher and
+default `off_v1` remain unmodified.
+
+At 48 kHz source and 8 kHz virtual capture, the comparison uses a
+**3,200 Hz cutoff**; independent tone tests compare an intended 900 Hz
+passband and a 5 kHz would-be alias against the unfiltered and legacy FIR33
+paths. Other cases cover stereo full-context convolution (including two
+8,192-frame boundaries), region/checkpoint equality, serialization,
+bypass/zero-wet, cancellation and strict unsupported rate/tap limits. Run:
+
+```sh
+python -m unittest discover -s tests/dsp -p 'test_nyquismic_prefilter.py' -v
+```
+
+No claim is made about per-band rack integration, source feature routing,
+final numerical delivery conversion, global convergence, physical Windows
+listening or musical preference.
