@@ -86,6 +86,62 @@ class NYQ004ControlTests(unittest.TestCase):
             ClockPlan(spec.clock, '1/1')
         self.assertEqual(evaluate_instantaneous_rate(spec, '0/1').method, METHOD)
 
+    def test_ratio_ladder_frozen_reference_and_exact_absolute_hz(self):
+        from zaaggenz_contracts.nyquismic_controls import RatioLadder
+        values = ('1/3', '2/5', '3/7', '5/11', '7/13')
+        ladder = RatioLadder(reference_hz='48000/1', ratios=values)
+        self.assertEqual(RatioLadder.from_json(ladder.to_json()), ladder)
+        self.assertEqual(ladder.ratios, values)
+        quantizer = ladder.as_quantizer()
+        self.assertEqual(quantizer.levels_hz,
+                         ('16000/1', '19200/1', '144000/7', '240000/11', '336000/13'))
+        self.assertEqual(quantizer.tie, 'lower')
+        # The same fractions against another *saved* Hz authority are different
+        # musical clocks: a numerical evaluator rate is never an input.
+        other = RatioLadder(reference_hz='96000/1', ratios=('1/3', '2/5'))
+        self.assertEqual(other.as_quantizer().levels_hz, ('32000/1', '38400/1'))
+        self.assertNotEqual(other.sha256, ladder.sha256)
+        self.assertEqual(RatioLadder(reference_hz='48000/1', ratios=('2/6',)).ratios,
+                         ('1/3',))
+
+    def test_ratio_ladder_lower_ties_and_instantaneous_clock_integration(self):
+        from zaaggenz_contracts.nyquismic_controls import (
+            RatioLadder, evaluate_instantaneous_rate, nearest_ladder_hz)
+        from zaaggenz_contracts.nyquismic import ClockSpec, SonicSpec, VirtualRate
+        ladder = RatioLadder(reference_hz='48000/1', ratios=('1/3', '2/5'))
+        quantizer = ladder.as_quantizer()
+        self.assertEqual(nearest_ladder_hz(Fraction(17600), quantizer.levels_hz),
+                         Fraction(16000))
+        spec = SonicSpec(clock=ClockSpec(rate=VirtualRate('17600/1'),
+                                        quantizer=quantizer))
+        sample = evaluate_instantaneous_rate(spec, '9/8')
+        self.assertEqual(sample.quantized_hz, '16000/1')
+        self.assertEqual(sample.realized_hz, '16000/1')
+        # The downstream NYQ-002 audio executor remains deliberately gated.
+        with self.assertRaises(ContractError):
+            spec.clock.require_geometry()
+
+    def test_ratio_ladder_invalid_values_fail_closed(self):
+        from zaaggenz_contracts.nyquismic_controls import RatioLadder
+        from zaaggenz_contracts.nyquismic import ContractError
+        cases = [
+            {'ratios': ()}, {'ratios': ('0/1',)}, {'ratios': ('-1/3',)},
+            {'ratios': ('2/5', '1/3')}, {'ratios': ('1/3', '2/6')},
+            {'ratios': tuple('1/' + str(i) for i in range(1, 66))},
+            {'reference_hz': '0/1'}, {'reference_hz': '1536001/1'},
+            {'reference_hz': '1536000/1', 'ratios': ('2/1',)},
+            {'ratios': ('1/10000000000',)},
+        ]
+        for overrides in cases:
+            with self.subTest(overrides=str(overrides)[:80]):
+                with self.assertRaises(ContractError):
+                    RatioLadder(**overrides)
+        row = RatioLadder().to_dict()
+        for bad in ({**row, 'extra': 3}, {**row, 'ratios': ['1/3', 4]},
+                    {**row, 'ratios': ('1/3',)}, {**row, 'version': 'v2'}):
+            with self.assertRaises(ContractError):
+                RatioLadder.from_dict(bad)
+
 
 if __name__ == '__main__':
     unittest.main()

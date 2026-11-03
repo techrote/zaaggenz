@@ -14,8 +14,9 @@ from decimal import Context, Decimal, localcontext
 from fractions import Fraction
 
 from .nyquismic import (
-    MAX_TIME_S, MIN_RATE_HZ, MAX_RATE_HZ, Point, SonicSpec,
-    clock_cell_value, integer, record, require, rational_value, qtext,
+    MAX_TIME_S, MIN_RATE_HZ, MAX_RATE_HZ, MAX_LEVELS, Point, SonicSpec,
+    RateQuantizer, _Record, clock_cell_value, integer, record, require,
+    rational_value, qtext,
 )
 
 METHOD = 'nyq.instantaneous-controls.v1'
@@ -63,6 +64,51 @@ def nearest_ladder_hz(value: Fraction | Decimal, levels: tuple[str, ...]) -> Fra
     with localcontext(Context(prec=80)):
         _range(value, 'unquantized rate')
         return min(parsed, key=lambda hz: (abs(_d(value) - _d(hz)), hz))
+
+
+@dataclass(frozen=True)
+class RatioLadder(_Record):
+    """Persist explicit reference Hz + rational ratios before Hz quantization.
+
+    The existing RateQuantizer stores physically realized positive-Hz values.
+    This independently serialized control-source record keeps the *intent*
+    (ratio and reference) available to callers without changing SonicSpec or
+    silently referring to the numerical evaluation rate.
+    """
+    version: str = 'nyq.ratio-ladder.v1'
+    reference_hz: str = '48000/1'
+    ratios: tuple[str, ...] = ('1/3',)
+
+    def __post_init__(self):
+        require(self.version == 'nyq.ratio-ladder.v1', 'unsupported ratio ladder version')
+        reference = rational_value(self.reference_hz, 'ratio ladder reference Hz',
+                                   MIN_RATE_HZ, MAX_RATE_HZ)
+        object.__setattr__(self, 'reference_hz', qtext(reference))
+        require(type(self.ratios) is tuple and 1 <= len(self.ratios) <= MAX_LEVELS,
+                'ratio ladder requires 1..64 ratios')
+        values = [rational_value(x, 'ladder ratio') for x in self.ratios]
+        require(all(x > 0 for x in values), 'ladder ratios must be positive')
+        require(all(a < b for a, b in zip(values, values[1:])),
+                'ladder ratios must be strictly ordered and unique')
+        for ratio in values:
+            hz = ratio * reference
+            require(MIN_RATE_HZ <= hz <= MAX_RATE_HZ,
+                    'ratio ladder resolved Hz outside supported positive bounds')
+        object.__setattr__(self, 'ratios', tuple(qtext(x) for x in values))
+
+    @classmethod
+    def from_dict(cls, data):
+        require(type(data) is dict and set(data) == {'version', 'reference_hz', 'ratios'},
+                'ratio ladder requires complete version/reference/ratios snapshot')
+        require(type(data['ratios']) is list, 'ratio ladder JSON ratios must be an array')
+        return cls(version=data['version'], reference_hz=data['reference_hz'],
+                   ratios=tuple(data['ratios']))
+
+    def as_quantizer(self) -> RateQuantizer:
+        """Compile to accepted exact-Hz lower-tie quantizer; never round Hz."""
+        reference = Fraction(self.reference_hz)
+        return RateQuantizer(policy='nearest_hz',
+                             levels_hz=tuple(qtext(reference * Fraction(r)) for r in self.ratios))
 
 
 @dataclass(frozen=True)

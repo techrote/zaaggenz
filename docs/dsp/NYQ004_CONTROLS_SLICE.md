@@ -117,3 +117,29 @@ bounds, additive-route equivalence, reset epochs, stable jitter cells,
 quantized-ramp rejection, cancellation and resource budgets. A passing pure
 geometry oracle is **not** saved-instrument acceptance or a verified
 listening/render/export result.
+
+
+## Additional pure control: explicit rational ratio ladder
+
+`RatioLadder(version='nyq.ratio-ladder.v1', reference_hz='48000/1',
+ratios=('1/3', '2/5', '3/7', '5/11', '7/13'))` is a complete strict
+JSON/canonical-hash control-source record in `nyquismic_controls`. It
+converts those ratios to **exact** resolved Hz with `as_quantizer()`,
+which creates the existing `RateQuantizer(nearest_hz, lower tie)`. Neither the
+numerical evaluation clock nor the delivery/export clock enters this mapping.
+The specified five rational choices are ordinary test data, not privileged
+musical ratios. Changing the stored reference changes the realized values
+and the identity. Non-positive, duplicate, unsorted, oversized or out-of-range
+ratios and incomplete/unknown JSON fields fail closed. No ratio is converted
+through float or silently rounded to a nearest integer Hz.
+
+This is useful today in the existing `evaluate_instantaneous_rate` diagnostic
+and exact step-clock geometry for compatible static/stepped controls. The
+`RatioLadder` companion is **not** yet a field of frozen `SonicSpec`, and
+no project/rack/preset persistence or GUI claims are made. A future qualified
+schema adapter must preserve both original ratios and the reference; persisting
+only the compiled absolute-Hz quantizer loses ratio intent. Free/beat LFO,
+envelope/transient, upstream feature routes and sampler integration remain
+explicit #253 requirements.
+
+Run: `python -m unittest discover -s tests/contracts -p 'test_nyquismic_controls.py' -v`.
