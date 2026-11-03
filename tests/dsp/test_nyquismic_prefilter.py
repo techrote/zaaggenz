@@ -164,9 +164,9 @@ class StaticFIRPrefilterTests(unittest.TestCase):
                 padded = np.pad(source.astype(np.float64),
                                 ((16, 16), (0, 0)),
                                 mode='edge' if boundary == 'edge_hold' else 'constant')
-                expected = np.column_stack((
+                expected = np.column_stack([
                     actual_convolve(padded[:, channel], kernel, mode='valid')
-                    for channel in range(2)))
+                    for channel in range(2)])
                 visited = []
                 def bounded_convolve(signal, taps, mode):
                     visited.append(len(signal))
