@@ -372,6 +372,12 @@ class SamplerPlan:
                     'sinc8 Hann reconstruction requires a static uniform event lattice')
             require(evaluation.budget.max_filter_taps >= 17,
                     'sinc8 Hann reconstruction exceeds admitted kernel support')
+        if spec.reconstruction == 'shepard8_hann_local_time_v1':
+            # Up to eight actual captured events on either side of an interval.
+            # This non-bandlimited kernel uses physical-time local scales and
+            # is deliberately separate from the uniform cardinal-sinc policy.
+            require(evaluation.budget.max_filter_taps >= 17,
+                    'local-time Shepard Hann reconstruction exceeds admitted kernel support')
         if spec.prefilter in STATIC_FIR_PREFILTER_POLICIES:
             require(not spec.clock.points_hz, 'static FIR prefilter rejects modulated virtual rate')
             require(spec.clock.rate.hz < source.sample_rate_hz,
@@ -537,6 +543,44 @@ class SamplerPlan:
                                         'uniform Hann sinc local DC normalization invalid')
                                 block[j] = np.sum(self.captures[lo:hi] *
                                                   weights[:, None], axis=0) / dc
+                        elif self.spec.reconstruction == 'shepard8_hann_local_time_v1':
+                            # Bounded, explicitly non-bandlimited irregular-event
+                            # Shepard reconstruction: each kernel's scale is
+                            # the mean of its adjacent physical event intervals.
+                            # Positive inverse-square weights, tapered smoothly
+                            # to zero at +/-8 local spacings, preserve DC and
+                            # approach exact captures continuously. The event
+                            # index window also prevents unbounded work when
+                            # a local interval becomes unusually wide.
+                            positions = np.flatnonzero(mask)
+                            for j, frame in zip(positions, frames[mask]):
+                                t = Fraction(int(frame), self.sample_rate_hz)
+                                if _difference(t, self._coordinates[owner]) == 0:
+                                    block[j] = left
+                                    continue
+                                lo = max(0, owner - 8)
+                                hi = min(len(self.events), owner + 9)
+                                weights = np.zeros(hi - lo, dtype=np.float64)
+                                for k in range(lo, hi):
+                                    if k == 0:
+                                        scale = _difference(self._coordinates[1], self._coordinates[0])
+                                    elif k == len(self.events) - 1:
+                                        scale = _difference(self._coordinates[-1], self._coordinates[-2])
+                                    else:
+                                        scale = _difference(self._coordinates[k + 1], self._coordinates[k - 1]) / 2
+                                    x = _ratio(_difference(t, self._coordinates[k]), scale)
+                                    if x == 0:
+                                        # Exact source/event capture, no interpolation
+                                        # or binary64 distance-singularity substitution.
+                                        weights.fill(0)
+                                        weights[k - lo] = 1
+                                        break
+                                    if abs(x) < 8:
+                                        weights[k - lo] = (0.5 + 0.5 * math.cos(math.pi * x / 8)) / (x * x)
+                                dc = float(np.sum(weights))
+                                require(math.isfinite(dc) and dc > 0,
+                                        'local-time Shepard reconstruction has no positive finite kernel mass')
+                                block[j] = np.sum(self.captures[lo:hi] * weights[:, None], axis=0) / dc
                         elif self.spec.reconstruction == 'nearest_time_v1':
                             # Decide ties using exact/Decimal80 event coordinates;
                             # a binary64 midpoint comparison can choose the
@@ -602,11 +646,14 @@ class SamplerPlan:
             'origin_s': self.spec.clock.origin_s, 'initial_phase_cycles': self.spec.clock.phase_cycles,
             'resets': [r.to_dict() for r in self.spec.clock.resets],
             'capture': self.spec.capture, 'reconstruction': self.spec.reconstruction,
-            'reconstruction_support_events': (8 if self.spec.reconstruction == 'sinc8_hann_uniform_v1'
+            'reconstruction_support_events': (8 if self.spec.reconstruction in
+                                              ('sinc8_hann_uniform_v1', 'shepard8_hann_local_time_v1')
                                               else 2 if self.spec.reconstruction == 'cubic_time_v1'
                                               else 1 if self.spec.reconstruction != 'hold_v1' else 0),
             'reconstruction_window': ('hann_symmetric_radius_8_v1'
-                                      if self.spec.reconstruction == 'sinc8_hann_uniform_v1' else None),
+                                      if self.spec.reconstruction == 'sinc8_hann_uniform_v1'
+                                      else 'hann_symmetric_radius_8_local_shepard_inverse_square_v1'
+                                      if self.spec.reconstruction == 'shepard8_hann_local_time_v1' else None),
             'prefilter': self.spec.prefilter,
             'prefilter_support_source_frames': 16 if self.spec.prefilter != 'off_v1' else 0,
             'prefilter_cutoff_hz': (float(STATIC_FIR_PREFILTER_POLICIES[self.spec.prefilter][0] *
