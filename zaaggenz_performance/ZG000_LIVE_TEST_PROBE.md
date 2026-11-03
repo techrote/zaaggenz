@@ -2,7 +2,9 @@
 
 This document exists only on a non-production test branch, which must never merge.
 
-Generation: A
+Generation: C
+
+This commit supersedes test generation B while its downstream dispatch job is active.
 Target source owner: ZG-042
 Expected reverse dependency: ZG-045
 
