@@ -61,7 +61,9 @@ class NonuniformReconstructionTests(unittest.TestCase):
                     if i + 1 < len(coords) and 2 * (t - coords[i]) > coords[i + 1] - coords[i]:
                         i += 1
                     expected = float(plan.captures[i, 0])
-                self.assertAlmostEqual(float(actual[n]), expected, places=10)
+                self.assertAlmostEqual(float(actual[n]), expected, places=10,
+                    msg=f'n={n} owner={plan.clock.capture_count_at(Fraction(n, 48000), inclusive=True)-1} '
+                        f'current={coords[max(i, 0)]} next={coords[min(max(i,0)+1,len(coords)-1)]}')
 
     def test_cubic_exact_endpoints_chunk_checkpoint_and_irregular_rate(self):
         t = np.arange(512, dtype=np.float64)
