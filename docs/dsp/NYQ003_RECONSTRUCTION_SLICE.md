@@ -176,3 +176,43 @@ The test instruments convolution input lengths and verifies an interrupted
 60,000-frame stereo request stops after only two source windows. It does
 **not** establish full instrument/Windows playback, rate-convergence or
 guarded-clean acceptance.
+
+## Opt-in irregular-event physical-time Shepard/Hann reconstruction (experimental)
+
+New policy `shepard8_hann_local_time_v1` is a *separate*, bounded
+**non-bandlimited** reconstruction policy; it never reuses the uniform sinc
+assumption. It accepts the existing NYQ-002 piecewise clock and reset
+geometries, and shares frozen capture tables/checkpoint and half-open
+boundaries. It does not make routed/quantized/jitter clocks executable until
+NYQ-004's sampler adapter is accepted.
+
+At requested physical output time `t`, for each captured event `k` in
+`[owner-8, owner+8]`, define a positive local interval scale in **seconds**:
+`h[k] = (t[k+1]-t[k-1])/2` at interiors; at source edges use the immediate
+available interval. Define `x[k]=(t-t[k])/h[k]`. For `0 < |x| < 8`,
+`w[k] = (1+cos(pi*x/8))/(2*x*x)`; otherwise `w[k]=0`. The
+result is `sum(w[k]*capture[k]) / sum(w[k])`, with a fail-closed check for
+nonpositive/nonfinite mass. At an exact event time the capture itself is
+returned, avoiding the inverse-square singularity. The weights are positive,
+so this policy has unity DC for a constant captured signal and does not
+overshoot the convex hull of captured samples. It is continuous approaching
+event positions, but **not** a physically exact sinc or high-quality
+bandlimited reconstruction, nor a method for removing already formed
+aliases. The Hann taper is smooth at its physical-time support boundary.
+
+Admission requires `budget.max_filter_taps >= 17`. At most 17 captured
+events contribute per output sample, with a maximum eight-index look
+behind/ahead; this is independent of numerical output-grid block size.
+Before the first capture output remains zero; after the last capture the
+existing final hold applies. Output extent, wet/dry and master ownership do
+not change. Near reset points the kernel can intentionally mix neighboring
+captures across the discontinuity; no undocumented phase continuity,
+anti-alias guarantee, delivery conversion or numerical convergence is
+claimed.
+
+Evidence: `python -m unittest discover -s tests/dsp -p
+'test_nyquismic_nonuniform_kernel.py' -v` covers independent physical-time
+weights on a changing-rate clock, exact captured samples, mono/stereo DC,
+finite/convex-hull behavior, chunk/checkpoint identity, bypass, short/empty,
+budget failure and cancellation. Final-head CI and independent acoustic
+evaluation remain outstanding. No default sound or preset is promoted.
