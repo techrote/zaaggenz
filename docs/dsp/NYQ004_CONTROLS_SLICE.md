@@ -179,10 +179,18 @@ times, exact rational triangle values, `linear` interpolation, requested
 mapping and depth. **Store both** if later editing of the original LFO
 intent is required: the existing `SonicSpec` only stores its concrete
 `ModulationRoute` and does not yet contain a nested LFO-source identity.
-A sampled triangle is a piecewise-linear approximation if breakpoints are
-not placed at its turning points; no implicit bandlimited sinusoid, jitter,
-continuous beat-phase solver, audio-rate path or high-frequency guarantee
-is claimed. Each accepted route contains at most 256 points, with hard
+The compiler now **retains exact rational half-cycle turning points
+(peaks/troughs) and off-grid tempo breakpoints**, alongside the requested
+uniform authoring grid and final endpoint. These retained physical-time
+breakpoints make the frozen *piecewise-linear triangle route* equal to the
+declared exact triangle at all intermediate times, not merely at grid
+samples, including across abrupt BPM changes. Exact phase and zero-depth
+behavior are unchanged. The conservative four-points-per-cycle admission
+rule still applies, and the **combined** grid/tempo/turning-point lane must
+fit the existing 256-point budget or fail closed. No point decimation,
+floating-point cusp rounding or quiet change of waveform is permitted.
+This does not add a bandlimited sinusoid, jitter, continuous generic
+audio-rate evaluator or real sampler/feature path. Each accepted route contains at most 256 points, with hard
 bounds on physical grid, frequency, BPM and total requested extent.
 Oversized authoring requests reject before materializing output; callers
 may explicitly choose a shorter extent or coarser physical grid, **provided**
