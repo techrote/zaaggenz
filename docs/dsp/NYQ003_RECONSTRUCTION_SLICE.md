@@ -259,3 +259,59 @@ python -m unittest discover -s tests/dsp -p 'test_nyquismic_prefilter.py' -v
 No claim is made about per-band rack integration, source feature routing,
 final numerical delivery conversion, global convergence, physical Windows
 listening or musical preference.
+
+
+## NYQ-003 continuation: isolated local numerical-delivery FIR component
+
+`zaaggenz_dsp.nyquismic_delivery` now provides an explicitly opted-in
+`convert_numerical_to_delivery` component with the strict, full-snapshot
+`DeliveryConversionPolicy` (`nyq.delivery-conversion.v1`). This is a
+**component and numerical-quality evidence tool**, not a change to the existing
+`SamplerPlan`, master output path, export, graph, bitcrusher or preset
+defaults. The core sampler still uses
+`point_evaluation_no_conversion_v1` and does not advertise production
+convergence.
+
+The method `nyq.polyphase-delivery-kaiser10-24lobes.v1` uses an exactly
+declared integer ratio `up/down` reduced by gcd, a symmetric odd
+`24*max(up,down)+1` tap windowed-sinc/polyphase low-pass kernel,
+Kaiser beta 10, a prototype cutoff of `1/max(up,down)` relative to the
+interpolated-grid Nyquist, SciPy 1.17.0 `firwin` and `resample_poly` with
+**constant-zero boundary extension**. The central physical time origin is
+unchanged, the output length is `ceil(input_frames*up/down)` and partial
+terminal extent is padded/cropped by this declared policy. The fixed
+kernel coefficient SHA-256, ratio, method, source/output frame counts,
+boundary, and clipping='none' are returned as diagnostics. Equal-rate
+conversion is an exact identity, not a filter pass. The helper preserves
+float64 output without clamping or peak/RMS normalization.
+
+No implicit ratio approximation is admitted. The evaluation rate must be
+at least the delivery rate, rates and all input samples must be valid, and
+the generated kernel must fit the explicit resource budget. In particular,
+192000-to-44100 conversion needs 15361 taps for this **specific** method,
+which exceeds the default 4096-tap budget and is rejected instead of
+silently using a shorter fallback. Empty mono/stereo PCM yields matching
+empty output, and all intermediate/output samples must be finite.
+Cancellation is checked before and after one complete SciPy conversion;
+the helper does **not** claim mid-kernel cooperative cancellation. Its use
+for long-form work requires additional bounded-window streaming/context
+qualification, and the actual saved export path must be separately wired.
+
+An independent DSP test distinguishes high-frequency parent suppression
+from the intentional **5 kHz difference product** of a nonlinear squared
+28+33 kHz two-tone at 192 kHz before delivery to 48 kHz. This verifies the
+ordering condition that delivery filtering cannot be applied prematurely
+before nonlinear interactions. Additional tests cover 1 kHz passband,
+36 kHz evaluation-image rejection, identity, stereo, empty/partial
+terminal extent, coefficient identity, invalid numerics and ratios,
+cancellation and budgets. Run:
+
+```sh
+python -m unittest discover -s tests/dsp -p 'test_nyquismic_delivery.py' -v
+```
+
+No same-model multi-rate convergence claim, fixed reference sequence,
+spectral/transient acceptance threshold, production export support, or
+musical superiority is established by this helper. Those remain required
+to close #252. This comparison component cannot undo aliases formed at
+the virtual capture stage.
