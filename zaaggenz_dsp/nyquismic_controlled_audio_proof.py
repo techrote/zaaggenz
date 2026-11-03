@@ -93,13 +93,16 @@ def render_controlled_audio_proof(
             require(stamp >= 0 and error >= 0, 'invalid controlled event coordinate')
             earliest = ceil((stamp - error) * rate)
             latest = ceil((stamp + error) * rate)
-            require(earliest == latest and 0 <= earliest < frames,
+            require(earliest == latest and 0 <= earliest <= frames,
                     'controlled crossing too close to numerical grid to certify')
             if sonic.capture == 'nearest_left_tie_v1' and error:
                 position = stamp * rate
                 fraction = position - (position.numerator // position.denominator)
                 require(abs(fraction - Fraction(1, 2)) > error * rate,
                         'controlled nearest capture tie cannot be certified')
+            # A half-open event may occur after the final output frame but
+            # before source end; first==frames is legitimate and affects
+            # no published sample. It still belongs in the exact event ledger.
             first.append(earliest)
             captures.append(float(_sample_at(
                 pcm, stamp * rate, sonic.capture, sonic.input_boundary)[channel]))
