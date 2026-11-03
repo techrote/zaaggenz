@@ -6,6 +6,11 @@ The source is `zaaggenz_contracts/{nyquismic,nyquismic_clock}.py`. This document
 freezes the implemented foundation; the broader Nyquismic specification still
 assigns audio kernels and instrument acceptance to #251–#258.
 
+The later [NYQ-002 kernel](NYQ002_SAMPLER.md) consumes this foundation through an
+explicit evaluation method/filter pair. Foundation defaults and generic
+`require_audio_execution`/rack dispatch remain unavailable. Its read-only exact
+coordinate/count helpers preserve the original phase model and fixture bytes.
+
 ## Capability boundary
 
 Implemented: immutable typed sonic/evaluation/identity/checkpoint data, strict
@@ -169,7 +174,7 @@ Unicode strings up to 256 characters with the existing JSON surrogate checks.
 | `bus`, `band`, `placement`, `confine_delta` | SYNTHLINE only; band null or sub/lowmid/highmid/air; post_source_pre_master only; confinement true. Spectral sub is not the separate SUB stem. No rack execution implied. |
 | `input_boundary`, `initial_capture`, `tail`, `reset_history` | Defaults zero_pad (or edge_hold), crossing_only_zero_until_first, crop_to_output_extent, retain_capture. Other values fail. Inactive cascade clock/kernel fields retain canonical defaults. |
 | `EvaluationPolicy.version`, `evaluation_rate_hz` | 1.0.0; numerical Hz integer 192000 default, range 8000–3072000. This is a planned evaluation domain, not newly enabled delivery rates. |
-| `clock_method`, `audio_method`, `numerical_filter` | Clock method above; audio_method and numerical_filter are explicitly unavailable_nyq001. No pretend filter/renderer identifier. |
+| `clock_method`, `audio_method`, `numerical_filter` | Clock method above; defaults remain unavailable_nyq001. NYQ-002 additionally permits the explicit pair fractional_event_sampler_v1 / point_evaluation_no_conversion_v1; mismatched pairs reject. See the kernel's numerical-domain boundary. |
 | `reference_rates_hz`, `budget` | Default empty tuple; bounded strictly increasing numerical Hz above the base; ResourceBudget defaults below. Passes are requested identities, not measured convergence. |
 | `RenderIdentity` | Existing AudioAssetRef plus sonic/source/rack/graph/context SHA-256 identities; EvaluationPolicy; delivery Hz [8000,192000] default 48000; channel count; rational [start,end] coordinate bounds default [0,1], half-open output; version 1.0.0. Identity is planned, not artifact success. |
 | `RackBoundary.spec`, revision hashes, `anchor_instance_id`, `side` | Typed SonicSpec, source revision/rack sonic hashes, accepted stable anchor ID, before/after (default after). Always rejects execution pending #256. |

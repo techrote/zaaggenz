@@ -112,16 +112,24 @@ class _Segment:
             return self.start + 2 * q / (self.rate + Fraction(n, d))
         return None
 
-    def timestamp(self, crossing):
+    def coordinate(self, crossing):
+        """Exact rational root, otherwise the declared Decimal80 root.
+
+        Audio capture must not introduce a second rounding through binary64
+        before deciding a source-grid nearest tie. Membership still uses phase.
+        """
         exact = self.rational_root(crossing)
         if exact is not None:
-            return float(exact)
+            return exact
         q = Fraction(crossing) - self.phase
         disc = self.rate * self.rate + 2 * self.slope * q
         with localcontext(Context(prec=80)):
             # Cancellation-safe form for both increasing and decreasing ramps.
             dt = 2 * _decimal(q) / (_decimal(self.rate) + _decimal(disc).sqrt())
-            return float(_decimal(self.start) + dt)
+            return +(_decimal(self.start) + dt)
+
+    def timestamp(self, crossing):
+        return float(self.coordinate(crossing))
 
     def enclosure(self, crossing):
         exact = self.rational_root(crossing)
@@ -269,6 +277,49 @@ class ClockPlan:
                 count += ceil(segment.phase_at(min(at, segment.end))) - segment.first
         return ClockCheckpoint(self.spec.sha256, qtext(at), epoch, ceil(phase), count,
                                format(phase.numerator, 'x'), format(phase.denominator, 'x'))
+
+    def event_coordinate(self, index: int) -> Fraction | Decimal:
+        """Return a capture coordinate without first rounding to binary64.
+
+        Event IDs/counts and endpoint ownership remain the original exact
+        phase authority. This read-only helper changes no saved clock identity.
+        """
+        integer(index, 'event index', 0, self.event_count - 1)
+        low, high = 0, len(self._segments)
+        while low < high:
+            middle = (low + high) // 2
+            if self._segments[middle].offset <= index:
+                low = middle + 1
+            else:
+                high = middle
+        segment = self._segments[low - 1]
+        return segment.coordinate(segment.first + index - segment.offset)
+
+    def capture_count_at(self, time_s: Fraction, *, inclusive: bool = False) -> int:
+        """Exact number of captures before/through an in-memory rational time.
+
+        Unlike a saved parameter this internal query may have the denominator
+        of a numerical frame grid. The exact-arithmetic and plan bounds still
+        apply. Consumers use this to settle output-grid ties, never a rounded
+        ClockEvent timestamp. At the excluded plan endpoint no capture is added.
+        """
+        require(type(time_s) is Fraction, 'capture count query requires Fraction seconds')
+        require(type(inclusive) is bool, 'inclusive flag must be bool')
+        _bounded_phase(time_s)
+        require(Fraction(self.spec.origin_s) <= time_s <= Fraction(self.end_s), 'capture count query outside plan')
+        if time_s == Fraction(self.end_s):
+            return self.event_count
+        low, high = 0, len(self._segments)
+        while low < high:
+            middle = (low + high) // 2
+            if self._segments[middle].start <= time_s:
+                low = middle + 1
+            else:
+                high = middle
+        segment = self._segments[low - 1]
+        phase = segment.phase_at(time_s)
+        stop = phase.numerator // phase.denominator + 1 if inclusive else ceil(phase)
+        return segment.offset + max(0, min(stop, segment.stop) - segment.first)
 
     def restore(self, checkpoint: ClockCheckpoint, cancelled: Callable[[], bool] | None = None) -> tuple[ClockEvent, ...]:
         record(checkpoint, ClockCheckpoint, 'checkpoint')

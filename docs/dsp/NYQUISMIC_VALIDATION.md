@@ -4,6 +4,12 @@
 **Acceptance owner:** [NYQ-009 #258](https://github.com/techrote/zaaggenz/issues/258)  
 **Status:** NYQ-001 contract/clock fixtures and tolerances are frozen below; audio numerical comparisons and instrument acceptance remain pending the later children.
 
+[NYQ-002 sampler evidence](NYQ002_SAMPLER.md) adds independent Fraction/Decimal80
+capture/reconstruction oracles and actual numerical-domain PCM, checkpoint and
+region tests. Original clock/legacy fixture bytes remain unchanged. Fixed-grid
+kernel evidence does not certify final conversion, convergence, rack/Compose
+acceptance or musical preference.
+
 Read the [specification](NYQUISMIC_MODULATION.md), [implementation RAG](../zaaggenz/NYQUISMIC_IMPLEMENTATION_RAG.md) and existing [validation gates](../zaaggenz/briefs/VALIDATION_GATES.md). Preserve baseline/accepted evidence and do not weaken a comparator to make a new renderer pass.
 
 ## NYQ-001 frozen reference set

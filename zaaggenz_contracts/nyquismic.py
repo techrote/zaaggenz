@@ -37,6 +37,8 @@ MAX_FRAMES = 16_777_216
 MAX_SPEC_BYTES = 65_536
 MAX_DENOMINATOR = 1_000_000_000
 MAX_NUMERATOR = 9_999_999_999_999
+SAMPLER_AUDIO_METHOD = 'fractional_event_sampler_v1'
+SAMPLER_NUMERICAL_FILTER = 'point_evaluation_no_conversion_v1'
 
 
 class UnsupportedNyquismic(ContractError):
@@ -519,8 +521,12 @@ class EvaluationPolicy(_Record):
         choice(self.version, 'evaluation version', (VERSION,))
         integer(self.evaluation_rate_hz, 'evaluation rate Hz', 8000, MAX_EVALUATION_HZ)
         choice(self.clock_method, 'clock method', ('exact_rational_piecewise_affine_decimal80_v1',))
-        choice(self.audio_method, 'audio method', ('unavailable_nyq001',))
-        choice(self.numerical_filter, 'numerical filter', ('unavailable_nyq001',))
+        choice(self.audio_method, 'audio method', ('unavailable_nyq001', SAMPLER_AUDIO_METHOD))
+        choice(self.numerical_filter, 'numerical filter', ('unavailable_nyq001', SAMPLER_NUMERICAL_FILTER))
+        require((self.audio_method, self.numerical_filter) in (
+            ('unavailable_nyq001', 'unavailable_nyq001'),
+            (SAMPLER_AUDIO_METHOD, SAMPLER_NUMERICAL_FILTER)),
+            'audio method and numerical conversion policy must be a supported pair')
         record(self.budget, ResourceBudget, 'resource budget')
         require(type(self.reference_rates_hz) is tuple and len(self.reference_rates_hz) <= self.budget.max_reference_passes,
                 'reference-pass budget exceeded')
