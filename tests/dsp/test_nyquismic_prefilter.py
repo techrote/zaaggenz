@@ -149,6 +149,59 @@ class StaticFIRPrefilterTests(unittest.TestCase):
             plan = SamplerPlan.prepare(original, spec, sampler_evaluation(48000))
             np.testing.assert_array_equal(plan.render().audio, signal)
 
+    def test_source_fir_blocks_match_full_context_convolution_bit_for_bit(self):
+        from fractions import Fraction
+        from unittest.mock import patch
+        from zaaggenz_dsp.nyquismic import _fir33_kernel, _prefilter_static_source
+        frames = 17031  # cross two 8192-frame boundaries and a short tail
+        positions = np.arange(frames, dtype=np.float64)
+        source = np.column_stack((
+            np.sin(positions / 13), np.cos(positions / 19))).astype(np.float32)
+        kernel, _ = _fir33_kernel(48000, Fraction(8000), FILTER)
+        actual_convolve = np.convolve
+        for boundary in ('edge_hold', 'zero_pad'):
+            with self.subTest(boundary=boundary):
+                padded = np.pad(source.astype(np.float64),
+                                ((16, 16), (0, 0)),
+                                mode='edge' if boundary == 'edge_hold' else 'constant')
+                expected = np.column_stack((
+                    actual_convolve(padded[:, channel], kernel, mode='valid')
+                    for channel in range(2)))
+                visited = []
+                def bounded_convolve(signal, taps, mode):
+                    visited.append(len(signal))
+                    self.assertLessEqual(len(signal), 8192 + 32)
+                    return actual_convolve(signal, taps, mode=mode)
+                with patch('zaaggenz_dsp.nyquismic.np.convolve',
+                           side_effect=bounded_convolve):
+                    actual = _prefilter_static_source(source, kernel, boundary)
+                np.testing.assert_array_equal(actual, expected)
+                self.assertEqual(len(visited), 6)  # 3 windows * 2 channels
+
+    def test_source_fir_cancels_before_processing_remaining_windows(self):
+        from fractions import Fraction
+        from unittest.mock import patch
+        from zaaggenz_dsp.nyquismic import _fir33_kernel, _prefilter_static_source
+        source = np.zeros((60000, 2), dtype=np.float32)
+        kernel, _ = _fir33_kernel(48000, Fraction(8000), FILTER)
+        actual_convolve = np.convolve
+        calls = []
+        windows = []
+        def cancelled():
+            calls.append(True)
+            return len(calls) == 4
+        def instrumented(signal, taps, mode):
+            windows.append(len(signal))
+            return actual_convolve(signal, taps, mode=mode)
+        with patch('zaaggenz_dsp.nyquismic.np.convolve',
+                   side_effect=instrumented):
+            with self.assertRaises(ClockCancelled):
+                _prefilter_static_source(source, kernel, 'zero_pad',
+                                         cancelled=cancelled)
+        self.assertEqual(len(calls), 4)
+        self.assertEqual(windows, [8192 + 32, 8192 + 32])
+
+
 
 if __name__ == '__main__':
     unittest.main()
