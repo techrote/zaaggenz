@@ -3,7 +3,6 @@
 This does not qualify the real export path, production convergence gate,
 Nyquismic graph integration or a universal 'cleaner sounds better' claim.
 """
-from dataclasses import replace
 import unittest
 
 import numpy as np
@@ -75,7 +74,7 @@ class DeliveryConversionTests(unittest.TestCase):
         result = convert_numerical_to_delivery(silence, 192000, 48000)
         self.assertEqual(result.audio.shape, (26, 2))
         self.assertTrue(np.isfinite(result.audio).all())
-        np.testing.assert_array_equal(result.audio, 0.)
+        np.testing.assert_array_equal(result.audio, np.zeros((26, 2)))
         self.assertEqual(result.diagnostics['output_frames'], 26)
         for sample in (np.zeros((0,2), dtype=np.float64),
                        np.zeros(0, dtype=np.float64)):
@@ -83,9 +82,8 @@ class DeliveryConversionTests(unittest.TestCase):
             self.assertEqual(actual.audio.shape, sample.shape)
         policy = DeliveryConversionPolicy()
         self.assertEqual(DeliveryConversionPolicy.from_json(policy.to_json()), policy)
-        self.assertNotEqual(
-            policy.sha256,
-            replace(policy, version='nyq.delivery-conversion.v1').sha256 + 'X')
+        self.assertEqual(policy.sha256, DeliveryConversionPolicy().sha256)
+        self.assertEqual(result.diagnostics['policy_sha256'], policy.sha256)
 
     def test_rejects_unqualified_ratios_and_nonfinite_unbounded_inputs(self):
         source = np.ones(256, dtype=np.float64)
