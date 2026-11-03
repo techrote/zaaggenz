@@ -44,3 +44,38 @@ python -m unittest discover -s tests/contracts -p 'test_nyquismic*.py' -v
 ```
 Use exact-head Windows/Ubuntu reverse-dependency CI before acceptance; do not
 close #253 or unblock #254 on this slice.
+
+
+## NYQ-004 follow-up: exact segmented step-clock geometry
+
+An additional standalone `compile_step_clock_events(spec, end_s, *, channel,
+budget, cancelled)` now admits and emits **exact Fraction event coordinates**
+for a tightly bounded subset of the saved control family. It integrates the
+continuous phase over each half-open physical-time segment, including explicit
+reset epochs. Segment cuts cover right-continuous base-Hz steps, ordered
+additive-Hz route steps, quantizer switches and counter-addressed jitter-cell
+boundaries. `StepClockEvent` includes ordinal, reset epoch, integer crossing and
+the unrounded exact timestamp. Absolute physical-time jitter cells and stable
+linked/independent channel identities make results independent of worker/chunk
+order. Capture count and jitter-cell budgets are checked before event
+publication; cancellation returns no partial output.
+
+This supports the mathematical event schedule for step/additive routes,
+nearest-Hz quantizers and bounded fractional-frequency jitter. It **rejects**
+linear-Hz ramps, logarithmic routes, audio-derived controls and other unverified
+combinations instead of evaluating them once per block. It is still an
+experimental geometry API, **not a registered ClockPlan replacement**, and has
+not yet been connected to SamplerPlan, runtime, saved instrument execution,
+preview or export. The accepted clock's unsupported-mode guard remains intact.
+
+Run the independent pure-clock oracles:
+
+```sh
+python -m unittest discover -s tests/contracts -p 'test_nyquismic_control_geometry.py' -v
+```
+
+The tests compare static event timestamps against accepted ClockPlan, exercise
+analytic step and reset crossings, quantizer lower ties, deterministic
+linked/independent jitter, unsupported-mode rejection, event/cell admission
+and cancellation. Full NYQ-004 acceptance still requires real sampler
+integration, additional waveform controls and exact-head CI.
