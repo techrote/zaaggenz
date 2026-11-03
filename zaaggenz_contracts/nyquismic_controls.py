@@ -457,6 +457,15 @@ class SampledLfoSource(_Record):
         start = Fraction(self.origin_s)
         end = rational_value(end_s, 'sampled LFO end seconds', start, MAX_TIME_S)
         grid = Fraction(self.grid_s)
+        frequency = Fraction(self.frequency)
+        fastest_bpm = max((Fraction(self.base_bpm),
+                           *(Fraction(p.value) for p in self.tempo_points)))
+        cycles_per_s = (frequency if self.mode == 'free_hz'
+                        else frequency * fastest_bpm / 60)
+        # Sampling too few control points aliases or entirely erases triangle
+        # cycles. Do not silently substitute a static route for a fast LFO.
+        require(cycles_per_s * grid <= Fraction(1, 4),
+                'sampled LFO grid underresolves maximum declared cycle rate (minimum four points/cycle)')
         count = -((start - end) // grid)  # exact ceil((end-start)/grid)
         require(count <= MAX_POINTS, 'sampled LFO point budget exceeded; shorten span or enlarge grid')
         times = [min(start + k * grid, end) for k in range(1, count + 1)]
