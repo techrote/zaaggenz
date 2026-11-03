@@ -185,7 +185,11 @@ continuous beat-phase solver, audio-rate path or high-frequency guarantee
 is claimed. Each accepted route contains at most 256 points, with hard
 bounds on physical grid, frequency, BPM and total requested extent.
 Oversized authoring requests reject before materializing output; callers
-may explicitly choose a shorter extent or coarser physical grid.
+may explicitly choose a shorter extent or coarser physical grid, **provided**
+that the grid still samples at least four control points per cycle at the
+fastest saved tempo/frequency. The conservative bound uses all saved tempo
+entries, even those after the requested endpoint. An underresolved LFO fails
+closed rather than quietly collapsing to a static/aliased modulation route.
 
 Evidence: `python -m unittest discover -s tests/contracts -p
 'test_nyquismic_sampled_lfo.py' -v` checks exact free-Hz quarter-cycle
