@@ -79,3 +79,41 @@ analytic step and reset crossings, quantizer lower ties, deterministic
 linked/independent jitter, unsupported-mode rejection, event/cell admission
 and cancellation. Full NYQ-004 acceptance still requires real sampler
 integration, additional waveform controls and exact-head CI.
+
+## NYQ-004 continuation: certified affine-Hz phase integration
+
+The standalone event compiler additionally admits **piecewise-linear Hz base
+automation and additive-Hz routes**. Every rate point, route breakpoint, reset,
+and jitter-cell boundary cuts the physical-time interval. Inside each segment
+the aggregate rate is `f(t) = r0 + slope * (t-a)`, with the independently
+evaluated midpoint fixing the exact rational slope. Its phase advance is
+`r0 * dt + slope * dt**2 / 2`; no per-audio-block integration approximation
+or hidden smoothing is used. Positive-endpoint admission is explicit.
+
+Integer crossings solve the stable quadratic root
+`dt = 2 * (crossing-phase) / (r0 + sqrt(r0**2 + 2*slope*(crossing-phase)))`.
+Perfect-square rational discriminants yield **exact Fraction** timestamps.
+Otherwise the integer square root of a fixed 128-bit dyadic-scaled rational
+discriminant yields a platform-independent enclosing interval. The emitted
+`StepClockEvent.coordinate_s` is the interval midpoint and
+`coordinate_error_bound_s` is its certified half-width, required to be no more
+than `1e-18 s`. Segment ownership and minimum event spacing are tested using
+the whole uncertainty interval, not just the rounded midpoint.
+
+The original step/static paths still return exact fractions with zero
+uncertainty. Piecewise-linear ramps with **nearest-Hz quantization** are
+explicitly rejected: their ladder-crossing times need separately certified
+switch segmentation. Nonlinear/logarithmic routes, LFOs, envelopes, features
+and actual `SamplerPlan` integration also remain unsupported. These source
+changes do not alter the frozen `ClockPlan` admission guard.
+
+Independent test command:
+```sh
+python -m unittest discover -s tests/contracts -p 'test_nyquismic_control_geometry.py' -v
+```
+The tests cover analytically integrated increasing/decreasing linear rates,
+an exact half-second crossing, irrational crossings with certified residual
+bounds, additive-route equivalence, reset epochs, stable jitter cells,
+quantized-ramp rejection, cancellation and resource budgets. A passing pure
+geometry oracle is **not** saved-instrument acceptance or a verified
+listening/render/export result.
