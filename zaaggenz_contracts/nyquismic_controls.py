@@ -468,8 +468,41 @@ class SampledLfoSource(_Record):
                 'sampled LFO grid underresolves maximum declared cycle rate (minimum four points/cycle)')
         count = -((start - end) // grid)  # exact ceil((end-start)/grid)
         require(count <= MAX_POINTS, 'sampled LFO point budget exceeded; shorten span or enlarge grid')
-        times = [min(start + k * grid, end) for k in range(1, count + 1)]
-        points = tuple(Point(qtext(t), qtext(self.value_at(qtext(t)))) for t in times)
+        # The output route is piecewise-linear, so a uniform authoring grid
+        # alone cannot represent a triangular wave exactly when a peak,
+        # trough or instantaneous tempo change falls between grid samples.
+        # Keep those physical-time breakpoints as exact rational events.
+        times = {min(start + k * grid, end) for k in range(1, count + 1)}
+        tempo_changes = {
+            Fraction(p.time_s): Fraction(p.value)
+            for p in self.tempo_points
+            if start < Fraction(p.time_s) < end
+        }
+        times.update(tempo_changes)
+        boundaries = [start, *sorted(tempo_changes), end]
+        bpm = Fraction(self.base_bpm)
+        for a, b in zip(boundaries, boundaries[1:]):
+            if a in tempo_changes:
+                bpm = tempo_changes[a]  # right-continuous BPM at a
+            cycles_per_second = (frequency if self.mode == 'free_hz'
+                                 else frequency * bpm / 60)
+            phase_a = Fraction(self.phase_cycles) + self._cycles(a)
+            phase_b = phase_a + cycles_per_second * (b - a)
+            # Every integer/half-integer cycle is a triangle derivative
+            # discontinuity. Both endpoints are already retained by the
+            # base grid or the tempo boundary; insert only strict interiors.
+            twice = 2 * phase_a
+            crossing = twice.numerator // twice.denominator + 1
+            while Fraction(crossing, 2) < phase_b:
+                at = a + (Fraction(crossing, 2) - phase_a) / cycles_per_second
+                times.add(at)
+                require(len(times) <= MAX_POINTS,
+                        'sampled LFO exact turning-point budget exceeded')
+                crossing += 1
+        require(len(times) <= MAX_POINTS,
+                'sampled LFO point budget exceeded by tempo or turning points')
+        points = tuple(Point(qtext(t), qtext(self.value_at(qtext(t))))
+                       for t in sorted(times))
         return ModulationRoute(id=route_id, mapping=mapping, depth=depth,
                                initial=qtext(self.value_at(qtext(start))),
                                points=points, interpolation='linear')
