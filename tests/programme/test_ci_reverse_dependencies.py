@@ -188,22 +188,31 @@ class ReverseDependencyCI(unittest.TestCase):
         self.assertIn("zg002-contracts.yml", contract["native"])
         self.assertIn("ZG-004", jobs["direct_stable_ids"])
 
-    def test_dispatch_is_serial_and_watch_is_separate(self) -> None:
-        workflow = (ROOT / ".github" / "workflows" / "zg000-ci-impact.yml").read_text(encoding="utf-8")
-        self.assertIn("Dispatch required downstream workflows serially", workflow)
+    def test_dispatch_is_serial_idempotent_and_watch_is_separate(self) -> None:
+        workflow = (ROOT / ".github/workflows/zg000-ci-impact.yml").read_text(encoding="utf-8")
+        self.assertIn("Reconcile and dispatch exact-head downstream workflows serially", workflow)
+        self.assertIn("tools/zg000_reconcile.py dispatch", workflow)
         self.assertIn("watch_matrix", workflow)
-        self.assertIn("workflow dispatch failed after bounded retries", workflow)
         self.assertIn("max-parallel: 4", workflow)
-        self.assertIn("--interval 60 --exit-status", workflow)
-        self.assertNotIn("matrix.workflow }}\n          STABLE_ID", workflow.split("  dispatch:", 1)[1].split("  watch:", 1)[0])
+        self.assertIn("--interval 30 --exit-status", workflow)
+        self.assertIn("github.event.pull_request.number", workflow)
+        self.assertIn("cancel-in-progress:", workflow)
+        self.assertNotIn("gh workflow run", workflow)
+        self.assertNotIn("latest_for_head", workflow)
 
-    def test_dispatch_failure_is_observable_and_discovery_is_bounded(self) -> None:
-        workflow = (ROOT / ".github" / "workflows" / "zg000-ci-impact.yml").read_text(encoding="utf-8")
-        self.assertIn("capture_output=True", workflow)
-        self.assertIn("if cp.stderr", workflow)
-        self.assertIn("for attempt, delay in enumerate((0, 30, 90)", workflow)
-        self.assertIn("for delay in (10, 30, 60)", workflow)
-        self.assertNotIn("sleep 2", workflow)
+    def test_dispatch_failure_identity_and_discovery_are_fail_closed(self) -> None:
+        workflow = (ROOT / ".github/workflows/zg000-ci-impact.yml").read_text(encoding="utf-8")
+        helper = (ROOT / "tools/zg000_reconcile.py").read_text(encoding="utf-8")
+        self.assertIn("return_run_details", helper)
+        self.assertIn("workflow_run_id", helper)
+        self.assertIn("run_attempt", helper)
+        self.assertIn("head_sha", helper)
+        self.assertIn("head_branch", helper)
+        self.assertIn("source_ref", helper)
+        self.assertIn("no mutation retried", helper)
+        self.assertIn("zg000-reconciliation-final", workflow)
+        self.assertIn("test_zg000_reconcile.py", workflow)
+        self.assertNotIn("for delay in (10, 30, 60)", helper)
 
 
 if __name__ == "__main__":
