@@ -202,6 +202,94 @@ class StaticFIRPrefilterTests(unittest.TestCase):
         self.assertEqual(windows, [8192 + 32, 8192 + 32])
 
 
+    def test_guarded_kaiser_comparison_suppresses_near_fold_without_erasing_bass(self):
+        from zaaggenz_contracts.nyquismic import GUARDED_CLEAN_PREFILTER
+        time = np.arange(4800, dtype=np.float64) / 48000
+        high = np.sin(2 * np.pi * 5000 * time).astype(np.float32)
+        narrow_legacy = prepare(high, policy=FILTER).captures[:, 0]
+        guarded_plan = prepare(high, policy=GUARDED_CLEAN_PREFILTER)
+        guarded = guarded_plan.captures[:, 0]
+        rms = lambda x: float(np.sqrt(np.mean(x[24:-24] ** 2)))
+        self.assertGreater(rms(narrow_legacy), .05)
+        self.assertLess(rms(guarded), .02 * rms(narrow_legacy))
+        low = np.sin(2 * np.pi * 900 * time).astype(np.float32)
+        clean_low = prepare(low, policy=GUARDED_CLEAN_PREFILTER).captures[:, 0]
+        dirty_low = prepare(low, policy='off_v1').captures[:, 0]
+        self.assertLess(np.max(np.abs(clean_low[24:-24] - dirty_low[24:-24])), .005)
+        diag = guarded_plan.render().diagnostics
+        self.assertEqual(diag['prefilter_cutoff_hz'], 3200)
+        self.assertEqual(diag['prefilter_support_source_frames'], 64)
+        self.assertEqual(diag['prefilter_window'], 'kaiser_beta10_129_v1')
+        self.assertEqual(diag['prefilter_strength'], 1.0)
+        self.assertEqual(len(diag['prefilter_coefficients_sha256']), 64)
+        self.assertEqual(SonicSpec.from_json(guarded_plan.spec.to_json()),
+                         guarded_plan.spec)
+        self.assertEqual(SonicSpec().prefilter, 'off_v1')
+
+    def test_guarded_kernel_stereo_context_and_checkpoint_equivalence(self):
+        from fractions import Fraction
+        from zaaggenz_contracts.nyquismic import GUARDED_CLEAN_PREFILTER
+        from zaaggenz_dsp.nyquismic import (
+            _static_fir_kernel, _prefilter_static_source)
+        n = 17031
+        frames = np.arange(n, dtype=np.float64)
+        stereo = np.column_stack((np.sin(frames / 17),
+                                  np.cos(frames / 23))).astype(np.float32)
+        taps, cutoff = _static_fir_kernel(48000, Fraction(8000),
+                                          GUARDED_CLEAN_PREFILTER)
+        self.assertEqual(len(taps), 129)
+        self.assertEqual(cutoff, Fraction(3200))
+        self.assertAlmostEqual(np.sum(taps), 1., places=14)
+        self.assertTrue(np.array_equal(taps, taps[::-1]))
+        for boundary in ('zero_pad', 'edge_hold'):
+            with self.subTest(boundary=boundary):
+                padded = np.pad(stereo.astype(np.float64),
+                                ((64, 64), (0, 0)),
+                                mode='constant' if boundary == 'zero_pad' else 'edge')
+                expected = np.column_stack([
+                    np.convolve(padded[:, channel], taps, mode='valid')
+                    for channel in range(2)])
+                actual = _prefilter_static_source(stereo, taps, boundary)
+                np.testing.assert_array_equal(actual, expected)
+        spec = SonicSpec(channels=2, prefilter=GUARDED_CLEAN_PREFILTER,
+                         clock=ClockSpec(rate=VirtualRate('8000/1')))
+        plan = SamplerPlan.prepare(FrozenInput.from_pcm(stereo[:512], 48000),
+                                   spec, sampler_evaluation(48000))
+        full = plan.render().audio
+        np.testing.assert_array_equal(
+            np.concatenate((plan.render(0, 149).audio,
+                            plan.render(149, 512).audio)), full)
+        np.testing.assert_array_equal(
+            plan.render(checkpoint=plan.checkpoint(149)).audio,
+            full[149:])
+
+    def test_guarded_filter_admission_and_bypass_are_fail_closed(self):
+        from zaaggenz_contracts.nyquismic import GUARDED_CLEAN_PREFILTER
+        source = FrozenInput.from_pcm(
+            np.linspace(-1, 1, 480, dtype=np.float32), 48000)
+        def spec(rate, **changes):
+            return SonicSpec(prefilter=GUARDED_CLEAN_PREFILTER,
+                             clock=ClockSpec(rate=VirtualRate(rate)), **changes)
+        for rate in ('4000/1', '30000/1'):
+            with self.subTest(rate=rate), self.assertRaises(ContractError):
+                SamplerPlan.prepare(source, spec(rate), sampler_evaluation(48000))
+        with self.assertRaises(ContractError):
+            SamplerPlan.prepare(source, spec('8000/1'),
+                                sampler_evaluation(48000, ResourceBudget(max_filter_taps=128)))
+        with self.assertRaises(ContractError):
+            SamplerPlan.prepare(source, SonicSpec(prefilter=GUARDED_CLEAN_PREFILTER,
+                clock=ClockSpec(rate=VirtualRate('8000/1'),
+                                points_hz=(Point('1/200', '7000/1'),))),
+                sampler_evaluation(48000))
+        for dry in (spec('8000/1', bypass=True), spec('8000/1', wet=0.)):
+            np.testing.assert_array_equal(
+                SamplerPlan.prepare(source, dry, sampler_evaluation(48000)).render().audio,
+                source.pcm)
+        with self.assertRaises(ClockCancelled):
+            SamplerPlan.prepare(source, spec('8000/1'), sampler_evaluation(48000),
+                                cancelled=lambda: True)
+
+
 
 if __name__ == '__main__':
     unittest.main()
