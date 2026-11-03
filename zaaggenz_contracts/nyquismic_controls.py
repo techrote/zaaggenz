@@ -146,26 +146,65 @@ class StepClockEvent:
     epoch: int
     crossing: int
     coordinate_s: Fraction
+    # Exact for step-rate crossings; for irrational ramp roots this bounds
+    # the rational approximation to the true physical timestamp.
+    coordinate_error_bound_s: Fraction = Fraction(0)
+
+
+def _bounded_linear_root(rate: Fraction, slope: Fraction, target: Fraction
+                         ) -> tuple[Fraction, Fraction]:
+    """Certified rational enclosure for integral(rate+slope*t) == target.
+
+    The stable quadratic root 2*target/(rate+sqrt(rate**2+2*slope*target))
+    avoids catastrophic cancellation on shallow ramps. Rational perfect
+    squares stay exact. Other roots use enclosing integer square roots on a
+    fixed 128-bit dyadic lattice, independent of platform float/libm.
+    """
+    from math import isqrt
+
+    require(target >= 0 and rate > 0, 'linear clock root must be nonnegative/positive')
+    if target == 0:
+        return Fraction(0), Fraction(0)
+    if slope == 0:
+        return target / rate, Fraction(0)
+    discriminant = rate * rate + 2 * slope * target
+    require(discriminant > 0, 'linear clock crossing has no positive discriminant')
+    num = isqrt(discriminant.numerator)
+    den = isqrt(discriminant.denominator)
+    if num * num == discriminant.numerator and den * den == discriminant.denominator:
+        return 2 * target / (rate + Fraction(num, den)), Fraction(0)
+
+    bits = 128
+    scale = 1 << bits
+    floor_sqrt = isqrt((discriminant.numerator << (2 * bits)) // discriminant.denominator)
+    sqrt_low = Fraction(floor_sqrt, scale)
+    sqrt_high = Fraction(floor_sqrt + 1, scale)
+    require(rate + sqrt_low > 0, 'linear clock root denominator invalid')
+    t_low = 2 * target / (rate + sqrt_high)
+    t_high = 2 * target / (rate + sqrt_low)
+    radius = (t_high - t_low) / 2
+    require(radius >= 0 and radius <= Fraction(1, 10**18),
+            'linear clock timestamp uncertainty exceeds admitted bound')
+    return (t_low + t_high) / 2, radius
 
 
 def compile_step_clock_events(
     spec: SonicSpec, end_s: str, *, channel: int = 0,
     budget=None, cancelled=None,
 ) -> tuple[StepClockEvent, ...]:
-    """Exact crossings of a bounded piecewise-constant controlled rate.
+    """Crossings of bounded piecewise-step or piecewise-linear controlled Hz.
 
-    Supports static/step base automation and additive-Hz routes, nearest-Hz
-    quantization and counter-addressed fractional-frequency jitter cells.
-    Every change in rate creates a physical-time segment; the continuous
-    phase is integrated across segments, not reset at block/cell boundaries.
-    Reset epochs explicitly change the phase. Linear ramps, logarithmic
-    routes, envelopes, beat-sync and audio-derived controls are rejected
-    until their mathematically correct integration is implemented.
-
+    Constant-rate crossings are exact fractions. Linear-Hz ramps integrate
+    exactly in rational phase and return platform-independent, explicitly
+    bounded rational timestamp approximations for irrational roots.
+    Counter-addressed jitter is permitted when piecewise-constant per cell.
+    Quantized ramps, logarithmic routes, derived controls and beat-sync are
+    deliberately rejected until their discontinuities/phase are specified.
+    
     This is a standalone numerical clock *proof*, not a SamplerPlan adapter.
     It publishes no audio, checkpoints, project migrations or rack capability.
     """
-    from math import ceil
+    from math import ceil, isqrt
     from .nyquismic import MAX_EVENTS, MIN_SPACING_S, ResourceBudget, UnsupportedNyquismic
     from .nyquismic_clock import ClockCancelled
 
@@ -179,11 +218,13 @@ def compile_step_clock_events(
     require(cancelled is None or callable(cancelled), 'cancellation hook must be callable')
     origin = Fraction(clock.origin_s)
     end = rational_value(end_s, 'step clock end seconds', origin, MAX_TIME_S)
-    if clock.interpolation == 'linear' and clock.points_hz:
-        raise UnsupportedNyquismic('linear-Hz controlled clock geometry not yet supported')
+    linear = (clock.interpolation == 'linear' and bool(clock.points_hz)) or any(
+        r.interpolation == 'linear' and bool(r.points) for r in clock.routes)
+    if linear and clock.quantizer.policy != 'none':
+        raise UnsupportedNyquismic('quantized linear-Hz ramp switch crossings need a separate exact solver')
     for route in clock.routes:
-        if route.mapping != 'add_hz' or (route.interpolation == 'linear' and route.points):
-            raise UnsupportedNyquismic('step clock supports step/add-Hz routes only')
+        if route.mapping != 'add_hz':
+            raise UnsupportedNyquismic('controlled clock logarithmic route integration not implemented')
     if cancelled is not None and cancelled():
         raise ClockCancelled('controlled clock cancelled; no partial event publication')
 
@@ -210,6 +251,7 @@ def compile_step_clock_events(
     epoch = 0
     events: list[StepClockEvent] = []
     previous_time: Fraction | None = None
+    previous_error = Fraction(0)
     for a, b in zip(ordered, ordered[1:]):
         if cancelled is not None and cancelled():
             raise ClockCancelled('controlled clock cancelled; no partial event publication')
@@ -219,8 +261,17 @@ def compile_step_clock_events(
         # In particular, no exponential Decimal80 result is silently rounded
         # to the numerical evaluation grid.
         rate = Fraction(evaluate_instantaneous_rate(spec, qtext(a), channel=channel).realized_hz)
-        require(rate > 0, 'step clock rate must be positive')
-        finish = phase + rate * (b - a)
+        require(rate > 0, 'controlled clock rate must be positive')
+        # Every linear breakpoint, step and jitter-cell boundary is a cut.
+        # Thus inside [a,b) the realized rate is affine; the midpoint is an
+        # exact independent sample for its slope, even when routes overlap.
+        midpoint = (a + b) / 2
+        middle_rate = (Fraction(evaluate_instantaneous_rate(
+            spec, qtext(midpoint), channel=channel).realized_hz) if linear else rate)
+        endpoint_rate = 2 * middle_rate - rate
+        require(endpoint_rate > 0, 'controlled clock endpoint rate must be positive')
+        slope = (endpoint_rate - rate) / (b - a)
+        finish = phase + (rate + endpoint_rate) * (b - a) / 2
         require(finish.numerator.bit_length() <= 32768 and
                 finish.denominator.bit_length() <= 32768,
                 'controlled clock exact phase arithmetic budget exceeded')
@@ -230,13 +281,17 @@ def compile_step_clock_events(
         for crossing in range(first, stop):
             if (len(events) & 255) == 0 and cancelled is not None and cancelled():
                 raise ClockCancelled('controlled clock cancelled; no partial event publication')
-            at = a + (crossing - phase) / rate
-            require(a <= at < b, 'controlled clock half-open crossing violation')
+            delta, uncertainty = _bounded_linear_root(rate, slope, Fraction(crossing) - phase)
+            at = a + delta
+            # The uncertainty interval itself must remain in the correct
+            # half-open interval, not merely its rounded representative.
+            require(a <= at - uncertainty and at + uncertainty < b,
+                    'controlled clock half-open crossing uncertainty')
             if previous_time is not None:
-                require(at - previous_time >= MIN_SPACING_S,
+                require(at - previous_time - uncertainty - previous_error >= MIN_SPACING_S,
                         'controlled clock event spacing below accepted minimum')
-            events.append(StepClockEvent(len(events), epoch, crossing, at))
-            previous_time = at
+            events.append(StepClockEvent(len(events), epoch, crossing, at, uncertainty))
+            previous_time, previous_error = at, uncertainty
         phase = finish
     if cancelled is not None and cancelled():
         raise ClockCancelled('controlled clock cancelled; no partial event publication')
