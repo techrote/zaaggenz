@@ -243,5 +243,61 @@ class RackEditorTests(unittest.TestCase):
                 self.assertEqual(self.d.to_dict(), before)
 
 
+
+    def test_source_bound_internal_retune_authoring_survives_reopen(self):
+        self.act(kind="enable")
+        band = editor_state(self.d)["value"]["bands"][1]["id"]
+        self.act(kind="add", band=band, type_id="zg.compression")
+        self.act(kind="add", band=band, type_id="zg.spectral")
+        spectral = editor_state(self.d)["value"]["bands"][1]["inserts"][1]
+        self.assertEqual(spectral["params"]["kind"], "SpectralRetuneRequest")
+        self.assertEqual(spectral["params"]["tuning_spec"],
+                         compile_recipe(self.d).to_dict()["tuning"])
+        self.assertLessEqual(spectral["params"]["max_hz"], 6000)
+        self.act(kind="set", scope="spectral", id=band+"/"+spectral["id"],
+                 field="amount", value=.7)
+        self.act(kind="set", scope="spectral", id=band+"/"+spectral["id"],
+                 field="preserve_ambiguous", value=False)
+        self.act(kind="set", scope="spectral_voice", id=band+"/"+spectral["id"],
+                 field="degree", value=7)
+        self.act(kind="move", band=band, id=spectral["id"], step=-1)
+        saved = editor_state(self.d)["value"]
+        self.assertEqual(saved["bands"][1]["inserts"][0]["id"], spectral["id"])
+        self.assertEqual(saved["bands"][1]["inserts"][0]["params"]["voices"][0]["degree"], 7)
+        self.assertEqual(saved["bands"][1]["inserts"][0]["params"]["amount"], .7)
+        self.assertFalse(saved["bands"][1]["inserts"][0]["params"]["preserve_ambiguous"])
+        reopened = type(self.d).from_json(json.dumps(self.d.to_dict()))
+        self.assertEqual(editor_state(reopened)["value"], saved)
+        self.assertEqual(compile_recipe(reopened).to_dict()["rack"], saved)
+        self.act(kind="remove", band=band, id=spectral["id"])
+        self.assertEqual(len(editor_state(self.d)["value"]["bands"][1]["inserts"]), 1)
+        self.assertEqual(self.d.to_dict()["project"]["revisions"][0],
+                         self.old["project"]["revisions"][0])
+
+    def test_spectral_invalid_intent_is_atomic(self):
+        self.act(kind="enable")
+        band = editor_state(self.d)["value"]["bands"][1]["id"]
+        self.act(kind="add", band=band, type_id="zg.spectral")
+        stage = editor_state(self.d)["value"]["bands"][1]["inserts"][0]
+        address = band+"/"+stage["id"]
+        before = self.d.to_dict()
+        bad = [
+            {"kind":"add","band":band,"type_id":"zg.spectral"},
+            {"kind":"set","scope":"spectral","id":address,"field":"mode","value":"hybrid"},
+            {"kind":"set","scope":"spectral","id":address,"field":"max_hz","value":9000},
+            {"kind":"set","scope":"spectral","id":address,"field":"min_confidence","value":True},
+            {"kind":"set","scope":"spectral","id":address,"field":"assignment_hysteresis_cents","value":999},
+            {"kind":"set","scope":"spectral_voice","id":address,"field":"degree","value":2.5},
+            {"kind":"set","scope":"spectral_voice","id":address,"field":"partial_ratios","value":[1,2]},
+            {"kind":"set","scope":"chordness_coefficient","id":address,"field":"target_fit","value":5},
+            {"kind":"select_spectral_template","band":band,"id":stage["id"],"template_id":"a","value":True},
+            {"kind":"set","scope":"spectral","id":address,"field":"amount","value":.5,"extra":False},
+            {"kind":"reset_insert_params","band":band,"id":stage["id"]},
+        ]
+        for action in bad:
+            with self.subTest(action=action), self.assertRaises(ValueError):
+                edit_rack(self.d, action)
+            self.assertEqual(self.d.to_dict(), before)
+
 if __name__ == "__main__":
     unittest.main()

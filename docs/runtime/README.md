@@ -151,3 +151,28 @@ dry artifacts. A/B is raw and uncompensated, not a loudness-matched listening
 study or evidence of perceptual improvement. There is no monitor-only solo/mute,
 level compensation or spectral/Chordness authoring yet. Hosted browser
 qualification does not constitute physical Windows/owner auditory acceptance.
+
+
+### MBR-003 internal spectral authoring (draft #270)
+
+Ordinary Compose can now add a built-in `zg.spectral` stage. The initial retune
+request uses the **saved source recipe's tuning** and one explicit primary
+target voice (degree 0, partial ratios 1/2/3). No source or factory preset is
+rewritten. Expand **Internal spectral retune** for amount, confidence, bounds,
+slew, ambiguity policy and the primary voice's tuning degree. Move its stable
+insert ID before or after compression/gain/bitcrush; the existing numerical
+executor processes the serialized order. Changing a control is a detached
+rack-edit proposal validated by the canonical Project/RackRecipe and adopted
+through the one RuntimeSession. Invalid coupled bounds are rejected rather than
+silently clamped.
+
+Imported source-bound `ChordnessRequest` stages expose their accepted mode,
+selection, gain, confidence, assignment and objective-weight scalars, and a
+bounded selection among existing saved comb templates. Switching modes never
+constructs arbitrary new comb teeth, and invalid manual selection fails closed.
+The UI deliberately does **not** reauthor opaque external stages, new comb
+inventories, multiple retune voices or target schedules. These remain preserved
+on save/reopen. Additional specialized target construction, monitoring-only
+band solo/mute, optional level-compensated A/B, physical Windows and owner
+audition remain outstanding for MBR-003; passing deterministic/browser CI is
+not a musical acceptance claim.

@@ -5,11 +5,16 @@ admission remain in TimelineService.validate, never in a secondary controller.
 """
 from __future__ import annotations
 
-from zaaggenz_contracts.rack import RackRecipe, empty_rack, processor_definition, RACK_VERSION
+from copy import deepcopy
+from zaaggenz_contracts.rack import (RackRecipe, empty_rack, processor_definition,
+                                    RACK_VERSION, COEFFICIENTS)
+from zaaggenz_spectral.model import SpectralRetuneRequest, LatticeVoice
 from zaaggenz_project import Project
 from .model import TimelineDocument, TimelineError, exact
 
 EDITABLE = ("zg.gain", "zg.compression", "zg.bitcrush")
+SPECTRAL = "zg.spectral"
+ADDABLE = (*EDITABLE, SPECTRAL)
 PORTABLE_PRESET_FORMAT = "zaaggenz-rack-preset"
 PORTABLE_PRESET_VERSION = "1.0.0"
 
@@ -20,7 +25,8 @@ def editor_state(document):
     return {
         "present": project.rack is not None,
         "value": None if project.rack is None else project.rack.to_dict(),
-        "parameters": {kind: processor_definition(kind)["parameters"] for kind in EDITABLE},
+        "parameters": {kind: processor_definition(kind)["parameters"] for kind in ADDABLE},
+        "spectral_coefficients": deepcopy(COEFFICIENTS),
         "presets": [{"id": key, "name": val["name"]}
                     for key, val in sorted(project.rack_presets.items())],
     }
@@ -61,7 +67,7 @@ def _update(project, action):
             if field not in ("bypass", "wet", "confine_delta"):
                 raise TimelineError("unsupported band control")
             _band(rack, identifier)[field] = value
-        elif scope in ("insert", "parameter"):
+        elif scope in ("insert", "parameter", "spectral", "spectral_voice", "chordness_coefficient"):
             if type(identifier) is not str or "/" not in identifier:
                 raise TimelineError("expected band/insert identity")
             band_id, insert_id = identifier.split("/", 1)
@@ -77,12 +83,37 @@ def _update(project, action):
                 if "const" in definitions[field] or "enum" in definitions[field]:
                     raise TimelineError("unsupported processor policy edit")
                 stage["params"][field] = value
+            elif stage["type_id"] == SPECTRAL and type(stage["params"]) is dict:
+                # Only the existing, explicitly typed request is editable.
+                # Do not replace templates, targets, schedules or tuning
+                # implicitly when a single scalar changes.
+                params = stage["params"]
+                if scope == "spectral":
+                    table = processor_definition(SPECTRAL)["parameters"][
+                        "retune" if params["kind"] == "SpectralRetuneRequest" else "chordness"
+                    ]
+                    if field not in table or "const" in table[field]:
+                        raise TimelineError("unsupported spectral request field")
+                    params[field] = value
+                elif scope == "spectral_voice":
+                    if (params["kind"] != "SpectralRetuneRequest" or
+                            field != "degree" or not params["voices"]):
+                        raise TimelineError("unsupported spectral target edit")
+                    params["voices"][0]["degree"] = value
+                elif scope == "chordness_coefficient":
+                    if params["kind"] != "ChordnessRequest" or field not in COEFFICIENTS:
+                        raise TimelineError("unsupported Chordness coefficient")
+                    params["coefficients"][field] = value
+                else:
+                    raise TimelineError("unsupported spectral control")
+            else:
+                raise TimelineError("unsupported processor control")
         else:
             raise TimelineError("unsupported rack control scope")
     elif kind == "add":
         exact(action, {"kind", "band", "type_id"}, "add insert")
         type_id = action["type_id"]
-        if type_id not in EDITABLE:
+        if type_id not in ADDABLE:
             raise TimelineError("only supported built-in stages can be added")
         band = _band(rack, action["band"])
         if any(i["type_id"] == type_id for i in band["inserts"]):
@@ -96,12 +127,45 @@ def _update(project, action):
         while identifier in used:
             identifier = prefix + "." + str(n)
             n += 1
-        defs = processor_definition(type_id)["parameters"]
+        if type_id == SPECTRAL:
+            # An explicit, executable ZG-017 retune request tied to the
+            # accepted source tuning; never invent a new tuning identity.
+            # Existing Chordness snapshots remain fully preserved/editable.
+            sample_rate = rack["sample_rate_hz"]
+            params = SpectralRetuneRequest(
+                tuning_spec=project.head_recipe.to_dict()["tuning"],
+                voices=(LatticeVoice(0, (1., 2., 3.), "Primary target"),),
+                max_hz=min(6000., sample_rate / 2),
+            ).to_dict()
+        else:
+            defs = processor_definition(type_id)["parameters"]
+            params = {name: val["default"] for name, val in defs.items()}
         band["inserts"].append({
             "id": identifier, "type_id": type_id, "version": RACK_VERSION,
             "bypass": False, "wet": 1.0, "automation": [],
-            "params": {name: val["default"] for name, val in defs.items()},
+            "params": params,
         })
+    elif kind == "select_spectral_template":
+        exact(action, {"kind", "band", "id", "template_id", "value"},
+              "select spectral template")
+        stage = _insert(_band(rack, action["band"]), action["id"])
+        if (stage["type_id"] != SPECTRAL or type(stage["params"]) is not dict or
+                stage["params"].get("kind") != "ChordnessRequest"):
+            raise TimelineError("template selection requires an installed Chordness request")
+        if type(action["value"]) is not bool:
+            raise TimelineError("template selection must be boolean")
+        template_id = action["template_id"]
+        params = stage["params"]
+        if type(template_id) is not str or template_id not in {
+            item["id"] for item in params["templates"]
+        }:
+            raise TimelineError("unknown Chordness template")
+        selected = params["selected_template_ids"]
+        if action["value"] and template_id not in selected:
+            selected.append(template_id)
+        elif not action["value"] and template_id in selected:
+            selected.remove(template_id)
+        # RackRecipe performs all cardinality, mode and confidence checks.
     elif kind == "move":
         exact(action, {"kind", "band", "id", "step"}, "move insert")
         if type(action["step"]) is not int or action["step"] not in (-1, 1):
@@ -129,7 +193,7 @@ def _update(project, action):
         stage = _insert(band, action["id"])
         # Preserve opaque/unimplemented processor state; only editable
         # built-in stages can be removed through this authoring command.
-        if stage["type_id"] not in EDITABLE:
+        if stage["type_id"] not in ADDABLE:
             raise TimelineError("only supported built-in stages can be removed")
         band["inserts"] = [item for item in band["inserts"] if item["id"] != stage["id"]]
         rack["display"].pop(stage["id"], None)
@@ -202,7 +266,8 @@ def edit_rack(document, action):
             raise TimelineError("portable rack preset digest mismatch")
         # Project proves retained no-rack ancestry and exact source binding.
         project.save_rack_preset(record["id"], record["name"], imported)
-    elif kind in ("set", "add", "move", "remove", "reset_insert_params"):
+    elif kind in ("set", "add", "move", "remove", "reset_insert_params",
+                  "select_spectral_template"):
         _update(project, action)
     else:
         raise TimelineError("unsupported rack action")

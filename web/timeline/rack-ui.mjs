@@ -19,6 +19,13 @@ function number(parent,label,current,meta,action,apply){
   });
   wrapper.append(node);parent.append(wrapper);
 }
+function choice(parent,label,current,values,action,apply){
+  const wrapper=make('label',label);const node=make('select');
+  for(const value of values)node.append(new Option(value,value));
+  node.value=current;
+  node.addEventListener('change',()=>apply({...action,value:node.value}));
+  wrapper.append(node);parent.append(wrapper);
+}
 function flag(parent,label,current,action,apply){
   const wrapper=make('label');wrapper.className='check';
   const node=make('input');node.type='checkbox';node.checked=Boolean(current);
@@ -70,7 +77,8 @@ export function renderRack(host,state,apply,tools={}){
       button(buttons,'Move up',{kind:'move',band:band.id,id:stage.id,step:-1},apply,index===0);
       button(buttons,'Move down',{kind:'move',band:band.id,id:stage.id,step:1},apply,index===band.inserts.length-1);
       if(state.parameters[stage.type_id]){
-        button(buttons,'Reset parameters',{kind:'reset_insert_params',band:band.id,id:stage.id},apply);
+        if(stage.type_id!=='zg.spectral')
+          button(buttons,'Reset parameters',{kind:'reset_insert_params',band:band.id,id:stage.id},apply);
         button(buttons,'Remove insert',{kind:'remove',band:band.id,id:stage.id},apply);
       }
       flag(buttons,'Bypass insert',stage.bypass,set('insert',band.id+'/'+stage.id,'bypass'),apply);
@@ -80,6 +88,55 @@ export function renderRack(host,state,apply,tools={}){
         block.append(make('p',params
           ? 'No active parameter request; use Reset parameters to initialize the supported built-in defaults.'
           : 'Stored processor state preserved; specialized spectral or external controls are not yet implemented here.'));
+        return;
+      }
+      if(stage.type_id==='zg.spectral'){
+        const request=stage.params;
+        const retune=request.kind==='SpectralRetuneRequest';
+        const chordness=request.kind==='ChordnessRequest';
+        if(!retune&&!chordness){
+          block.append(make('p','Unknown spectral request; saved state retained without editable controls.'));
+          return;
+        }
+        const details=make('details');details.className='rack-spectral';block.append(details);
+        details.append(make('summary',retune
+          ?'Internal spectral retune · target & confidence'
+          :'Internal Chordness · selection, gains & confidence'));
+        const fields=group(details);
+        const definition=state.parameters['zg.spectral'][retune?'retune':'chordness'];
+        for(const [key,meta] of Object.entries(definition)){
+          const label=key.replaceAll('_',' ');
+          const action=set('spectral',band.id+'/'+stage.id,key);
+          if('enum' in meta)choice(fields,label,request[key],meta.enum,action,apply);
+          else if(meta.type==='boolean')flag(fields,label,request[key],action,apply);
+          else if('const' in meta)fields.append(make('span',label+': '+String(request[key])+' (fixed policy)'));
+          else number(fields,label,request[key],
+            key==='max_hz'?{...meta,maximum:Math.min(meta.maximum,rack.sample_rate_hz/2)}:meta,
+            action,apply);
+        }
+        if(retune){
+          const target=group(details);
+          target.append(make('p','Target tuning is inherited from the saved source; the first voice degree is editable. All other target voices, partial ratios and time segments remain preserved.'));
+          const first=request.voices?.[0];
+          if(first)number(target,'Primary target degree',first.degree,
+            {type:'integer',minimum:-4096,maximum:4096,unit:'tuning steps'},
+            set('spectral_voice',band.id+'/'+stage.id,'degree'),apply);
+          target.append(make('p','Voices: '+request.voices.length+' · target segments: '+request.segments.length+' · no implicit tuning conversion.'));
+        }else{
+          const selector=group(details);
+          selector.append(make('p','Manual template selection is bounded by the saved max selected templates. Changing selection never rewrites comb teeth.'));
+          for(const template of request.templates){
+            flag(selector,'Select template '+template.label+' ('+template.id+')',
+              request.selected_template_ids.includes(template.id),
+              {kind:'select_spectral_template',band:band.id,id:stage.id,template_id:template.id},apply);
+          }
+          const coeff=group(details);
+          coeff.append(make('h5','Chordness objective weights'));
+          for(const [key,meta] of Object.entries(state.spectral_coefficients||{})){
+            number(coeff,key.replaceAll('_',' '),request.coefficients[key],meta,
+              set('chordness_coefficient',band.id+'/'+stage.id,key),apply);
+          }
+        }
         return;
       }
       const fields=group(block);

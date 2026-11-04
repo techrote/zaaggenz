@@ -274,6 +274,34 @@ def main():
             assert server.timeline.scheduler.result(post_delete_id).audio_bytes==changed_pcm
             page.get_by_label('Import rack preset file').set_input_files(portable_path);ready()
             assert 'user.myrack' in saved('rack-preset-reimported.zgtimeline.json')['project']['rack_presets']
+            # Real spectral request authoring uses the accepted source tuning,
+            # executes the existing band-selective DSP and saves its exact
+            # nested target/selection contract. No new audio backend or mock.
+            page.locator('#rack-editor').get_by_role('button',name='Remove rack (dry)').click();ready()
+            page.locator('#rack-editor').get_by_role('button',name='Enable four-band rack').click();ready()
+            lowmid=page.locator('#rack-editor .rack-band').nth(1)
+            lowmid.get_by_role('button',name='Add spectral').click();ready()
+            spectral_stage=lowmid.locator('.rack-stage').first
+            expect(spectral_stage.locator('.rack-spectral')).to_contain_text('Internal spectral retune')
+            spectral_stage.locator('.rack-spectral').evaluate('(e)=>e.open=true')
+            amount=spectral_stage.get_by_label('amount · ratio')
+            amount.fill('0.7');amount.dispatch_event('change');ready()
+            degree=spectral_stage.get_by_label('Primary target degree')
+            degree.fill('7');degree.dispatch_event('change');ready()
+            spectral_doc=saved('rack-spectral-source-bound.zgtimeline.json')
+            spectral_rack=json.loads(spectral_doc['project']['revisions'][-1]['recipe_json'])['rack']
+            spectral_params=spectral_rack['bands'][1]['inserts'][0]['params']
+            assert spectral_params['kind']=='SpectralRetuneRequest'
+            assert spectral_params['amount']==0.7
+            assert spectral_params['voices'][0]['degree']==7
+            assert spectral_params['tuning_spec']==json.loads(
+                spectral_doc['project']['revisions'][0]['recipe_json'])['tuning']
+            spectral_id=rendered('rack-spectral-retune')
+            spectral_wav=server.timeline.scheduler.result(spectral_id).audio_bytes
+            assert len(spectral_wav)>44
+            page.locator('#open').set_input_files(args.out/'rack-spectral-source-bound.zgtimeline.json');ready()
+            reopen_id=rendered('rack-spectral-reopened')
+            assert server.timeline.scheduler.result(reopen_id).audio_bytes==spectral_wav
             # Restore the pre-rack document so the following legacy
             # four-bar revision identity/save-reopen regression stays intact.
             page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json')
