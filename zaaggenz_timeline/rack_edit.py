@@ -10,6 +10,8 @@ from zaaggenz_project import Project
 from .model import TimelineDocument, TimelineError, exact
 
 EDITABLE = ("zg.gain", "zg.compression", "zg.bitcrush")
+PORTABLE_PRESET_FORMAT = "zaaggenz-rack-preset"
+PORTABLE_PRESET_VERSION = "1.0.0"
 
 
 def editor_state(document):
@@ -162,6 +164,24 @@ def edit_rack(document, action):
         if type(action["id"]) is not str:
             raise TimelineError("rack preset id must be a string")
         project.rename_rack_preset(action["id"], action["name"])
+    elif kind == "import_preset":
+        # An imported snapshot has no permission to rebind a different source,
+        # inject a revision, or silently replace an existing user preset.
+        exact(action, {"kind", "record"}, "import rack preset")
+        record = action["record"]
+        required = {"format", "version", "id", "name", "rack",
+                    "rack_sha256", "sonic_sha256"}
+        if type(record) is not dict or set(record) != required:
+            raise TimelineError("invalid portable rack preset record")
+        if (record["format"] != PORTABLE_PRESET_FORMAT or
+                record["version"] != PORTABLE_PRESET_VERSION):
+            raise TimelineError("unsupported portable rack preset format/version")
+        imported = RackRecipe(record["rack"])
+        if (record["rack_sha256"] != imported.sha256 or
+                record["sonic_sha256"] != imported.sonic_sha256):
+            raise TimelineError("portable rack preset digest mismatch")
+        # Project proves retained no-rack ancestry and exact source binding.
+        project.save_rack_preset(record["id"], record["name"], imported)
     elif kind in ("set", "add", "move", "remove"):
         _update(project, action)
     else:

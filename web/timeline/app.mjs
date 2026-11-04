@@ -48,8 +48,36 @@ async function validateLatest(){
     if(!rackEditing&&!rackEditQueue.length){
       $('render').disabled=false;$('render-region').disabled=false;$('save').disabled=false;
     }
-    updateTarget();renderRack($('rack-editor'),result.rack_editor,editRack);status(`Ready · ${editor.document.notes.length} events · estimated render admission ${(result.estimated_memory_bytes/1048576).toFixed(1)} MiB`);
+    updateTarget();renderRack($('rack-editor'),result.rack_editor,editRack,{exportPreset,importPreset});status(`Ready · ${editor.document.notes.length} events · estimated render admission ${(result.estimated_memory_bytes/1048576).toFixed(1)} MiB`);
   }catch(e){if(seq===validationSequence){validation=null;$('revision').textContent='Invalid editing revision';status(e.message,true);}}
+}
+function exportPreset(identifier){
+  try{
+    if(!validation||rackEditing||rackEditQueue.length)throw Error('Finish validating pending edits before exporting a rack preset.');
+    const item=editor.document?.project?.rack_presets?.[identifier];
+    if(!item||item.id!==identifier)throw Error('Select an existing rack preset to export.');
+    const record={format:'zaaggenz-rack-preset',version:'1.0.0',
+      id:item.id,name:item.name,rack:item.rack,
+      rack_sha256:item.rack_sha256,sonic_sha256:item.sonic_sha256};
+    const url=URL.createObjectURL(new Blob([JSON.stringify(record,null,2)+'\\n'],{type:'application/json'}));
+    const link=document.createElement('a');link.href=url;
+    link.download=identifier.replace(/[^a-zA-Z0-9_.-]/g,'_')+'.zgrack.json';
+    link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    status('Source-bound portable rack preset exported.');
+  }catch(e){status(e.message,true);}
+}
+async function importPreset(file){
+  if(!validation||rackEditing||rackEditQueue.length){
+    status('Finish validating pending edits before importing a rack preset.',true);return;
+  }
+  const before=JSON.stringify(editor.document),beforeEpoch=epoch;
+  try{
+    if(file.size<1||file.size>262144)throw Error('Rack preset file must be 1–262144 bytes.');
+    const record=JSON.parse(await file.text());
+    if(beforeEpoch!==epoch||JSON.stringify(editor.document)!==before)
+      throw Error('Rack preset import superseded by a project edit; retry on the current source.');
+    editRack({kind:'import_preset',record});
+  }catch(e){status(e.message,true);}
 }
 function editRack(action){
   // A network-bound editor must not silently drop a second quick user edit.

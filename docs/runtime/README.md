@@ -93,14 +93,19 @@ stored in that project, and can be recalled from its own source ancestor.
 An existing user preset can be explicitly renamed (display only) or replaced
 with the currently edited rack (sonic state and source provenance included);
 ordinary **Save new preset** never silently overwrites an existing ID.
+Select a saved preset and use **Export selected preset** to download a portable
+`.zgrack.json` carrying exact rack/sonic digests and source binding.
+**Import rack preset file** works even on a project with no installed rack.
+Import validates the whole rack contract, both digests, retained no-rack source
+ancestry and non-overwriting preset identity. Import never changes the current
+processing rack or the source; explicit **Load** applies the imported rack.
 These commands use the same bounded revision-validation and undo/redo pipeline.
 **Remove rack (dry)** restores the original source processing route without
 changing source presets, locked_bloom or retained BODY/AUX/SUB ownership.
 
 This is a bounded MBR-003 development slice, **not full MBR-003 acceptance**:
 specialist spectral retuning/Chordness authoring, cross-band monitoring,
-monitor-only A/B compensation, dedicated rack-preset file import/export,
-complete control-surface usability/accessibility and physical Windows acceptance
+monitor-only A/B compensation, complete control-surface usability/accessibility and physical Windows acceptance
 remain outstanding. Existing spectral and external insert payloads are shown
 as preserved but not falsely advertised as editable. External VST3 hosting
 remains outside Phase A and is not implied.

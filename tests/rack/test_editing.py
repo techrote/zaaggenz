@@ -1,5 +1,6 @@
 """MBR-003 rack editor: real source-bound Project acceptance, not mocked audio."""
 import json
+from copy import deepcopy
 import unittest
 from zaaggenz_timeline.model import default_document, compile_recipe
 from zaaggenz_timeline.rack_edit import edit_rack, editor_state
@@ -104,6 +105,51 @@ class RackEditorTests(unittest.TestCase):
         self.assertEqual(editor_state(self.d)["value"], edited)
         reopened = type(self.d).from_json(json.dumps(self.d.to_dict()))
         self.assertEqual(editor_state(reopened)["presets"][0]["name"], "Renamed")
+
+    def test_portable_preset_import_preserves_source_and_hashes(self):
+        self.act(kind="enable")
+        band = editor_state(self.d)["value"]["bands"][2]["id"]
+        self.act(kind="add", band=band, type_id="zg.gain")
+        iid = editor_state(self.d)["value"]["bands"][2]["inserts"][0]["id"]
+        self.act(kind="set", scope="parameter", id=band + "/" + iid,
+                 field="gain_db", value=7.5)
+        saved = editor_state(self.d)["value"]
+        self.act(kind="save_preset", id="user.portable", name="Portable high band")
+        entry = self.d.to_dict()["project"]["rack_presets"]["user.portable"]
+        record = {"format": "zaaggenz-rack-preset", "version": "1.0.0",
+                  **{key: entry[key] for key in
+                     ("id", "name", "rack", "rack_sha256", "sonic_sha256")}}
+        fresh = default_document(12000)
+        self.assertFalse(editor_state(fresh)["present"])
+        imported = edit_rack(fresh, {"kind": "import_preset", "record": record})
+        self.assertFalse(editor_state(imported)["present"])
+        self.assertEqual(editor_state(imported)["presets"][0]["id"], "user.portable")
+        reopened = type(imported).from_json(json.dumps(imported.to_dict()))
+        restored = edit_rack(reopened, {"kind": "load_preset", "id": "user.portable"})
+        self.assertEqual(editor_state(restored)["value"], saved)
+        self.assertEqual(compile_recipe(restored).to_dict()["rack"], saved)
+        self.assertEqual(fresh.to_dict(), self.old)
+        self.assertEqual(restored.to_dict()["project"]["revisions"][0],
+                         self.old["project"]["revisions"][0])
+        bad = [
+            {**record, "version": "2.0.0"},
+            {**record, "surprise": 1},
+            {**record, "rack_sha256": "0" * 64},
+            {**record, "sonic_sha256": "0" * 64},
+            {**record, "rack": {**deepcopy(record["rack"]), "wet": .25}},
+        ]
+        for value in bad:
+            with self.subTest(keys=list(value)):
+                with self.assertRaises(ValueError):
+                    edit_rack(fresh, {"kind": "import_preset", "record": value})
+                self.assertEqual(fresh.to_dict(), self.old)
+        with self.assertRaises(ValueError):
+            edit_rack(imported, {"kind": "import_preset", "record": record})
+        foreign = default_document(48000)
+        before = foreign.to_dict()
+        with self.assertRaises(ValueError):
+            edit_rack(foreign, {"kind": "import_preset", "record": record})
+        self.assertEqual(foreign.to_dict(), before)
 
     def test_invalid_actions_do_not_mutate_input(self):
         self.act(kind="enable")

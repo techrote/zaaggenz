@@ -122,6 +122,15 @@ def main():
             page.locator('#rack-editor').get_by_role('button',name='Save new preset').click();ready()
             rack_saved=saved('rack-processed.zgtimeline.json')
             assert 'rack' in json.loads(rack_saved['project']['revisions'][-1]['recipe_json'])
+            page.get_by_label('Load saved preset').select_option('user.myrack')
+            portable_path=args.out/'rack-exported.zgrack.json'
+            with page.expect_download() as pending_preset:
+                page.get_by_role('button',name='Export selected preset').click()
+            pending_preset.value.save_as(portable_path)
+            portable=json.loads(portable_path.read_text(encoding='utf-8'))
+            assert portable['format']=='zaaggenz-rack-preset' and portable['version']=='1.0.0'
+            assert portable['rack']==rack_saved['project']['rack_presets']['user.myrack']['rack']
+            assert portable['rack_sha256']==rack_saved['project']['rack_presets']['user.myrack']['rack_sha256']
             assert 'user.myrack' in rack_saved['project']['rack_presets']
             page.locator('#open').set_input_files(args.out/'rack-processed.zgtimeline.json');ready()
             reload_id=rendered('rack-reopened')
@@ -180,6 +189,18 @@ def main():
             page.locator('#rack-editor').get_by_role('button',name='Remove rack (dry)').click();ready()
             restored_id=rendered('rack-removed')
             assert server.timeline.scheduler.result(restored_id).audio_bytes==dry_pcm
+            # Portable rack import into an otherwise dry project must not
+            # change the active rack until explicitly recalled.
+            page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json');ready()
+            expect(page.locator('#rack-editor')).to_contain_text('No rack is installed')
+            page.get_by_label('Import rack preset file').set_input_files(portable_path);ready()
+            fresh_with_preset=saved('rack-portable-import.zgtimeline.json')
+            assert 'user.myrack' in fresh_with_preset['project']['rack_presets']
+            assert 'rack' not in json.loads(fresh_with_preset['project']['revisions'][-1]['recipe_json'])
+            page.get_by_label('Load saved preset').select_option('user.myrack')
+            page.get_by_role('button',name='Load',exact=True).click();ready()
+            portable_id=rendered('rack-portable-recall')
+            assert server.timeline.scheduler.result(portable_id).audio_bytes==changed_pcm
             # Restore the pre-rack document so the following legacy
             # four-bar revision identity/save-reopen regression stays intact.
             page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json')

@@ -27,13 +27,14 @@ function flag(parent,label,current,action,apply){
 }
 function set(scope,id,field){return {kind:'set',scope,id,field};}
 const mix={type:'number',minimum:0,maximum:1,unit:'0–1'};
-export function renderRack(host,state,apply){
+export function renderRack(host,state,apply,tools={}){
   host.replaceChildren();
   if(!state){host.append(make('p','Rack metadata is unavailable; refresh the validated revision.'));return;}
   const top=group(host);
   if(!state.present){
     top.append(make('p','No rack is installed in this project. Legacy audio and source presets remain unchanged.'));
     button(top,'Enable four-band rack',{kind:'enable'},apply);
+    renderPresetTools(host,state,apply,tools);
     return;
   }
   const rack=state.value;
@@ -88,7 +89,11 @@ export function renderRack(host,state,apply){
       }
     });
   }
-  const presets=group(host);
+  renderPresetTools(host,state,apply,tools);
+}
+
+function renderPresetTools(host,state,apply,tools){
+  const presets=group(host,'rack-controls rack-presets');
   presets.append(make('h3','User rack presets (stored in the saved project)'));
   const named=make('label','Preset name');const name=make('input');
   name.value='My rack';name.maxLength=128;named.append(name);presets.append(named);
@@ -112,9 +117,21 @@ export function renderRack(host,state,apply){
   rename.title='Rename user preset without changing its saved processing or source.';
   rename.addEventListener('click',()=>{if(select.value)apply({kind:'rename_preset',id:select.value,name:name.value});});
   presets.append(rename);
+  const exported=make('button','Export selected preset');exported.type='button';exported.disabled=true;
+  exported.title='Download exact source-bound preset; does not change the project.';
+  exported.addEventListener('click',()=>{if(select.value)tools.exportPreset?.(select.value);});
+  presets.append(exported);
+  const imported=make('label','Import rack preset file');
+  const file=make('input');file.type='file';file.accept='.zgrack.json,.json,application/json';
+  file.addEventListener('change',async()=>{
+    const chosen=file.files?.[0];file.value='';
+    if(chosen)await tools.importPreset?.(chosen);
+  });
+  imported.append(file);presets.append(imported);
+  presets.append(make('p','Portable imports require the matching source; modified hashes and duplicate IDs are rejected.'));
   select.addEventListener('change',()=>{
     const selected=state.presets.find(item=>item.id===select.value);
-    replace.disabled=rename.disabled=!selected;
+    replace.disabled=rename.disabled=exported.disabled=!selected;
     if(selected)name.value=selected.name;
   });
 }
