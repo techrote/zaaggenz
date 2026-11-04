@@ -23,7 +23,12 @@ function invalidate(preserveRackQueue=false){
   epoch++;quietCancel(job);job=null;validation=null;clearPlayback();
   $('render').disabled=true;$('render-region').disabled=true;$('save').disabled=true;
 }
-function afterEdit(preserveRackQueue=false){invalidate(preserveRackQueue);paint();if(selected)select(selected);validateLatest();}
+function afterEdit(preserveRackQueue=false){
+  invalidate(preserveRackQueue);paint();if(selected)select(selected);
+  // Intermediate rack commands are detached proposals. Only the last
+  // document may enter the authoritative RuntimeSession through /validate.
+  if(!preserveRackQueue)void validateLatest();
+}
 function safe(action){try{action();}catch(e){status(e.message,true);}}
 function mutate(action){safe(()=>{action();afterEdit();});}
 async function validateLatest(){
