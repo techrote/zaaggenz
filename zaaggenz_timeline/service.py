@@ -11,6 +11,7 @@ import numpy as np
 from scipy.io import wavfile
 from zaaggenz_contracts import digest
 from zaaggenz_contracts.music import beat_to_sample
+from zaaggenz_project import Project
 from zaaggenz_jobs import JobScheduler, SchedulerLimits, JobClass, RenderArtifact, JobError, JobCancelled
 from zaaggenz_melody import MelodicRenderSpec, make_render_executor
 from zaaggenz_melody.render import melodic_cache_key
@@ -284,6 +285,29 @@ class TimelineService:
             binding['generation'] = session['generation']
             self._remember_job(job_id, binding)
             return {**response, 'job_id':job_id, 'adopted':False, 'session':session}
+
+    def submit_dry_monitor(self, data):
+        """Render a detached dry comparison without changing the working project.
+
+        A/B uses the existing bounded scheduler, per-session generation and
+        exact-artifact guards. Only the current validated processed revision
+        may request a source-bound comparison.
+        """
+        document = TimelineDocument(data)
+        project = Project.from_document(document.to_dict()['project'])
+        if project.rack is None:
+            raise JobError('raw/dry monitoring requires an installed rack')
+        with self._jobs_lock:
+            if document.revision_id != self.session.current_revision_id:
+                raise JobError('raw/dry monitoring requires the current Compose revision')
+            project.reset_rack()
+            proposal = document.to_dict()
+            proposal['project'] = project.to_document()
+            dry_document = TimelineDocument(proposal)
+            result = self.submit(dry_document.to_dict(), region=None,
+                                 name='Raw/dry A/B monitoring', authoritative=False)
+            return {**result, 'monitor_source_revision_id': document.revision_id,
+                    'monitor_policy': 'non-authoritative dry; no export slot'}
 
     def status(self, job_id):
         with self._jobs_lock:

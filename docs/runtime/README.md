@@ -132,3 +132,22 @@ Region previews retain whole-phrase rack meter context, not cropped-region
 meter readings. Missing metrics are explicitly marked unavailable. No
 monitoring-only solo/mute, A/B dry render, or export-level compensation is
 implemented by this change; saved/exported PCM and rack contracts are unchanged.
+
+
+### Raw/dry monitoring-only A/B (MBR-003 partial)
+
+Once a processed rack full-phrase render is selected in Compose, **Prepare raw/dry A/B**
+requests a second bounded offline render of the same source and note arrangement,
+with only the rack removed from a detached working copy. The authoritative
+RuntimeSession and saved project never adopt this dry proposal. **Hear dry** and
+**Hear processed** switch the local playback source; the processed output's WAV
+Download remains unchanged. During dry monitoring the processed waveform and
+meter display are hidden to avoid mislabelling them as dry measurements.
+
+A/B preparation requires the exact current processed revision. Pending edits,
+revision changes, source imports, cancelled jobs and output selection invalidate
+its temporary URL/job, and server-side session generation checks reject stale
+dry artifacts. A/B is raw and uncompensated, not a loudness-matched listening
+study or evidence of perceptual improvement. There is no monitor-only solo/mute,
+level compensation or spectral/Chordness authoring yet. Hosted browser
+qualification does not constitute physical Windows/owner auditory acceptance.

@@ -4,13 +4,33 @@ import {renderRack,renderRackMeters} from './rack-ui.mjs';
 const $=id=>document.getElementById(id),transport=new RenderTransport();
 let editor,token,selected=null,validation=null,epoch=0,validationSequence=0,job=null,slots=[],activeSlot=null,presetCatalogue=null,rackEditing=false;
 const rackEditQueue=[],MAX_QUEUED_RACK_EDITS=16;
+let dryMonitor=null,dryJob=null,dryRequestSequence=0;
 const status=(message,error=false)=>{ $('status').textContent=message;$('status').classList.toggle('error',error); };
 async function api(path,payload){
   const response=await fetch('/api/timeline/'+path,payload===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Zaaggenz-Token':token},body:JSON.stringify(payload)});
   const data=await response.json();if(!response.ok)throw Error(data.error??`HTTP ${response.status}`);return data;
 }
 function quietCancel(id){if(id)api('cancel',{job_id:id}).catch(()=>{});}
+function updateDryControls(){
+  const current=!!validation&&!!activeSlot&&!rackEditing&&!rackEditQueue.length&&
+    validation.revision_id===activeSlot.revision&&
+    JSON.stringify(editor.document)===JSON.stringify(activeSlot.document);
+  $('prepare-dry').disabled=!current||!validation?.rack_editor?.present||!!dryMonitor||!!dryJob;
+  const ready=current&&!!dryMonitor&&dryMonitor.slotId===activeSlot.id;
+  $('hear-dry').disabled=!ready;$('hear-processed').disabled=!ready;
+}
+function discardDryMonitor(){
+  dryRequestSequence++;
+  if(dryJob)quietCancel(dryJob);
+  dryJob=null;
+  if(dryMonitor)URL.revokeObjectURL(dryMonitor.url);
+  dryMonitor=null;
+  $('hear-dry').dataset.jobId='';
+  $('monitor-mode').textContent='Processed output · no raw/dry comparison prepared.';
+  $('prepare-dry').disabled=true;$('hear-dry').disabled=true;$('hear-processed').disabled=true;
+}
 function clearPlayback(){
+  discardDryMonitor();
   transport.stop('timeline');activeSlot=null;$('audio').pause();$('audio').removeAttribute('src');$('audio').dataset.revision='';$('audio').load();
   $('play').disabled=true;$('playback-revision').textContent='—';$('waveform').dataset.revision='';
   $('waveform').getContext('2d').clearRect(0,0,1200,140);
@@ -49,7 +69,7 @@ async function validateLatest(){
     if(!rackEditing&&!rackEditQueue.length){
       $('render').disabled=false;$('render-region').disabled=false;$('save').disabled=false;
     }
-    updateTarget();renderRack($('rack-editor'),result.rack_editor,editRack,{exportPreset,importPreset});status(`Ready · ${editor.document.notes.length} events · estimated render admission ${(result.estimated_memory_bytes/1048576).toFixed(1)} MiB`);
+    updateTarget();renderRack($('rack-editor'),result.rack_editor,editRack,{exportPreset,importPreset});updateDryControls();status(`Ready · ${editor.document.notes.length} events · estimated render admission ${(result.estimated_memory_bytes/1048576).toFixed(1)} MiB`);
   }catch(e){if(seq===validationSequence){validation=null;$('revision').textContent='Invalid editing revision';status(e.message,true);}}
 }
 function exportPreset(identifier){
@@ -209,6 +229,74 @@ function publish(slot){
   const points=snapshot.scopes.waveform;for(let i=0;i<points.length;i++){const h=Math.min(66,points[i]*66);ctx.fillRect(i*1200/points.length,70-h,Math.max(1,1200/points.length),Math.max(1,2*h));}
   $('download').href=slot.url;$('download').download=`${slot.name.replace(/[^a-zA-Z0-9_-]/g,'_')}.wav`;
   $('download').classList.remove('disabled');$('download').setAttribute('aria-disabled','false');
+  updateDryControls();
+}
+async function prepareDryMonitor(){
+  if(!validation||!activeSlot||!validation.rack_editor?.present||rackEditing||
+     rackEditQueue.length||dryJob||dryMonitor){
+    status('Select a completed processed rack render with no pending edits for raw/dry A/B.',true);return;
+  }
+  const slot=activeSlot,source=copy(editor.document),sourceEpoch=epoch,sequence=++dryRequestSequence;
+  const current=()=>sequence===dryRequestSequence&&epoch===sourceEpoch&&
+    activeSlot===slot&&JSON.stringify(editor.document)===JSON.stringify(source);
+  $('prepare-dry').disabled=true;
+  $('monitor-mode').textContent='Rendering source without the rack for monitoring only…';
+  try{
+    const request=await api('monitor-dry',{document:source});
+    if(!current()){quietCancel(request.job_id);return;}
+    if(request.monitor_source_revision_id!==slot.revision||
+       request.monitor_policy!=='non-authoritative dry; no export slot')
+      throw Error('Raw/dry comparison source identity mismatch.');
+    dryJob=request.job_id;
+    for(;;){
+      const result=await api('jobs/'+request.job_id);
+      if(!current())return;
+      if(['failed','cancelled','stale'].includes(result.state))
+        throw Error(result.error||'Raw/dry comparison '+result.state);
+      if(result.state==='completed'){
+        if(result.revision_id!==request.revision_id||
+           result.artifact?.revision_id!==request.revision_id||
+           result.artifact.recipe_sha256!==request.recipe_sha256)
+          throw Error('Raw/dry comparison artifact identity mismatch.');
+        const response=await fetch('/api/timeline/jobs/'+request.job_id+'/audio');
+        if(!response.ok||response.headers.get('X-Timeline-Revision')!==request.revision_id)
+          throw Error('Raw/dry comparison audio identity mismatch.');
+        const blob=await response.blob();
+        if(!current())return;
+        dryMonitor={slotId:slot.id,revision:request.revision_id,url:URL.createObjectURL(blob)};
+        $('hear-dry').dataset.jobId=request.job_id;
+        $('monitor-mode').textContent='Raw/dry comparison ready · monitoring only; Download processed WAV is unchanged.';
+        status('Raw/dry source rendered separately; no rack or project state was changed.');
+        return;
+      }
+      await new Promise(resolve=>setTimeout(resolve,120));
+    }
+  }catch(e){
+    if(current()){
+      $('monitor-mode').textContent='Raw/dry comparison unavailable; processed output remains selected.';
+      status(e.message,true);
+    }
+  }finally{
+    if(sequence===dryRequestSequence){dryJob=null;updateDryControls();}
+  }
+}
+function hearDryMonitor(){
+  if(!dryMonitor||!activeSlot||dryMonitor.slotId!==activeSlot.id||
+     !validation||validation.revision_id!==activeSlot.revision)return;
+  $('audio').pause();$('audio').src=dryMonitor.url;
+  $('audio').dataset.revision=dryMonitor.revision;$('audio').load();
+  $('playback-revision').textContent=dryMonitor.revision+' · DRY MONITOR ONLY';
+  $('waveform').getContext('2d').clearRect(0,0,1200,140);
+  $('waveform').dataset.revision='';
+  renderRackMeters($('rack-meters'),null);
+  $('monitor-mode').textContent='Hearing raw/dry source. Waveform/meters are hidden; Download processed WAV still exports the processed selection.';
+  $('play').disabled=false;
+}
+function hearProcessedMonitor(){
+  if(!dryMonitor||!activeSlot||!validation||
+     validation.revision_id!==activeSlot.revision)return;
+  publish(activeSlot);
+  $('monitor-mode').textContent='Hearing processed source · raw/dry A/B ready. Download processed WAV is unchanged.';
 }
 async function render(region){
   if(!validation||rackEditing||rackEditQueue.length)return;const data=editor.document,revision=validation.revision_id,requestEpoch=++epoch;
@@ -260,9 +348,12 @@ function bind(){
   $('add-clip').onclick=()=>mutate(()=>editor.clip($('clip-name').value,$('region-start').value,$('region-end').value));
   $('duplicate-clip').onclick=()=>mutate(()=>editor.duplicateClip($('clips').value));
   $('clips').onchange=()=>{const clip=editor.document.clips.find(c=>c.id===$('clips').value);if(clip){$('region-start').value=clip.start_beat;$('region-end').value=clip.end_beat;}};
+  $('prepare-dry').onclick=()=>void prepareDryMonitor();
+  $('hear-dry').onclick=()=>hearDryMonitor();
+  $('hear-processed').onclick=()=>hearProcessedMonitor();
   $('render').onclick=()=>render(null);
   $('render-region').onclick=()=>safe(()=>render({start_beat:rational($('region-start').value),end_beat:rational($('region-end').value)}));
-  $('cancel').onclick=()=>{epoch++;quietCancel(job);job=null;status('Render cancelled; editing state is unchanged.');};
+  $('cancel').onclick=()=>{epoch++;quietCancel(job);job=null;discardDryMonitor();status('Render cancelled; editing state is unchanged.');};
   $('stop').onclick=()=>{epoch++;quietCancel(job);job=null;clearPlayback();status('Playback stopped. Select a named output to reload it.');};
   $('play').onclick=async()=>{try{if(!activeSlot||editor.document&&JSON.stringify(editor.document)!==JSON.stringify(activeSlot.document))throw Error('Playback revision no longer matches editing state.');await $('audio').play();}catch(e){status(e.message,true);}};
   $('outputs').onchange=()=>{const slot=slots.find(s=>s.id===$('outputs').value);if(!slot)return;

@@ -135,6 +135,30 @@ def main():
             assert 'zg.gain' in report_text and 'stage output' in report_text
             assert 'full phrase context' in report_text
             assert not any(a in report_text for a in ('NaN','undefined'))
+            # Source-bound raw/dry A/B runs the real numerical engine without
+            # mutating the current Compose project or export selection.
+            before_monitor=server.timeline.session.current_identity()
+            expect(page.locator('#prepare-dry')).to_be_enabled()
+            page.locator('#prepare-dry').click()
+            expect(page.locator('#hear-dry')).to_be_enabled(timeout=120000)
+            assert server.timeline.session.current_identity()==before_monitor
+            dry_job=page.locator('#hear-dry').get_attribute('data-job-id')
+            assert dry_job and server.timeline.scheduler.result(dry_job).audio_bytes==dry_pcm
+            assert server.timeline.scheduler.result(dry_job).audio_bytes!=changed_pcm
+            page.locator('#hear-dry').click()
+            expect(page.locator('#playback-revision')).to_contain_text('DRY MONITOR ONLY')
+            expect(page.locator('#monitor-mode')).to_contain_text('Download processed WAV')
+            expect(page.locator('#rack-meters')).to_contain_text('No current completed render')
+            with page.expect_download() as ab_download:
+                page.locator('#download').click()
+            ab_path=args.out/'rack-ab-processed-export.wav'
+            ab_download.value.save_as(ab_path)
+            assert ab_path.read_bytes()==(args.out/'rack-gain-nine.wav').read_bytes(), (
+                'dry monitoring must not replace the processed export')
+            page.locator('#hear-processed').click()
+            expect(page.locator('#playback-revision')).to_have_text(page.locator('#revision').inner_text())
+            expect(page.locator('#rack-meters')).to_contain_text('LOWMID')
+            assert server.timeline.session.current_identity()==before_monitor
             # Reset built-in parameters without replacing the stage identity or
             # overwriting the separately saved wet/bypass/source settings.
             stage_before=saved('rack-before-parameter-reset.zgtimeline.json')
