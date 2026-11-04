@@ -149,3 +149,77 @@ function renderPresetTools(host,state,apply,tools){
     if(selected)name.value=selected.name;
   });
 }
+
+function levelText(value){
+  if(typeof value!=='number'||!Number.isFinite(value)||value<0)return 'not measured';
+  return value===0?'−∞ dBFS':(20*Math.log10(value)).toFixed(1)+' dBFS';
+}
+function measuredLevels(row){
+  if(!row||typeof row!=='object')return 'not measured';
+  return 'peak '+levelText(row.peak)+' · RMS '+levelText(row.rms);
+}
+function validCount(value){return Number.isSafeInteger(value)&&value>=0?String(value):'not measured';}
+
+/** Display only measurements attached to an accepted, completed RenderArtifact.
+ * The caller clears this surface on every edit or publication invalidation.
+ * Never infer meters from current controls, browser playback, or stale jobs.
+ */
+export function renderRackMeters(host,artifact){
+  host.replaceChildren();
+  if(!artifact){
+    host.append(make('p','No current completed render. Render the validated revision for measurements.'));
+    return;
+  }
+  const diagnostics=artifact.scopes?.diagnostics?.rack;
+  if(!diagnostics){
+    host.append(make('p','This completed render used the dry source path; no rack measurements exist.'));
+    return;
+  }
+  if(!Array.isArray(diagnostics.bands)||diagnostics.bands.length!==4){
+    host.append(make('p','Rack measurements unavailable or incomplete for this render.'));
+    return;
+  }
+  const note=make('p','Measured completed render · revision '+artifact.revision_id+
+    ' · '+(diagnostics.meter_context==='complete-input-context'
+      ?'full phrase context (including for region previews)':'context unspecified')+
+    ' · no automatic level compensation.');
+  note.className='hint';host.append(note);
+  const overall=make('p','Rack input '+measuredLevels(diagnostics.input)+
+    ' · rack output '+measuredLevels(diagnostics.output));
+  host.append(overall);
+  for(const band of diagnostics.bands){
+    const section=group(host,'rack-meter-band');
+    section.append(make('h4',String(band.band??band.id).toUpperCase()+
+      (band.active?' · processed':' · identity / bypass')));
+    section.append(make('p','Band input '+measuredLevels(band.input)+
+      ' · post-band wet '+measuredLevels(band.output)+
+      ' · routed output '+measuredLevels(band.routed_output)));
+    if(band.meter_unavailable_reason){
+      section.append(make('p','Meter unavailable: '+band.meter_unavailable_reason));
+    }
+    for(const stage of (Array.isArray(band.stages)?band.stages:[])){
+      const item=make('p',String(stage.type_id??'processor')+' ['+
+        String(stage.id??'unidentified')+'] · ');
+      if(stage.executed!==true){
+        item.textContent+='not executed'+(stage.reason?' ('+stage.reason+')':'');
+      }else if(stage.type_id==='zg.compression'){
+        const reduction=stage.processor?.diagnostics?.max_gain_reduction_db;
+        item.textContent+='max gain reduction '+
+          (typeof reduction==='number'&&Number.isFinite(reduction)&&reduction>=0
+            ?reduction.toFixed(2)+' dB':'not measured')+
+          ' (processor-internal, before insert wet)';
+      }else if(stage.type_id==='zg.spectral'){
+        const changed=stage.processor?.diagnostics?.changed_frames;
+        const reasons=stage.processor?.decision_counts_by_reason;
+        item.textContent+='changed frames '+validCount(changed);
+        if(reasons&&typeof reasons==='object'&&!Array.isArray(reasons)){
+          item.textContent+=' · decision reasons: '+Object.entries(reasons).map(([key,count])=>
+            key+' '+validCount(count)).join(', ');
+        }
+      }else{
+        item.textContent+='executed · stage output '+measuredLevels(stage.output);
+      }
+      section.append(item);
+    }
+  }
+}

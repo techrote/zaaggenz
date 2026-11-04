@@ -114,3 +114,21 @@ monitor-only A/B compensation, complete control-surface usability/accessibility 
 remain outstanding. Existing spectral and external insert payloads are shown
 as preserved but not falsely advertised as editable. External VST3 hosting
 remains outside Phase A and is not implied.
+
+
+### Measured completed rack diagnostics (MBR-003 partial)
+The expandable **Measured rack output** area displays actual per-band input,
+post-band-wet, and routed-output peak/RMS readings from the selected, completed
+render's immutable \`RenderArtifact.scopes.diagnostics.rack\`. It also lists
+actual stage execution status, processor-internal maximum compressor gain
+reduction where present, and spectral decision/abstention counts when supplied
+by the executable processor. Numerical readings are dBFS, with zero amplitude
+shown as negative infinity; no live or inferred metering is presented.
+
+This area clears on any source/rack edit, import, or render invalidation.
+Previously saved outputs are deliberately revision-bound; selecting one reopens
+its exact snapshot rather than applying stale measurements to the new edit.
+Region previews retain whole-phrase rack meter context, not cropped-region
+meter readings. Missing metrics are explicitly marked unavailable. No
+monitoring-only solo/mute, A/B dry render, or export-level compensation is
+implemented by this change; saved/exported PCM and rack contracts are unchanged.

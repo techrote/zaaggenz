@@ -1,6 +1,6 @@
 import {Editor,copy,rational,value,snap,add} from './editor.mjs';
 import {RenderTransport} from './jobs_transport.mjs';
-import {renderRack} from './rack-ui.mjs';
+import {renderRack,renderRackMeters} from './rack-ui.mjs';
 const $=id=>document.getElementById(id),transport=new RenderTransport();
 let editor,token,selected=null,validation=null,epoch=0,validationSequence=0,job=null,slots=[],activeSlot=null,presetCatalogue=null,rackEditing=false;
 const rackEditQueue=[],MAX_QUEUED_RACK_EDITS=16;
@@ -15,6 +15,7 @@ function clearPlayback(){
   $('play').disabled=true;$('playback-revision').textContent='—';$('waveform').dataset.revision='';
   $('waveform').getContext('2d').clearRect(0,0,1200,140);
   $('download').removeAttribute('href');$('download').classList.add('disabled');$('download').setAttribute('aria-disabled','true');
+  renderRackMeters($('rack-meters'),null);
 }
 function invalidate(preserveRackQueue=false){
   // Any non-rack edit supersedes outstanding proposals; only the current
@@ -202,6 +203,7 @@ function publish(slot){
   const snapshot=transport.current('timeline');activeSlot=slot;
   $('audio').src=snapshot.audio;$('audio').dataset.revision=snapshot.revisionId;$('play').disabled=false;
   $('playback-revision').textContent=snapshot.revisionId;$('waveform').dataset.revision=snapshot.revisionId;
+  renderRackMeters($('rack-meters'),artifact);
   $('revision').textContent=snapshot.revisionId;$('outputs').value=slot.id;
   const ctx=$('waveform').getContext('2d');ctx.clearRect(0,0,1200,140);ctx.fillStyle='#95b097';
   const points=snapshot.scopes.waveform;for(let i=0;i<points.length;i++){const h=Math.min(66,points[i]*66);ctx.fillRect(i*1200/points.length,70-h,Math.max(1,1200/points.length),Math.max(1,2*h));}

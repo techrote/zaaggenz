@@ -106,6 +106,8 @@ def main():
             # and restoration of the exact dry signal.
             dry_id=rendered('rack-original')
             dry_pcm=server.timeline.scheduler.result(dry_id).audio_bytes
+            page.locator('#rack-meter-panel').evaluate('(e)=>e.open=true')
+            expect(page.locator('#rack-meters')).to_contain_text('dry source path')
             page.locator('#rack-editor').get_by_role('button',name='Enable four-band rack').click();ready()
             lowmid=page.locator('#rack-editor .rack-band').nth(1)
             lowmid.get_by_role('button',name='Add gain').click();ready()
@@ -114,10 +116,25 @@ def main():
             # A pending authoritative rack proposal must invalidate playback
             # and prevent an old-revision render from racing its adoption.
             expect(page.locator('#render')).to_be_disabled()
+            expect(page.locator('#rack-meters')).to_contain_text('No current completed render')
             ready()
             changed_id=rendered('rack-gain-nine')
             changed_pcm=server.timeline.scheduler.result(changed_id).audio_bytes
             assert changed_pcm!=dry_pcm,'editing gain must alter actual rendered PCM'
+            # Measurements come exclusively from the accepted completed artifact,
+            # not values in editable controls or a fabricated live meter.
+            measured=server.timeline.status(changed_id)['artifact']
+            rack_report=measured['scopes']['diagnostics']['rack']
+            assert len(rack_report['bands'])==4
+            lowmid_report=rack_report['bands'][1]
+            assert lowmid_report['band']=='lowmid'
+            assert lowmid_report['stages'][0]['executed']
+            report_text=page.locator('#rack-meters').inner_text()
+            assert measured['revision_id'] in report_text
+            assert 'LOWMID' in report_text and 'post-band wet' in report_text
+            assert 'zg.gain' in report_text and 'stage output' in report_text
+            assert 'full phrase context' in report_text
+            assert not any(a in report_text for a in ('NaN','undefined'))
             # Reset built-in parameters without replacing the stage identity or
             # overwriting the separately saved wet/bypass/source settings.
             stage_before=saved('rack-before-parameter-reset.zgtimeline.json')
