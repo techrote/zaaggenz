@@ -275,19 +275,44 @@ def main():
             assert server.timeline.scheduler.result(post_delete_id).audio_bytes==changed_pcm
             page.get_by_label('Import rack preset file').set_input_files(portable_path);ready()
             assert 'user.myrack' in saved('rack-preset-reimported.zgtimeline.json')['project']['rack_presets']
-            # Four-bar full-context analysis currently exceeds the bounded rack
-            # memory cap. Verify fail-closed rejection and unchanged project.
+            # The same four-bar spectral request can fit the 256 MiB full-
+            # context budget at 12 kHz (ZG-041 browser lane), but exceed it at
+            # 48 kHz (ZG-009 browser lane). Query a *detached* authoritative
+            # backend proposal before the UI edit to establish the correct
+            # admission result at this rate. Neither branch may mutate the
+            # working Project on an unsuccessful proposal.
             page.locator('#rack-editor').get_by_role('button',name='Remove rack (dry)').click();ready()
             page.locator('#rack-editor').get_by_role('button',name='Enable four-band rack').click();ready()
             budget_before=saved('rack-spectral-budget-before.zgtimeline.json')
-            rejected_revision=page.locator('#revision').inner_text()
+            before_revision=page.locator('#revision').inner_text()
+            before_identity=server.timeline.session.current_identity()
+            band_id=json.loads(budget_before['project']['revisions'][-1]['recipe_json'])[
+                'rack']['bands'][1]['id']
+            budget_action={'kind':'add','band':band_id,'type_id':'zg.spectral'}
+            try:
+                proposed=server.timeline.propose_rack_edit(budget_before,budget_action)
+            except Exception as error:
+                assert 'rack full-context memory estimate exceeds working-memory bound' in str(error),str(error)
+                proposed=None
+            assert server.timeline.session.current_identity()==before_identity, (
+                'Detached rack proposal changed authoritative session')
             page.locator('#rack-editor .rack-band').nth(1).get_by_role(
                 'button',name='Add spectral').click();ready()
-            expect(page.locator('#status')).to_contain_text(
-                'rack full-context memory estimate exceeds working-memory bound')
-            expect(page.locator('#status')).to_contain_text('Shorten the phrase')
-            expect(page.locator('#revision')).to_have_text(rejected_revision)
-            assert saved('rack-spectral-budget-rejected.zgtimeline.json')==budget_before
+            if proposed is None:
+                expect(page.locator('#status')).to_contain_text(
+                    'rack full-context memory estimate exceeds working-memory bound')
+                expect(page.locator('#status')).to_contain_text('Shorten the phrase')
+                expect(page.locator('#revision')).to_have_text(before_revision)
+                assert saved('rack-spectral-budget-rejected.zgtimeline.json')==budget_before
+            else:
+                expect(page.locator('#revision')).to_have_text(proposed['revision_id'])
+                admitted=saved('rack-spectral-budget-admitted.zgtimeline.json')
+                assert admitted==proposed['document']
+                admitted_stages=json.loads(admitted['project']['revisions'][-1][
+                    'recipe_json'])['rack']['bands'][1]['inserts']
+                assert sum(stage['type_id']=='zg.spectral' for stage in admitted_stages)==1
+                assert proposed['estimated_memory_bytes'] <= (
+                    server.timeline.scheduler.limits.max_job_memory_bytes)
 
             # Exercise actual source-bound spectral DSP on a smaller accepted
             # timeline, without bypassing the 256 MiB full-context cap. Preserve
