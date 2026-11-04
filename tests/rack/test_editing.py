@@ -30,6 +30,35 @@ class RackEditorTests(unittest.TestCase):
         self.assertEqual(self.d.to_dict()["project"]["revisions"][0],
                          self.old["project"]["revisions"][0])
 
+    def test_source_bound_spectral_add_after_reset_across_sample_rates(self):
+        # The real Compose browser runs at 48 kHz, unlike the smaller
+        # default editor fixtures. Re-enable from a dry revision and prove
+        # that the added spectral request remains executable and persisted
+        # at the source's actual sample rate without rebinding its tuning.
+        for sample_rate in (12000, 48000, 96000):
+            with self.subTest(sample_rate=sample_rate):
+                original = default_document(sample_rate)
+                source = compile_recipe(original).to_dict()
+                enabled = edit_rack(original, {"kind": "enable"})
+                band = editor_state(enabled)["value"]["bands"][1]["id"]
+                installed = edit_rack(enabled, {
+                    "kind": "add", "band": band, "type_id": "zg.spectral",
+                })
+                stages = editor_state(installed)["value"]["bands"][1]["inserts"]
+                self.assertEqual(len(stages), 1)
+                self.assertEqual(stages[0]["type_id"], "zg.spectral")
+                params = stages[0]["params"]
+                self.assertEqual(params["kind"], "SpectralRetuneRequest")
+                self.assertEqual(params["tuning_spec"], source["tuning"])
+                self.assertLessEqual(params["max_hz"], sample_rate / 2)
+                reopened = type(installed).from_json(json.dumps(installed.to_dict()))
+                self.assertEqual(editor_state(reopened)["value"],
+                                 editor_state(installed)["value"])
+                dry = edit_rack(reopened, {"kind": "reset"})
+                self.assertNotIn("rack", compile_recipe(dry).to_dict())
+                self.assertEqual(compile_recipe(dry).sha256,
+                                 compile_recipe(original).sha256)
+
     def test_stable_insert_identity_controls_and_reopen(self):
         self.act(kind="enable")
         band = editor_state(self.d)["value"]["bands"][1]["id"]
