@@ -63,6 +63,7 @@ function editRack(action){
 }
 async function drainRackEdits(){
   rackEditing=true;
+  let superseded=false,failedMessage=null;
   try{
     while(rackEditQueue.length){
       const action=rackEditQueue.shift();
@@ -77,6 +78,7 @@ async function drainRackEdits(){
         const result=await api('rack-edit',{document:before,action});
         // Non-rack edits, imports and output selection supersede this queue.
         if(editEpoch!==epoch||JSON.stringify(editor.document)!==identity){
+          superseded=true;
           rackEditQueue.length=0;
           return;
         }
@@ -86,17 +88,21 @@ async function drainRackEdits(){
         const discarded=rackEditQueue.length;
         rackEditQueue.length=0;
         if(editEpoch===epoch&&JSON.stringify(editor.document)===identity){
-          await validateLatest();
-          status(error.message+(discarded?` · ${discarded} queued edit(s) not applied`:''),true);
-        }
+          failedMessage=error.message+(discarded?` · ${discarded} queued edit(s) not applied`:'');
+        }else superseded=true;
         return;
       }
     }
   }finally{
     rackEditing=false;
-    // Validation may have finished while the queue was draining; perform
-    // one final, source-identity-checked validation before admitting output.
-    if(!rackEditQueue.length&&!validation)void validateLatest();
+    // An older validator may have completed while rackEditing was still true.
+    // Revalidate once after draining to restore save/render admission only at
+    // the final exact revision. An external import/edit owns its own gate.
+    if(!superseded){
+      const finalEpoch=epoch;
+      await validateLatest();
+      if(failedMessage&&finalEpoch===epoch)status(failedMessage,true);
+    }
   }
 }
 function rowFromForm(){return {beat:rational($('beat').value),duration_beats:rational($('duration').value),
