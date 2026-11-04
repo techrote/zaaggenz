@@ -146,7 +146,20 @@ def main():
             dry_job=page.locator('#hear-dry').get_attribute('data-job-id')
             assert dry_job and server.timeline.scheduler.result(dry_job).audio_bytes==dry_pcm
             assert server.timeline.scheduler.result(dry_job).audio_bytes!=changed_pcm
+            processed_peak=measured['scopes']['diagnostics']['master_peak']
+            dry_peak=server.timeline.status(dry_job)['artifact']['scopes']['diagnostics']['master_peak']
+            assert processed_peak>0 and dry_peak>0
+            expect(page.locator('#peak-match')).to_be_enabled()
+            page.locator('#peak-match').check()
+            processed_volume=min(processed_peak,dry_peak)/processed_peak
+            assert abs(page.locator('#audio').evaluate('(e)=>e.volume')-processed_volume)<1e-6
             page.locator('#hear-dry').click()
+            dry_volume=min(processed_peak,dry_peak)/dry_peak
+            assert abs(page.locator('#audio').evaluate('(e)=>e.volume')-dry_volume)<1e-6
+            expect(page.locator('#peak-match-status')).to_contain_text('attenuation only')
+            page.locator('#peak-match').uncheck()
+            assert page.locator('#audio').evaluate('(e)=>e.volume')==1
+            page.locator('#peak-match').check()
             expect(page.locator('#playback-revision')).to_contain_text('DRY MONITOR ONLY')
             expect(page.locator('#monitor-mode')).to_contain_text('Download processed WAV')
             expect(page.locator('#rack-meters')).to_contain_text('No current completed render')
@@ -159,6 +172,7 @@ def main():
             page.locator('#hear-processed').click()
             expect(page.locator('#playback-revision')).to_have_text(page.locator('#revision').inner_text())
             expect(page.locator('#rack-meters')).to_contain_text('LOWMID')
+            assert abs(page.locator('#audio').evaluate('(e)=>e.volume')-processed_volume)<1e-6
             assert server.timeline.session.current_identity()==before_monitor
             # Reset built-in parameters without replacing the stage identity or
             # overwriting the separately saved wet/bypass/source settings.
@@ -166,6 +180,8 @@ def main():
             stage_before=json.loads(stage_before['project']['revisions'][-1]['recipe_json'])['rack']['bands'][1]['inserts'][0]
             page.locator('#rack-editor .rack-band').nth(1).get_by_role(
                 'button',name='Reset parameters').click();ready()
+            expect(page.locator('#peak-match')).to_be_disabled()
+            assert page.locator('#audio').evaluate('(e)=>e.volume')==1
             stage_reset=saved('rack-after-parameter-reset.zgtimeline.json')
             stage_reset=json.loads(stage_reset['project']['revisions'][-1]['recipe_json'])['rack']['bands'][1]['inserts'][0]
             assert stage_reset['id']==stage_before['id'] and stage_reset['params']['gain_db']==0
