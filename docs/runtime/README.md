@@ -110,7 +110,7 @@ changing source presets, locked_bloom or retained BODY/AUX/SUB ownership.
 
 This is a bounded MBR-003 development slice, **not full MBR-003 acceptance**:
 specialist spectral retuning/Chordness authoring, cross-band monitoring,
-monitor-only A/B compensation, complete control-surface usability/accessibility and physical Windows acceptance
+monitor-only band solo/mute, full spectral target construction, complete control-surface usability/accessibility and physical Windows acceptance
 remain outstanding. Existing spectral and external insert payloads are shown
 as preserved but not falsely advertised as editable. External VST3 hosting
 remains outside Phase A and is not implied.
@@ -147,9 +147,14 @@ meter display are hidden to avoid mislabelling them as dry measurements.
 A/B preparation requires the exact current processed revision. Pending edits,
 revision changes, source imports, cancelled jobs and output selection invalidate
 its temporary URL/job, and server-side session generation checks reject stale
-dry artifacts. A/B is raw and uncompensated, not a loudness-matched listening
-study or evidence of perceptual improvement. There is no monitor-only solo/mute,
-level compensation or spectral/Chordness authoring yet. Hosted browser
+dry artifacts. A/B starts uncompensated. **Peak-match A/B (attenuation only)**
+is an optional browser playback control enabled only after both completed
+post-master peak measurements are finite and nonzero. It attenuates the louder
+side to the quieter side's measured peak; it never amplifies, changes a saved
+recipe, replaces the processed download, or claims RMS/loudness equivalence.
+Switching dry/processed restores the corresponding gain; edits, changing
+outputs and stopping playback reset volume to unity and revoke the comparison.
+There is no monitor-only band solo/mute yet. Hosted browser
 qualification does not constitute physical Windows/owner auditory acceptance.
 
 
@@ -173,6 +178,6 @@ constructs arbitrary new comb teeth, and invalid manual selection fails closed.
 The UI deliberately does **not** reauthor opaque external stages, new comb
 inventories, multiple retune voices or target schedules. These remain preserved
 on save/reopen. Additional specialized target construction, monitoring-only
-band solo/mute, optional level-compensated A/B, physical Windows and owner
+band solo/mute, RMS/loudness-matched A/B, physical Windows and owner
 audition remain outstanding for MBR-003; passing deterministic/browser CI is
 not a musical acceptance claim.
