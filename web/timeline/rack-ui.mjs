@@ -35,6 +35,12 @@ function flag(parent,label,current,action,apply){
 function set(scope,id,field){return {kind:'set',scope,id,field};}
 const mix={type:'number',minimum:0,maximum:1,unit:'0–1'};
 export function renderRack(host,state,apply,tools={}){
+  // Retain explicitly expanded specialist controls while the authoritative
+  // revision is re-rendered after each async edit. The stable instance ID,
+  // not an insert index, anchors this purely presentational preference.
+  const openSpectral=new Set(Array.from(
+    host.querySelectorAll('.rack-spectral[open][data-insert-id]'),
+    node=>node.dataset.insertId));
   host.replaceChildren();
   if(!state){host.append(make('p','Rack metadata is unavailable; refresh the validated revision.'));return;}
   const top=group(host);
@@ -98,7 +104,10 @@ export function renderRack(host,state,apply,tools={}){
           block.append(make('p','Unknown spectral request; saved state retained without editable controls.'));
           return;
         }
-        const details=make('details');details.className='rack-spectral';block.append(details);
+        const details=make('details');details.className='rack-spectral';
+        details.dataset.insertId=stage.id;
+        details.open=openSpectral.has(stage.id);
+        block.append(details);
         details.append(make('summary',retune
           ?'Internal spectral retune · target & confidence'
           :'Internal Chordness · selection, gains & confidence'));

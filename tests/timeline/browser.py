@@ -286,6 +286,7 @@ def main():
             spectral_stage.locator('.rack-spectral').evaluate('(e)=>e.open=true')
             amount=spectral_stage.get_by_label('amount · ratio')
             amount.fill('0.7');amount.dispatch_event('change');ready()
+            expect(spectral_stage.locator('.rack-spectral')).to_have_attribute('open','')
             degree=spectral_stage.get_by_label('Primary target degree')
             degree.fill('7');degree.dispatch_event('change');ready()
             spectral_doc=saved('rack-spectral-source-bound.zgtimeline.json')
