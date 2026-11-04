@@ -101,6 +101,31 @@ def main():
             # Four-bar render and saved project reopening without manual file editing.
             page.locator('#example4').click();ready()
             data4=saved('four-bar.zgtimeline.json');assert len(data4['notes'])==32
+            # MBR-003: actual Compose source-bound rack proposal, normal
+            # validation/admission, numerical WAV, project/preset persistence
+            # and restoration of the exact dry signal.
+            dry_id=rendered('rack-original')
+            dry_pcm=server.timeline.scheduler.result(dry_id).audio_bytes
+            page.locator('#rack-editor').get_by_role('button',name='Enable four-band rack').click();ready()
+            lowmid=page.locator('#rack-editor .rack-band').nth(1)
+            lowmid.get_by_role('button',name='Add gain').click();ready()
+            gain_field=page.locator('#rack-editor .rack-band').nth(1).locator('.rack-stage input[type=number]').last
+            gain_field.fill('9');gain_field.dispatch_event('change');ready()
+            changed_id=rendered('rack-gain-nine')
+            changed_pcm=server.timeline.scheduler.result(changed_id).audio_bytes
+            assert changed_pcm!=dry_pcm,'editing gain must alter actual rendered PCM'
+            # Rack save is project-local, never a source/factory preset mutation.
+            page.locator('#rack-editor').get_by_role('button',name='Save new preset').click();ready()
+            rack_saved=saved('rack-processed.zgtimeline.json')
+            assert 'rack' in json.loads(rack_saved['project']['revisions'][-1]['recipe_json'])
+            assert 'user.myrack' in rack_saved['project']['rack_presets']
+            page.locator('#open').set_input_files(args.out/'rack-processed.zgtimeline.json');ready()
+            reload_id=rendered('rack-reopened')
+            assert server.timeline.scheduler.result(reload_id).audio_bytes==changed_pcm
+            page.screenshot(path=args.out/'compose-rack-four-band.png',full_page=True)
+            page.locator('#rack-editor').get_by_role('button',name='Remove rack (dry)').click();ready()
+            restored_id=rendered('rack-removed')
+            assert server.timeline.scheduler.result(restored_id).audio_bytes==dry_pcm
             full_job=rendered('four-bar-full')
             first_revision=page.locator('#revision').inner_text()
             page.locator('#region-start').fill('1/4');page.locator('#region-end').fill('4')

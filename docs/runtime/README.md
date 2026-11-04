@@ -72,3 +72,29 @@ ZG-041 adds `tests/runtime/test_zg041_workspace.py` plus `tests/runtime/browser_
 `tests/runtime/test_web_release.py` adds adversarial and boundary coverage for content-derived identity, the four release-bearing sidecar bootstrap/static policies, exact and obsolete asset fingerprints, stale CSS, missing/wrong/exact browser mutation headers, fail-before-mutation behavior, an already-loaded old release after a backend identity change, non-browser API compatibility, and every retained standalone wrapper. `tests/runtime/test_web_release_protocol_identity.py` freezes #201's pre-fix server-only reproduction, verifies service/model/contract/session changes invalidate exactly the affected release domains, proves unrelated DSP/docs bytes do not churn releases, and makes missing or newly unclassified first-party protocol dependencies fail closed. `tests/runtime/test_web_release_cross_workspace.py` separately proves that the current Listening and Vocal releases can use their intentional Timeline-render dependencies while the current Inspector release is rejected before Timeline state mutation.
 
 `tests/runtime/browser.py` performs a real Chromium traversal of the recovered root plus the four release-bearing sidecar workspaces, renders one Compose artifact, freezes/binds that exact artifact across Research surfaces, verifies participant capability remains non-trusted, verifies Vocal proposal provenance, advances Compose, and observes Inspector source staleness and current timeline bootstrap on the same origin. It additionally leaves a Timeline page running while the backend release identity changes, verifies the old injected JS receives HTTP 409 on mutation, reloads on the same origin, and verifies the newly fingerprinted frontend can mutate normally.
+
+## MBR-003 experimental Compose rack controls
+
+The normal `/timeline` authoring screen now offers an **opt-in**, source-bound
+four-band rack editing slice. Enable the rack, add the existing gain,
+compression or bitcrush stage to one of the four spectral bands, edit its
+contract-defined numeric parameters, reorder stages with the keyboard-accessible
+Move up/Move down buttons, bypass stages/bands/the rack, and edit crossover
+frequencies, wet and confinement. A rack proposal is validated and memory
+admitted by the existing Timeline backend; the authoritative RuntimeSession
+changes only when the normal project validation accepts the resulting revision.
+All changes invalidate playback so stale PCM cannot masquerade as the new sound.
+
+Use **Render full phrase**, play/download the real WAV, then **Save project**
+to retain the complete revision lineage. New, named user rack presets are
+stored in that project, and can be recalled from its own source ancestor.
+**Remove rack (dry)** restores the original source processing route without
+changing source presets, locked_bloom or retained BODY/AUX/SUB ownership.
+
+This is a bounded MBR-003 development slice, **not full MBR-003 acceptance**:
+specialist spectral retuning/Chordness authoring, cross-band monitoring,
+monitor-only A/B compensation, dedicated rack-preset file import/export,
+complete control-surface usability/accessibility and physical Windows acceptance
+remain outstanding. Existing spectral and external insert payloads are shown
+as preserved but not falsely advertised as editable. External VST3 hosting
+remains outside Phase A and is not implied.
