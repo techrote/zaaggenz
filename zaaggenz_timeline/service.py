@@ -298,7 +298,7 @@ class TimelineService:
         if project.rack is None:
             raise JobError('raw/dry monitoring requires an installed rack')
         with self._jobs_lock:
-            if document.revision_id != self.session.current_revision_id:
+            if document.revision_id != self.session.current_revision_id():
                 raise JobError('raw/dry monitoring requires the current Compose revision')
             project.reset_rack()
             proposal = document.to_dict()
