@@ -281,7 +281,21 @@ def main():
             page.locator('#rack-editor').get_by_role('button',name='Enable four-band rack').click();ready()
             lowmid=page.locator('#rack-editor .rack-band').nth(1)
             lowmid.get_by_role('button',name='Add spectral').click();ready()
-            spectral_stage=lowmid.locator('.rack-stage').first
+            # Read the authoritative saved revision before querying the DOM.
+            # The visual stage position is not a stable identity: other inserts
+            # can survive preset recall or be reordered independently.
+            installed=saved('rack-spectral-installed.zgtimeline.json')
+            installed_rack=json.loads(installed['project']['revisions'][-1]['recipe_json'])['rack']
+            installed_stages=installed_rack['bands'][1]['inserts']
+            spectral_matches=[s for s in installed_stages if s['type_id']=='zg.spectral']
+            assert len(spectral_matches)==1, (
+                'Add spectral did not install exactly one validated request: '+
+                page.locator('#status').inner_text()+'; stages='+repr(installed_stages))
+            spectral_id=spectral_matches[0]['id']
+            assert spectral_matches[0]['params']['kind']=='SpectralRetuneRequest'
+            spectral_stage=lowmid.locator('.rack-stage').filter(
+                has=lowmid.locator('.rack-stage-id',has_text=spectral_id))
+            expect(spectral_stage).to_have_count(1)
             expect(spectral_stage.locator('.rack-spectral')).to_contain_text('Internal spectral retune')
             spectral_stage.locator('.rack-spectral').evaluate('(e)=>e.open=true')
             amount=spectral_stage.get_by_label('amount · ratio')
@@ -291,7 +305,8 @@ def main():
             degree.fill('7');degree.dispatch_event('change');ready()
             spectral_doc=saved('rack-spectral-source-bound.zgtimeline.json')
             spectral_rack=json.loads(spectral_doc['project']['revisions'][-1]['recipe_json'])['rack']
-            spectral_params=spectral_rack['bands'][1]['inserts'][0]['params']
+            spectral_params=next(s['params'] for s in spectral_rack['bands'][1]['inserts']
+                                 if s['id']==spectral_id)
             assert spectral_params['kind']=='SpectralRetuneRequest'
             assert spectral_params['amount']==0.7
             assert spectral_params['voices'][0]['degree']==7
