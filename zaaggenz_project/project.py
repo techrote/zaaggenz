@@ -205,10 +205,6 @@ class Project:
         from .rack_state import rename_preset
         return rename_preset(self,identifier,name)
 
-    def delete_rack_preset(self,identifier):
-        from .rack_state import delete_preset
-        return delete_preset(self,identifier)
-
     def apply_rack_preset(self,identifier):
         from .rack_state import apply_preset
         return apply_preset(self,identifier)

@@ -175,7 +175,15 @@ def edit_rack(document, action):
         project.rename_rack_preset(action["id"], action["name"])
     elif kind == "delete_preset":
         exact(action, {"kind", "id"}, "delete rack preset")
-        project.delete_rack_preset(action["id"])
+        # Retain the existing project contract and immutable revisions.
+        # Full Project reload validates the changed user inventory atomically,
+        # without editing the frozen core Project/rack-state implementation.
+        identifier = action["id"]
+        stored = project.to_document()
+        if type(identifier) is not str or identifier not in stored.get("rack_presets", {}):
+            raise TimelineError("unknown user rack preset")
+        del stored["rack_presets"][identifier]
+        project = Project.from_document(stored)
     elif kind == "import_preset":
         # An imported snapshot has no permission to rebind a different source,
         # inject a revision, or silently replace an existing user preset.
