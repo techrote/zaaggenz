@@ -126,6 +126,9 @@ def main():
             page.locator('#rack-editor').get_by_role('button',name='Remove rack (dry)').click();ready()
             restored_id=rendered('rack-removed')
             assert server.timeline.scheduler.result(restored_id).audio_bytes==dry_pcm
+            # Restore the pre-rack document so the following legacy
+            # four-bar revision identity/save-reopen regression stays intact.
+            page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json');ready()
             full_job=rendered('four-bar-full')
             first_revision=page.locator('#revision').inner_text()
             page.locator('#region-start').fill('1/4');page.locator('#region-end').fill('4')
