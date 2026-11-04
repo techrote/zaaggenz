@@ -39,14 +39,26 @@ async function editRack(action){
   if(rackEditing)return;
   rackEditing=true;
   const before=editor.document,identity=JSON.stringify(before);
+  // Invalidate before the network request, not after its reply. Otherwise an
+  // enabled Render button can race an in-flight rack edit, render the old head,
+  // and then be cancelled by the late proposal (without displaying new PCM).
+  validationSequence++;
+  invalidate();
+  const editEpoch=epoch;
+  $('revision').textContent='Rack edit pending…';
+  status('Validating rack edit…');
   try{
     const result=await api('rack-edit',{document:before,action});
-    // A proposal may take longer than a note/source edit; never restore an old
-    // project or publish it into the shared RuntimeSession.
-    if(JSON.stringify(editor.document)!==identity)return;
+    // A proposal may take longer than another note/source edit; never restore
+    // a stale document or publish it into the shared RuntimeSession.
+    if(editEpoch!==epoch||JSON.stringify(editor.document)!==identity)return;
     editor.replace(result.document);afterEdit();
-  }catch(error){if(JSON.stringify(editor.document)===identity)status(error.message,true);}
-  finally{rackEditing=false;}
+  }catch(error){
+    if(editEpoch===epoch&&JSON.stringify(editor.document)===identity){
+      await validateLatest();
+      status(error.message,true);
+    }
+  }finally{rackEditing=false;}
 }
 function rowFromForm(){return {beat:rational($('beat').value),duration_beats:rational($('duration').value),
   degree:$('rest').checked?null:Number($('degree').value),detune_cents:Number($('detune').value),gain_db:Number($('gain').value),

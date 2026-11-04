@@ -110,7 +110,11 @@ def main():
             lowmid=page.locator('#rack-editor .rack-band').nth(1)
             lowmid.get_by_role('button',name='Add gain').click();ready()
             gain_field=page.locator('#rack-editor .rack-band').nth(1).locator('.rack-stage input[type=number]').last
-            gain_field.fill('9');gain_field.dispatch_event('change');ready()
+            gain_field.fill('9');gain_field.dispatch_event('change')
+            # A pending authoritative rack proposal must invalidate playback
+            # and prevent an old-revision render from racing its adoption.
+            expect(page.locator('#render')).to_be_disabled()
+            ready()
             changed_id=rendered('rack-gain-nine')
             changed_pcm=server.timeline.scheduler.result(changed_id).audio_bytes
             assert changed_pcm!=dry_pcm,'editing gain must alter actual rendered PCM'
