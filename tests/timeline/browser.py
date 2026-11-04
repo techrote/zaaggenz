@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+from fractions import Fraction
 import os
 from pathlib import Path
 import sys
@@ -274,10 +275,38 @@ def main():
             assert server.timeline.scheduler.result(post_delete_id).audio_bytes==changed_pcm
             page.get_by_label('Import rack preset file').set_input_files(portable_path);ready()
             assert 'user.myrack' in saved('rack-preset-reimported.zgtimeline.json')['project']['rack_presets']
+            # Four-bar full-context analysis currently exceeds the bounded rack
+            # memory cap. Verify fail-closed rejection and unchanged project.
+            page.locator('#rack-editor').get_by_role('button',name='Remove rack (dry)').click();ready()
+            page.locator('#rack-editor').get_by_role('button',name='Enable four-band rack').click();ready()
+            budget_before=saved('rack-spectral-budget-before.zgtimeline.json')
+            rejected_revision=page.locator('#revision').inner_text()
+            page.locator('#rack-editor .rack-band').nth(1).get_by_role(
+                'button',name='Add spectral').click();ready()
+            expect(page.locator('#status')).to_contain_text(
+                'rack full-context memory estimate exceeds working-memory bound')
+            expect(page.locator('#status')).to_contain_text('Shorten the phrase')
+            expect(page.locator('#revision')).to_have_text(rejected_revision)
+            assert saved('rack-spectral-budget-rejected.zgtimeline.json')==budget_before
+
+            # Exercise actual source-bound spectral DSP on a smaller accepted
+            # timeline, without bypassing the 256 MiB full-context cap. Preserve
+            # the original source Project and two first-bar notes and import the
+            # fully validated fixture through ordinary Compose, not a mock.
+            first_bar=[n for n in data4['notes']
+                       if Fraction(n['beat'])+Fraction(n['duration_beats'])<=4]
+            assert len(first_bar)>=2, 'four-bar fixture must contain first-bar notes'
+            short_doc=TimelineDocument({**data4,
+                'name':'One-bar internal spectral qualification',
+                'end_beat':'4/1', 'notes':first_bar[:2], 'clips':[]})
+            short_path=args.out/'one-bar-spectral-fixture.zgtimeline.json'
+            short_path.write_text(json.dumps(short_doc.to_dict(),sort_keys=True)+'\n',encoding='utf-8')
+            page.locator('#open').set_input_files(short_path)
+            expect(page.locator('#revision')).to_have_text(short_doc.revision_id)
+            ready()
             # Real spectral request authoring uses the accepted source tuning,
             # executes the existing band-selective DSP and saves its exact
             # nested target/selection contract. No new audio backend or mock.
-            page.locator('#rack-editor').get_by_role('button',name='Remove rack (dry)').click();ready()
             page.locator('#rack-editor').get_by_role('button',name='Enable four-band rack').click();ready()
             lowmid=page.locator('#rack-editor .rack-band').nth(1)
             lowmid.get_by_role('button',name='Add spectral').click();ready()

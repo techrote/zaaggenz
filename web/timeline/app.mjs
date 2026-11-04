@@ -142,7 +142,10 @@ async function drainRackEdits(){
         const discarded=rackEditQueue.length;
         rackEditQueue.length=0;
         if(editEpoch===epoch&&JSON.stringify(editor.document)===identity){
-          failedMessage=error.message+(discarded?` · ${discarded} queued edit(s) not applied`:'');
+          const message=error.message.includes('rack full-context memory estimate exceeds working-memory bound')
+             ?error.message+' · Shorten the phrase before enabling this spectral stage; region previews still process the full phrase.'
+             :error.message;
+           failedMessage=message+(discarded?` · ${discarded} queued edit(s) not applied`:'');
         }else superseded=true;
         return;
       }
