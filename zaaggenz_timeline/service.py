@@ -15,6 +15,7 @@ from zaaggenz_jobs import JobScheduler, SchedulerLimits, JobClass, RenderArtifac
 from zaaggenz_melody import MelodicRenderSpec, make_render_executor
 from zaaggenz_melody.render import melodic_cache_key
 from .model import (TimelineDocument,apply_source_preset,source_preset_catalogue,compile_recipe,render_region,memory_estimate,text,describe,default_document)
+from .rack_edit import edit_rack, editor_state
 
 
 def scheduler_limits():
@@ -176,7 +177,7 @@ class TimelineService:
         with self._jobs_lock:
             session = self._accept_locked(document)
         return {'document':document.to_dict(),**describe(document),'recipe_sha256':recipe.sha256,
-                'estimated_memory_bytes':estimate,'session':session}
+                'estimated_memory_bytes':estimate,'session':session, 'rack_editor':editor_state(document)}
 
     def validate(self, data):
         document = TimelineDocument(data)
@@ -185,7 +186,22 @@ class TimelineService:
         with self._jobs_lock:
             session = self._accept_locked(document)
         return {**describe(document), 'recipe_sha256': recipe.sha256,
-                'estimated_memory_bytes': estimate, 'session': session}
+                'estimated_memory_bytes': estimate, 'session': session,
+                'rack_editor': editor_state(document)}
+
+    def propose_rack_edit(self, data, action):
+        """Return a validated, memory-admitted proposal without changing session.
+
+        The browser must adopt the resulting document through the ordinary
+        /validate route; a delayed rack response cannot publish stale state.
+        """
+        document = edit_rack(TimelineDocument(data), action)
+        recipe = compile_recipe(document)
+        estimate = self._admit_recipe(recipe)
+        return {'document': document.to_dict(), **describe(document),
+                'recipe_sha256': recipe.sha256,
+                'estimated_memory_bytes': estimate,
+                'rack_editor': editor_state(document)}
 
     def submit(self, data, region=None, name='Render', *, authoritative=True):
         """Same exact executor for Compose preview, saved rerender and WAV export.

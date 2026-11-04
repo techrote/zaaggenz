@@ -28,6 +28,7 @@ _FRONTEND_PATHS = {
         "web/timeline/index.html",
         "web/timeline/app.mjs",
         "web/timeline/editor.mjs",
+        "web/timeline/rack-ui.mjs",
         "web/timeline/style.css",
         "web/jobs_transport.mjs",
     ),
@@ -89,6 +90,7 @@ _PROJECT_PROTOCOL_PATHS = (
 _TIMELINE_PROTOCOL_PATHS = (
     "zaaggenz_timeline/__init__.py",
     "zaaggenz_timeline/model.py",
+    "zaaggenz_timeline/rack_edit.py",
     "zaaggenz_timeline/server.py",
     "zaaggenz_timeline/service.py",
 )

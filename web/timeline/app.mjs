@@ -1,7 +1,8 @@
 import {Editor,copy,rational,value,snap,add} from './editor.mjs';
 import {RenderTransport} from './jobs_transport.mjs';
+import {renderRack} from './rack-ui.mjs';
 const $=id=>document.getElementById(id),transport=new RenderTransport();
-let editor,token,selected=null,validation=null,epoch=0,validationSequence=0,job=null,slots=[],activeSlot=null,presetCatalogue=null;
+let editor,token,selected=null,validation=null,epoch=0,validationSequence=0,job=null,slots=[],activeSlot=null,presetCatalogue=null,rackEditing=false;
 const status=(message,error=false)=>{ $('status').textContent=message;$('status').classList.toggle('error',error); };
 async function api(path,payload){
   const response=await fetch('/api/timeline/'+path,payload===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Zaaggenz-Token':token},body:JSON.stringify(payload)});
@@ -31,8 +32,21 @@ async function validateLatest(){
     const presetLabel=$('source-preset').selectedOptions[0]?.textContent??preset;
     $('pitch-context').textContent=`${presetLabel} · source ${result.source_hz.toFixed(2)} Hz · ${result.tuning.id} · source-preserving melody`;
     $('render').disabled=false;$('render-region').disabled=false;
-    updateTarget();status(`Ready · ${editor.document.notes.length} events · estimated render admission ${(result.estimated_memory_bytes/1048576).toFixed(1)} MiB`);
+    updateTarget();renderRack($('rack-editor'),result.rack_editor,editRack);status(`Ready · ${editor.document.notes.length} events · estimated render admission ${(result.estimated_memory_bytes/1048576).toFixed(1)} MiB`);
   }catch(e){if(seq===validationSequence){validation=null;$('revision').textContent='Invalid editing revision';status(e.message,true);}}
+}
+async function editRack(action){
+  if(rackEditing)return;
+  rackEditing=true;
+  const before=editor.document,identity=JSON.stringify(before);
+  try{
+    const result=await api('rack-edit',{document:before,action});
+    // A proposal may take longer than a note/source edit; never restore an old
+    // project or publish it into the shared RuntimeSession.
+    if(JSON.stringify(editor.document)!==identity)return;
+    editor.replace(result.document);afterEdit();
+  }catch(error){if(JSON.stringify(editor.document)===identity)status(error.message,true);}
+  finally{rackEditing=false;}
 }
 function rowFromForm(){return {beat:rational($('beat').value),duration_beats:rational($('duration').value),
   degree:$('rest').checked?null:Number($('degree').value),detune_cents:Number($('detune').value),gain_db:Number($('gain').value),

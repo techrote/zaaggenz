@@ -99,6 +99,7 @@ class Handler(webapp.Handler):
                          '/timeline/': ('index.html', 'text/html; charset=utf-8'),
                          '/timeline/app.mjs': ('app.mjs', 'text/javascript; charset=utf-8'),
                          '/timeline/editor.mjs': ('editor.mjs', 'text/javascript; charset=utf-8'),
+                         '/timeline/rack-ui.mjs': ('rack-ui.mjs', 'text/javascript; charset=utf-8'),
                          '/timeline/style.css': ('style.css', 'text/css; charset=utf-8')}
             if path in resources:
                 filename, mime = resources[path]
@@ -140,6 +141,10 @@ class Handler(webapp.Handler):
                     raise ValueError('preset_id must be text')
                 result=self.server.timeline.apply_preset(data['document'],data['preset_id'])
                 return self._json(result)
+            if path == '/api/timeline/rack-edit':
+                exact(data, {'document', 'action'}, 'rack edit request')
+                return self._json(self.server.timeline.propose_rack_edit(
+                    data['document'], data['action']))
             if path == '/api/timeline/validate':
                 exact(data, {'document'}, 'validation request')
                 result = self.server.timeline.validate(data['document'])
