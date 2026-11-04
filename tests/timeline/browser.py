@@ -294,7 +294,7 @@ def main():
             spectral_id=spectral_matches[0]['id']
             assert spectral_matches[0]['params']['kind']=='SpectralRetuneRequest'
             spectral_stage=lowmid.locator('.rack-stage').filter(
-                has=lowmid.locator('.rack-stage-id',has_text=spectral_id))
+                has=page.locator('.rack-stage-id',has_text=spectral_id))
             expect(spectral_stage).to_have_count(1)
             expect(spectral_stage.locator('.rack-spectral')).to_contain_text('Internal spectral retune')
             spectral_stage.locator('.rack-spectral').evaluate('(e)=>e.open=true')
