@@ -4,7 +4,10 @@ from copy import deepcopy
 import unittest
 from zaaggenz_timeline.model import default_document, compile_recipe
 from zaaggenz_timeline.rack_edit import edit_rack, editor_state
-from zaaggenz_contracts.rack import processor_definition
+from zaaggenz_contracts.rack import processor_definition, RackRecipe
+from zaaggenz_project import Project
+from zaaggenz_spectral.chordness_request import ChordnessRequest
+from zaaggenz_spectral.chordness_model import CombTemplate
 
 
 class RackEditorTests(unittest.TestCase):
@@ -297,6 +300,63 @@ class RackEditorTests(unittest.TestCase):
         for action in bad:
             with self.subTest(action=action), self.assertRaises(ValueError):
                 edit_rack(self.d, action)
+            self.assertEqual(self.d.to_dict(), before)
+
+
+    def test_existing_chordness_request_preserves_templates_and_edits_scalars(self):
+        self.act(kind="enable")
+        project = Project.from_document(self.d.to_dict()["project"])
+        rack = project.rack.to_dict()
+        band = rack["bands"][1]["id"]
+        stage_id = "insert.lowmid.spectral"
+        chord = ChordnessRequest((
+            CombTemplate("root", (100., 200., 300.), 2, "Root", {"method": "manual"}),
+            CombTemplate("fifth", (150., 300., 450.), 1, "Fifth", {}),
+        ), mode="hybrid", selected_template_ids=("root", "fifth"),
+           max_selected_templates=2).to_dict()
+        rack["bands"][1]["inserts"].append({
+            "id": stage_id, "type_id": "zg.spectral", "version": "1.0.0",
+            "bypass": False, "wet": 1.0, "automation": [], "params": chord,
+        })
+        project.set_rack(RackRecipe(rack))
+        original = self.d.to_dict()
+        original["project"] = project.to_document()
+        self.d = type(self.d)(original)
+        addr = band + "/" + stage_id
+
+        self.act(kind="set", scope="spectral", id=addr,
+                 field="mode", value="reweight")
+        self.act(kind="set", scope="spectral", id=addr,
+                 field="min_confidence", value=.4)
+        self.act(kind="set", scope="chordness_coefficient", id=addr,
+                 field="target_fit", value=2.5)
+        self.act(kind="select_spectral_template", band=band, id=stage_id,
+                 template_id="root", value=False)
+        edited = editor_state(self.d)["value"]["bands"][1]["inserts"][0]["params"]
+        self.assertEqual(edited["mode"], "reweight")
+        self.assertEqual(edited["selected_template_ids"], ["fifth"])
+        self.assertEqual(edited["coefficients"]["target_fit"], 2.5)
+        self.assertEqual(edited["templates"], chord["templates"])
+        reopened = type(self.d).from_json(json.dumps(self.d.to_dict()))
+        self.assertEqual(editor_state(reopened)["value"]["bands"][1]["inserts"][0]["params"],
+                         edited)
+
+        before = self.d.to_dict()
+        illegal = (
+            {"kind": "select_spectral_template", "band": band, "id": stage_id,
+             "template_id": "fifth", "value": False},
+            {"kind": "select_spectral_template", "band": band, "id": stage_id,
+             "template_id": "absent", "value": True},
+            {"kind": "select_spectral_template", "band": band, "id": stage_id,
+             "template_id": "root", "value": "true"},
+            {"kind": "set", "scope": "chordness_coefficient", "id": addr,
+             "field": "target_fit", "value": -1},
+            {"kind": "set", "scope": "spectral_voice", "id": addr,
+             "field": "degree", "value": 2},
+        )
+        for command in illegal:
+            with self.subTest(command=command), self.assertRaises(ValueError):
+                edit_rack(self.d, command)
             self.assertEqual(self.d.to_dict(), before)
 
 if __name__ == "__main__":
