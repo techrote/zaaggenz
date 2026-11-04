@@ -126,6 +126,38 @@ def main():
             page.locator('#open').set_input_files(args.out/'rack-processed.zgtimeline.json');ready()
             reload_id=rendered('rack-reopened')
             assert server.timeline.scheduler.result(reload_id).audio_bytes==changed_pcm
+            # Two controls changed while the first backend proposal is blocked
+            # must be serialized rather than silently dropping the second edit.
+            # Saving/rendering old PCM is prohibited until both are admitted.
+            gate=threading.Event();entered=threading.Event()
+            propose=server.timeline.propose_rack_edit
+            def held_proposal(*a,**kw):
+                entered.set()
+                if not gate.wait(10):
+                    raise RuntimeError('bounded rack edit proposal gate expired')
+                return propose(*a,**kw)
+            with patch.object(server.timeline,'propose_rack_edit',held_proposal):
+                wet=page.get_by_label('Rack wet')
+                wet.fill('0.65');wet.dispatch_event('change')
+                assert entered.wait(5),'rack edit did not enter the backend'
+                page.get_by_label('Bypass rack').check()
+                expect(page.locator('#render')).to_be_disabled()
+                expect(page.locator('#save')).to_be_disabled()
+                gate.set()
+                page.wait_for_function(
+                    "() => !document.querySelector('#render').disabled && !document.querySelector('#save').disabled",
+                    timeout=30000)
+            queued_saved=saved('rack-rapid-edits.zgtimeline.json')
+            queued_recipe=json.loads(queued_saved['project']['revisions'][-1]['recipe_json'])['rack']
+            assert queued_recipe['wet']==0.65
+            assert queued_recipe['bypass'] is True
+            # Both edits must be independently undoable against stable rack IDs.
+            page.locator('#undo').click();ready()
+            undo_recipe=json.loads(saved('rack-rapid-undo.zgtimeline.json')['project']['revisions'][-1]['recipe_json'])['rack']
+            assert undo_recipe['wet']==0.65 and undo_recipe['bypass'] is False
+            page.locator('#redo').click();ready()
+            redo_recipe=json.loads(saved('rack-rapid-redo.zgtimeline.json')['project']['revisions'][-1]['recipe_json'])['rack']
+            assert redo_recipe==queued_recipe
             page.screenshot(path=args.out/'compose-rack-four-band.png',full_page=True)
             page.locator('#rack-editor').get_by_role('button',name='Remove rack (dry)').click();ready()
             restored_id=rendered('rack-removed')
