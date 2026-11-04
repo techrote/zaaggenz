@@ -132,7 +132,9 @@ def main():
             assert server.timeline.scheduler.result(restored_id).audio_bytes==dry_pcm
             # Restore the pre-rack document so the following legacy
             # four-bar revision identity/save-reopen regression stays intact.
-            page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json');ready()
+            page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json')
+            expect(page.locator('#revision')).to_have_text(TimelineDocument(data4).revision_id)
+            ready()
             full_job=rendered('four-bar-full')
             first_revision=page.locator('#revision').inner_text()
             page.locator('#region-start').fill('1/4');page.locator('#region-end').fill('4')
@@ -149,7 +151,9 @@ def main():
             expect(page.locator('#playback-revision')).to_have_text(first_revision)
             page.locator('#stop').click();expect(page.locator('#play')).to_be_disabled()
             page.locator('#master').fill('-9');page.locator('#master').dispatch_event('change');ready()
-            page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json');ready()
+            page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json')
+            expect(page.locator('#revision')).to_have_text(TimelineDocument(data4).revision_id)
+            ready()
             expect(page.locator('#revision')).to_have_text(first_revision)
             second_full=rendered('four-bar-reopened')
             assert server.timeline.scheduler.result(full_job).audio_bytes==server.timeline.scheduler.result(second_full).audio_bytes
