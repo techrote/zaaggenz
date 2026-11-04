@@ -3,6 +3,7 @@ import {RenderTransport} from './jobs_transport.mjs';
 import {renderRack} from './rack-ui.mjs';
 const $=id=>document.getElementById(id),transport=new RenderTransport();
 let editor,token,selected=null,validation=null,epoch=0,validationSequence=0,job=null,slots=[],activeSlot=null,presetCatalogue=null,rackEditing=false;
+const rackEditQueue=[],MAX_QUEUED_RACK_EDITS=16;
 const status=(message,error=false)=>{ $('status').textContent=message;$('status').classList.toggle('error',error); };
 async function api(path,payload){
   const response=await fetch('/api/timeline/'+path,payload===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Zaaggenz-Token':token},body:JSON.stringify(payload)});
@@ -15,8 +16,14 @@ function clearPlayback(){
   $('waveform').getContext('2d').clearRect(0,0,1200,140);
   $('download').removeAttribute('href');$('download').classList.add('disabled');$('download').setAttribute('aria-disabled','true');
 }
-function invalidate(){epoch++;quietCancel(job);job=null;validation=null;clearPlayback();$('render').disabled=true;$('render-region').disabled=true;}
-function afterEdit(){invalidate();paint();if(selected)select(selected);validateLatest();}
+function invalidate(preserveRackQueue=false){
+  // Any non-rack edit supersedes outstanding proposals; only the current
+  // rack worker may carry queued commands across successive revisions.
+  if(!preserveRackQueue)rackEditQueue.length=0;
+  epoch++;quietCancel(job);job=null;validation=null;clearPlayback();
+  $('render').disabled=true;$('render-region').disabled=true;$('save').disabled=true;
+}
+function afterEdit(preserveRackQueue=false){invalidate(preserveRackQueue);paint();if(selected)select(selected);validateLatest();}
 function safe(action){try{action();}catch(e){status(e.message,true);}}
 function mutate(action){safe(()=>{action();afterEdit();});}
 async function validateLatest(){
@@ -31,34 +38,66 @@ async function validateLatest(){
     if(preset)$('source-preset').value=preset;
     const presetLabel=$('source-preset').selectedOptions[0]?.textContent??preset;
     $('pitch-context').textContent=`${presetLabel} · source ${result.source_hz.toFixed(2)} Hz · ${result.tuning.id} · source-preserving melody`;
-    $('render').disabled=false;$('render-region').disabled=false;
+    // A validation response can race another accepted rack proposal. Do not
+    // admit stale saves/renders while source-bound edits remain outstanding.
+    if(!rackEditing&&!rackEditQueue.length){
+      $('render').disabled=false;$('render-region').disabled=false;$('save').disabled=false;
+    }
     updateTarget();renderRack($('rack-editor'),result.rack_editor,editRack);status(`Ready · ${editor.document.notes.length} events · estimated render admission ${(result.estimated_memory_bytes/1048576).toFixed(1)} MiB`);
   }catch(e){if(seq===validationSequence){validation=null;$('revision').textContent='Invalid editing revision';status(e.message,true);}}
 }
-async function editRack(action){
-  if(rackEditing)return;
+function editRack(action){
+  // A network-bound editor must not silently drop a second quick user edit.
+  // Commands are applied in arrival order to the newest validated document;
+  // no two rack proposals run against the same stale source snapshot.
+  if(rackEditQueue.length>=MAX_QUEUED_RACK_EDITS){
+    status('Rack edit queue is full (16); wait for the pending changes.',true);
+    return;
+  }
+  rackEditQueue.push(action);
+  if(rackEditing){
+    status(`Rack edit queued · ${rackEditQueue.length} more change(s)`);
+    return;
+  }
+  void drainRackEdits();
+}
+async function drainRackEdits(){
   rackEditing=true;
-  const before=editor.document,identity=JSON.stringify(before);
-  // Invalidate before the network request, not after its reply. Otherwise an
-  // enabled Render button can race an in-flight rack edit, render the old head,
-  // and then be cancelled by the late proposal (without displaying new PCM).
-  validationSequence++;
-  invalidate();
-  const editEpoch=epoch;
-  $('revision').textContent='Rack edit pending…';
-  status('Validating rack edit…');
   try{
-    const result=await api('rack-edit',{document:before,action});
-    // A proposal may take longer than another note/source edit; never restore
-    // a stale document or publish it into the shared RuntimeSession.
-    if(editEpoch!==epoch||JSON.stringify(editor.document)!==identity)return;
-    editor.replace(result.document);afterEdit();
-  }catch(error){
-    if(editEpoch===epoch&&JSON.stringify(editor.document)===identity){
-      await validateLatest();
-      status(error.message,true);
+    while(rackEditQueue.length){
+      const action=rackEditQueue.shift();
+      const before=editor.document,identity=JSON.stringify(before);
+      // Invalidate synchronously, before a request can race a render/save.
+      validationSequence++;
+      invalidate(true);
+      const editEpoch=epoch;
+      $('revision').textContent='Rack edit pending…';
+      status(`Validating rack edit… · ${rackEditQueue.length} queued`);
+      try{
+        const result=await api('rack-edit',{document:before,action});
+        // Non-rack edits, imports and output selection supersede this queue.
+        if(editEpoch!==epoch||JSON.stringify(editor.document)!==identity){
+          rackEditQueue.length=0;
+          return;
+        }
+        editor.replace(result.document);
+        afterEdit(true);
+      }catch(error){
+        const discarded=rackEditQueue.length;
+        rackEditQueue.length=0;
+        if(editEpoch===epoch&&JSON.stringify(editor.document)===identity){
+          await validateLatest();
+          status(error.message+(discarded?` · ${discarded} queued edit(s) not applied`:''),true);
+        }
+        return;
+      }
     }
-  }finally{rackEditing=false;}
+  }finally{
+    rackEditing=false;
+    // Validation may have finished while the queue was draining; perform
+    // one final, source-identity-checked validation before admitting output.
+    if(!rackEditQueue.length&&!validation)void validateLatest();
+  }
 }
 function rowFromForm(){return {beat:rational($('beat').value),duration_beats:rational($('duration').value),
   degree:$('rest').checked?null:Number($('degree').value),detune_cents:Number($('detune').value),gain_db:Number($('gain').value),
@@ -131,7 +170,7 @@ function publish(slot){
   $('download').classList.remove('disabled');$('download').setAttribute('aria-disabled','false');
 }
 async function render(region){
-  if(!validation)return;const data=editor.document,revision=validation.revision_id,requestEpoch=++epoch;
+  if(!validation||rackEditing||rackEditQueue.length)return;const data=editor.document,revision=validation.revision_id,requestEpoch=++epoch;
   quietCancel(job);job=null;clearPlayback();const name=$('output-name').value;
   try{
     const submitted=await api('render',{document:data,region,name});
@@ -187,7 +226,7 @@ function bind(){
   $('play').onclick=async()=>{try{if(!activeSlot||editor.document&&JSON.stringify(editor.document)!==JSON.stringify(activeSlot.document))throw Error('Playback revision no longer matches editing state.');await $('audio').play();}catch(e){status(e.message,true);}};
   $('outputs').onchange=()=>{const slot=slots.find(s=>s.id===$('outputs').value);if(!slot)return;
     safe(()=>{editor.replace(slot.document);invalidate();paint();publish(slot);validateLatest();});};
-  $('save').onclick=()=>safe(()=>{if(!validation)throw Error('Correct invalid editing state before saving.');
+  $('save').onclick=()=>safe(()=>{if(!validation||rackEditing||rackEditQueue.length)throw Error('Finish validating pending edits before saving.');
     const url=URL.createObjectURL(new Blob([JSON.stringify(editor.document,null,2)],{type:'application/json'}));
     const link=document.createElement('a');link.href=url;link.download='zaaggenz-timeline.zgtimeline.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
   $('open').onchange=async()=>{const file=$('open').files[0];if(!file)return;
