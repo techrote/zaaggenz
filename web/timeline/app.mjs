@@ -11,6 +11,25 @@ async function api(path,payload){
   const data=await response.json();if(!response.ok)throw Error(data.error??`HTTP ${response.status}`);return data;
 }
 function quietCancel(id){if(id)api('cancel',{job_id:id}).catch(()=>{});}
+// Peak data comes only from actual completed post-master render artifacts.
+function monitorPeaks(){
+  const processed=activeSlot?.artifact?.scopes?.diagnostics?.master_peak;
+  const dry=dryMonitor?.masterPeak;
+  return Number.isFinite(processed)&&processed>0&&Number.isFinite(dry)&&dry>0
+    ?{processed,dry}:null;
+}
+function applyMonitorVolume(which){
+  const peaks=monitorPeaks();
+  const matched=$('peak-match').checked&&peaks&&
+    dryMonitor?.slotId===activeSlot?.id&&
+    validation?.revision_id===activeSlot?.revision;
+  const volume=matched?Math.min(1,Math.min(peaks.processed,peaks.dry)/peaks[which]):1;
+  $('audio').volume=volume;
+  $('peak-match-status').textContent=matched
+    ?'Peak-matched '+which+' monitor: playback volume '+volume.toFixed(4)+
+      ' (attenuation only; not loudness matching; processed WAV unchanged).'
+    :'Peak-match disabled · original playback levels; processed WAV unchanged.';
+}
 function updateDryControls(){
   const current=!!validation&&!!activeSlot&&!rackEditing&&!rackEditQueue.length&&
     validation.revision_id===activeSlot.revision&&
@@ -18,6 +37,8 @@ function updateDryControls(){
   $('prepare-dry').disabled=!current||!validation?.rack_editor?.present||!!dryMonitor||!!dryJob;
   const ready=current&&!!dryMonitor&&dryMonitor.slotId===activeSlot.id;
   $('hear-dry').disabled=!ready;$('hear-processed').disabled=!ready;
+  $('peak-match').disabled=!ready||!monitorPeaks();
+  if(!ready)$('peak-match').checked=false;
 }
 function discardDryMonitor(){
   dryRequestSequence++;
@@ -25,6 +46,9 @@ function discardDryMonitor(){
   dryJob=null;
   if(dryMonitor)URL.revokeObjectURL(dryMonitor.url);
   dryMonitor=null;
+  $('audio').volume=1;
+  $('peak-match').checked=false;$('peak-match').disabled=true;
+  $('peak-match-status').textContent='Peak-match disabled · original playback levels; processed WAV unchanged.';
   $('hear-dry').dataset.jobId='';
   $('monitor-mode').textContent='Processed output · no raw/dry comparison prepared.';
   $('prepare-dry').disabled=true;$('hear-dry').disabled=true;$('hear-processed').disabled=true;
@@ -233,6 +257,7 @@ function publish(slot){
   $('download').href=slot.url;$('download').download=`${slot.name.replace(/[^a-zA-Z0-9_-]/g,'_')}.wav`;
   $('download').classList.remove('disabled');$('download').setAttribute('aria-disabled','false');
   updateDryControls();
+  applyMonitorVolume('processed');
 }
 async function prepareDryMonitor(){
   if(!validation||!activeSlot||!validation.rack_editor?.present||rackEditing||
@@ -266,7 +291,9 @@ async function prepareDryMonitor(){
           throw Error('Raw/dry comparison audio identity mismatch.');
         const blob=await response.blob();
         if(!current())return;
-        dryMonitor={slotId:slot.id,revision:request.revision_id,url:URL.createObjectURL(blob)};
+        const dryPeak=result.artifact?.scopes?.diagnostics?.master_peak;
+        dryMonitor={slotId:slot.id,revision:request.revision_id,url:URL.createObjectURL(blob),
+          masterPeak:Number.isFinite(dryPeak)&&dryPeak>0?dryPeak:null};
         $('hear-dry').dataset.jobId=request.job_id;
         $('monitor-mode').textContent='Raw/dry comparison ready · monitoring only; Download processed WAV is unchanged.';
         status('Raw/dry source rendered separately; no rack or project state was changed.');
@@ -293,6 +320,7 @@ function hearDryMonitor(){
   $('waveform').dataset.revision='';
   renderRackMeters($('rack-meters'),null);
   $('monitor-mode').textContent='Hearing raw/dry source. Waveform/meters are hidden; Download processed WAV still exports the processed selection.';
+  applyMonitorVolume('dry');
   $('play').disabled=false;
 }
 function hearProcessedMonitor(){
@@ -354,6 +382,8 @@ function bind(){
   $('prepare-dry').onclick=()=>void prepareDryMonitor();
   $('hear-dry').onclick=()=>hearDryMonitor();
   $('hear-processed').onclick=()=>hearProcessedMonitor();
+  $('peak-match').onchange=()=>applyMonitorVolume(
+    dryMonitor&&$('audio').dataset.revision===dryMonitor.revision?'dry':'processed');
   $('render').onclick=()=>render(null);
   $('render-region').onclick=()=>safe(()=>render({start_beat:rational($('region-start').value),end_beat:rational($('region-end').value)}));
   $('cancel').onclick=()=>{epoch++;quietCancel(job);job=null;discardDryMonitor();status('Render cancelled; editing state is unchanged.');};
