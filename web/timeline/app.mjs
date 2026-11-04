@@ -59,7 +59,7 @@ function exportPreset(identifier){
     const record={format:'zaaggenz-rack-preset',version:'1.0.0',
       id:item.id,name:item.name,rack:item.rack,
       rack_sha256:item.rack_sha256,sonic_sha256:item.sonic_sha256};
-    const url=URL.createObjectURL(new Blob([JSON.stringify(record,null,2)+'\\n'],{type:'application/json'}));
+    const url=URL.createObjectURL(new Blob([JSON.stringify(record,null,2)+'\n'],{type:'application/json'}));
     const link=document.createElement('a');link.href=url;
     link.download=identifier.replace(/[^a-zA-Z0-9_.-]/g,'_')+'.zgrack.json';
     link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
