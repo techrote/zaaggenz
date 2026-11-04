@@ -68,6 +68,8 @@ export function renderRack(host,state,apply){
       const buttons=group(block);
       button(buttons,'Move up',{kind:'move',band:band.id,id:stage.id,step:-1},apply,index===0);
       button(buttons,'Move down',{kind:'move',band:band.id,id:stage.id,step:1},apply,index===band.inserts.length-1);
+      if(state.parameters[stage.type_id] && stage.params!==null)
+        button(buttons,'Remove insert',{kind:'remove',band:band.id,id:stage.id},apply);
       flag(buttons,'Bypass insert',stage.bypass,set('insert',band.id+'/'+stage.id,'bypass'),apply);
       number(buttons,'Insert wet',stage.wet,mix,set('insert',band.id+'/'+stage.id,'wet'),apply);
       const params=state.parameters[stage.type_id];
@@ -102,4 +104,17 @@ export function renderRack(host,state,apply){
   const load=make('button','Load');load.type='button';load.disabled=!state.presets.length;
   load.addEventListener('click',()=>{if(select.value)apply({kind:'load_preset',id:select.value});});
   presets.append(load);
+  const replace=make('button','Replace selected preset');replace.type='button';replace.disabled=true;
+  replace.title='Explicitly replace only this user preset with the current rack.';
+  replace.addEventListener('click',()=>{if(select.value)apply({kind:'replace_preset',id:select.value,name:name.value});});
+  presets.append(replace);
+  const rename=make('button','Rename selected preset');rename.type='button';rename.disabled=true;
+  rename.title='Rename user preset without changing its saved processing or source.';
+  rename.addEventListener('click',()=>{if(select.value)apply({kind:'rename_preset',id:select.value,name:name.value});});
+  presets.append(rename);
+  select.addEventListener('change',()=>{
+    const selected=state.presets.find(item=>item.id===select.value);
+    replace.disabled=rename.disabled=!selected;
+    if(selected)name.value=selected.name;
+  });
 }

@@ -158,6 +158,24 @@ def main():
             page.locator('#redo').click();ready()
             redo_recipe=json.loads(saved('rack-rapid-redo.zgtimeline.json')['project']['revisions'][-1]['recipe_json'])['rack']
             assert redo_recipe==queued_recipe
+            # User preset edits are explicit; no source or factory preset mutation.
+            page.get_by_label('Load saved preset').select_option('user.myrack')
+            page.get_by_label('Preset name').fill('Renamed rack')
+            page.get_by_role('button',name='Rename selected preset').click();ready()
+            named=saved('rack-renamed-preset.zgtimeline.json')
+            assert named['project']['rack_presets']['user.myrack']['name']=='Renamed rack'
+            page.get_by_label('Bypass rack').uncheck();ready()
+            lowmid=page.locator('#rack-editor .rack-band').nth(1)
+            lowmid.get_by_role('button',name='Remove insert').click();ready()
+            removed=saved('rack-removed-insert.zgtimeline.json')
+            removed_recipe=json.loads(removed['project']['revisions'][-1]['recipe_json'])['rack']
+            assert not removed_recipe['bands'][1]['inserts']
+            page.get_by_label('Load saved preset').select_option('user.myrack')
+            page.get_by_role('button',name='Replace selected preset').click();ready()
+            replaced=saved('rack-replaced-preset.zgtimeline.json')
+            assert replaced['project']['rack_presets']['user.myrack']['rack']==removed_recipe
+            removed_id=rendered('rack-insert-removed')
+            assert server.timeline.scheduler.result(removed_id).audio_bytes==dry_pcm
             page.screenshot(path=args.out/'compose-rack-four-band.png',full_page=True)
             page.locator('#rack-editor').get_by_role('button',name='Remove rack (dry)').click();ready()
             restored_id=rendered('rack-removed')

@@ -79,8 +79,10 @@ The normal `/timeline` authoring screen now offers an **opt-in**, source-bound
 four-band rack editing slice. Enable the rack, add the existing gain,
 compression or bitcrush stage to one of the four spectral bands, edit its
 contract-defined numeric parameters, reorder stages with the keyboard-accessible
-Move up/Move down buttons, bypass stages/bands/the rack, and edit crossover
-frequencies, wet and confinement. A rack proposal is validated and memory
+Move up/Move down buttons, explicitly remove a supported built-in insert by
+stable ID, bypass stages/bands/the rack, and edit crossover frequencies,
+wet and confinement. Existing opaque/unsupported insert payloads cannot be
+deleted through the built-in authoring control. A rack proposal is validated and memory
 admitted by the existing Timeline backend; the authoritative RuntimeSession
 changes only when the normal project validation accepts the resulting revision.
 All changes invalidate playback so stale PCM cannot masquerade as the new sound.
@@ -88,6 +90,10 @@ All changes invalidate playback so stale PCM cannot masquerade as the new sound.
 Use **Render full phrase**, play/download the real WAV, then **Save project**
 to retain the complete revision lineage. New, named user rack presets are
 stored in that project, and can be recalled from its own source ancestor.
+An existing user preset can be explicitly renamed (display only) or replaced
+with the currently edited rack (sonic state and source provenance included);
+ordinary **Save new preset** never silently overwrites an existing ID.
+These commands use the same bounded revision-validation and undo/redo pipeline.
 **Remove rack (dry)** restores the original source processing route without
 changing source presets, locked_bloom or retained BODY/AUX/SUB ownership.
 

@@ -112,6 +112,16 @@ def _update(project, action):
         target = index + action["step"]
         band["inserts"][index], band["inserts"][target] = (
             band["inserts"][target], band["inserts"][index])
+    elif kind == "remove":
+        exact(action, {"kind", "band", "id"}, "remove insert")
+        band = _band(rack, action["band"])
+        stage = _insert(band, action["id"])
+        # Preserve opaque/unimplemented processor state; only editable
+        # built-in stages can be removed through this authoring command.
+        if stage["type_id"] not in EDITABLE:
+            raise TimelineError("only supported built-in stages can be removed")
+        band["inserts"] = [item for item in band["inserts"] if item["id"] != stage["id"]]
+        rack["display"].pop(stage["id"], None)
     else:
         raise TimelineError("unknown rack update kind")
     saved = RackRecipe(rack)  # all latent fields validated, including bypass
@@ -142,7 +152,17 @@ def edit_rack(document, action):
     elif kind == "load_preset":
         exact(action, {"kind", "id"}, "load rack preset")
         project.apply_rack_preset(action["id"])
-    elif kind in ("set", "add", "move"):
+    elif kind == "replace_preset":
+        exact(action, {"kind", "id", "name"}, "replace rack preset")
+        if type(action["id"]) is not str or action["id"] not in project.rack_presets:
+            raise TimelineError("cannot replace an unknown rack preset")
+        project.save_rack_preset(action["id"], action["name"], replace=True)
+    elif kind == "rename_preset":
+        exact(action, {"kind", "id", "name"}, "rename rack preset")
+        if type(action["id"]) is not str:
+            raise TimelineError("rack preset id must be a string")
+        project.rename_rack_preset(action["id"], action["name"])
+    elif kind in ("set", "add", "move", "remove"):
         _update(project, action)
     else:
         raise TimelineError("unsupported rack action")
