@@ -12,9 +12,18 @@ function number(parent,label,current,meta,action,apply){
   node.step=meta.type==='integer'?'1':'any';
   if(meta.minimum!==undefined)node.min=String(meta.minimum);
   if(meta.maximum!==undefined)node.max=String(meta.maximum);
+  // Match the saved contract's *exclusive* lower bounds. A plain HTML min
+  // attribute is inclusive and otherwise permits a value the backend rejects.
+  node.addEventListener('input',()=>node.setCustomValidity(''));
   node.addEventListener('change',()=>{
-    if(!node.reportValidity()||node.value==='')return;
-    const value=Number(node.value);if(!Number.isFinite(value))return;
+    node.setCustomValidity('');
+    const value=Number(node.value);
+    if(node.value!==''&&Number.isFinite(value)&&
+       meta.exclusiveMinimum!==undefined&&value<=meta.exclusiveMinimum){
+      node.setCustomValidity(label+' must be greater than '+
+        meta.exclusiveMinimum+(meta.unit?' '+meta.unit:'')+'.');
+    }
+    if(!node.reportValidity()||node.value===''||!Number.isFinite(value))return;
     apply({...action,value});
   });
   wrapper.append(node);parent.append(wrapper);
@@ -64,7 +73,10 @@ export function renderRack(host,state,apply,tools={}){
       set('crossover',index,'frequency_hz'),apply);
   });
   for(const band of rack.bands){
-    const panel=group(host,'rack-band');panel.append(make('h3',band.band.toUpperCase()));
+    const panel=group(host,'rack-band');
+    panel.setAttribute('role','group');
+    panel.setAttribute('aria-label',band.band+' processing band');
+    panel.append(make('h3',band.band.toUpperCase()));
     const controls=group(panel);
     flag(controls,'Bypass band',band.bypass,set('band',band.id,'bypass'),apply);
     flag(controls,'Confine delta',band.confine_delta,set('band',band.id,'confine_delta'),apply);
@@ -77,6 +89,8 @@ export function renderRack(host,state,apply,tools={}){
     if(!band.inserts.length)panel.append(make('p','No active stages. This band is unchanged.'));
     band.inserts.forEach((stage,index)=>{
       const block=group(panel,'rack-stage');
+      block.setAttribute('role','group');
+      block.setAttribute('aria-label',band.band+' '+stage.type_id+' '+stage.id);
       block.append(make('h4',stage.type_id.replace('zg.','')));
       const identity=make('div',stage.id);identity.className='rack-stage-id';block.append(identity);
       const buttons=group(block);
@@ -91,9 +105,11 @@ export function renderRack(host,state,apply,tools={}){
       number(buttons,'Insert wet',stage.wet,mix,set('insert',band.id+'/'+stage.id,'wet'),apply);
       const params=state.parameters[stage.type_id];
       if(!params||stage.params===null){
-        block.append(make('p',params
+        block.append(make('p',stage.type_id==='zg.spectral'&&stage.params===null
+          ? 'No spectral request installed. Remove this stage and explicitly add spectral to initialize a source-bound retune request.'
+          : params
           ? 'No active parameter request; use Reset parameters to initialize the supported built-in defaults.'
-          : 'Stored processor state preserved; specialized spectral or external controls are not yet implemented here.'));
+          : 'Stored unsupported processor state preserved; no edit or execution controls are available.'));
         return;
       }
       if(stage.type_id==='zg.spectral'){
