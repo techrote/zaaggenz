@@ -298,6 +298,17 @@ def main():
             expect(spectral_stage).to_have_count(1)
             expect(spectral_stage.locator('.rack-spectral')).to_contain_text('Internal spectral retune')
             spectral_stage.locator('.rack-spectral').evaluate('(e)=>e.open=true')
+            expect(lowmid).to_have_attribute('aria-label','lowmid processing band')
+            expect(spectral_stage).to_have_attribute(
+                'aria-label','lowmid zg.spectral '+spectral_id)
+            # Contract uses an exclusive 0-Hz bound. The UI must reject zero
+            # before sending an invalid backend proposal or changing revision.
+            before_invalid=page.locator('#revision').inner_text()
+            min_hz=spectral_stage.get_by_label('min hz · Hz')
+            min_hz.fill('0');min_hz.dispatch_event('change')
+            assert min_hz.evaluate('(e)=>e.validity.customError')
+            expect(page.locator('#revision')).to_have_text(before_invalid)
+            min_hz.fill('30')
             amount=spectral_stage.get_by_label('amount · ratio')
             amount.fill('0.7');amount.dispatch_event('change');ready()
             expect(spectral_stage.locator('.rack-spectral')).to_have_attribute('open','')
