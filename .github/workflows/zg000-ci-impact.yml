@@ -18,9 +18,15 @@ on:
       - 'programme/dependency_graph.json'
       - 'programme/ci_reverse_dependencies.json'
       - 'tools/ci_reverse_dependencies.py'
+      - 'tools/zg000_reconcile.py'
       - 'tests/programme/**'
       - '.github/workflows/zg*.yml'
   workflow_dispatch:
+
+# Auto generations supersede only their own PR; manual runs are audit-only.
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('{0}-{1}-pr-{2}', github.repository, github.workflow, github.event.pull_request.number) || format('{0}-{1}-manual-{2}', github.repository, github.workflow, github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -44,8 +50,12 @@ jobs:
         with: {python-version: '3.13'}
       - name: Validate workflow ownership and source coverage
         run: python tools/ci_reverse_dependencies.py --validate
+      - name: Validate programme evidence state
+        run: python tools/validate_programme_state.py --validate
       - name: Regression-test representative impact selections
         run: python -m unittest discover -s tests/programme -p 'test_ci_reverse_dependencies.py' -v
+      - name: Regression-test exact-head dispatcher
+        run: python -m unittest discover -s tests/programme -p 'test_zg000_reconcile.py' -v
       - name: Emit audit table
         run: python tools/ci_reverse_dependencies.py --audit > ci-reverse-dependency-audit.md
       - uses: actions/upload-artifact@v4
@@ -62,14 +72,37 @@ jobs:
             : > changed-files.txt
           fi
           cat changed-files.txt
-      - name: Select only missing downstream workflow runs
+      - name: Select required downstream workflow coverage
         id: select
         run: python tools/ci_reverse_dependencies.py --changed-file-list changed-files.txt --github-output "$GITHUB_OUTPUT"
 
+
+  dispatcher-regression:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Validate dispatcher Python syntax
+        run: python -m py_compile tools/zg000_reconcile.py
+      - name: Run deterministic dispatcher/identity tests
+        run: python -m unittest discover -s tests/programme -p 'test_zg000_reconcile.py' -v
+
   dispatch:
-    needs: impact
+    needs: [impact, dispatcher-regression]
     if: >-
       needs.impact.outputs.has_work == 'true' &&
+      needs.dispatcher-regression.result == 'success' &&
       github.event_name == 'pull_request' &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
@@ -78,86 +111,32 @@ jobs:
       watch_matrix: ${{ steps.dispatch.outputs.watch_matrix }}
       has_runs: ${{ steps.dispatch.outputs.has_runs }}
     steps:
-      - name: Dispatch required downstream workflows serially
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Reconcile and dispatch exact-head downstream workflows serially
         id: dispatch
         env:
           GH_TOKEN: ${{ github.token }}
-          MATRIX_JSON: ${{ needs.impact.outputs.matrix }}
+          ZG000_MATRIX_JSON: ${{ needs.impact.outputs.matrix }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
           REF: ${{ github.event.pull_request.head.ref }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         shell: bash
         run: |
-          python - <<'PY'
-          import json
-          import os
-          import subprocess
-          import sys
-          import time
-
-          rows = json.loads(os.environ['MATRIX_JSON'])
-          repo = os.environ['GITHUB_REPOSITORY']
-          ref = os.environ['REF']
-          head_sha = os.environ['HEAD_SHA']
-
-          def run_gh(args):
-              cp = subprocess.run(['gh', *args], text=True, capture_output=True)
-              if cp.stdout:
-                  print(cp.stdout, end='')
-              if cp.stderr:
-                  print(cp.stderr, end='', file=sys.stderr)
-              return cp
-
-          def latest_for_head(workflow):
-              cp = run_gh([
-                  'run', 'list', '--repo', repo, '--workflow', workflow,
-                  '--branch', ref, '--event', 'workflow_dispatch', '--limit', '30',
-                  '--json', 'databaseId,headSha,createdAt',
-              ])
-              if cp.returncode:
-                  return None
-              candidates = [r for r in json.loads(cp.stdout or '[]') if r.get('headSha') == head_sha]
-              candidates.sort(key=lambda r: r.get('createdAt', ''), reverse=True)
-              return candidates[0]['databaseId'] if candidates else None
-
-          watch = []
-          for index, row in enumerate(rows):
-              workflow = row['workflow']
-              stable_id = row['stable_id']
-              before_id = latest_for_head(workflow)
-              print(f'Dispatching {workflow} ({stable_id}) at {ref} / {head_sha}; previous run: {before_id or "none"}')
-
-              dispatched = False
-              for attempt, delay in enumerate((0, 30, 90), start=1):
-                  if delay:
-                      print(f'Retrying dispatch after {delay}s backoff (attempt {attempt}/3)')
-                      time.sleep(delay)
-                  cp = run_gh(['workflow', 'run', workflow, '--repo', repo, '--ref', ref])
-                  if cp.returncode == 0:
-                      dispatched = True
-                      break
-              if not dispatched:
-                  raise SystemExit(f'workflow dispatch failed after bounded retries: {workflow}')
-
-              run_id = None
-              for delay in (10, 30, 60):
-                  time.sleep(delay)
-                  candidate = latest_for_head(workflow)
-                  if candidate is not None and candidate != before_id:
-                      run_id = candidate
-                      break
-              if run_id is None:
-                  raise SystemExit(f'dispatch succeeded but the new run could not be identified: {workflow}')
-
-              print(f'Recorded downstream run {run_id} for {workflow}')
-              watch.append({'workflow': workflow, 'stable_id': stable_id, 'run_id': str(run_id)})
-              if index + 1 < len(rows):
-                  time.sleep(5)
-
-          compact = json.dumps(watch, separators=(',', ':'))
-          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as out:
-              out.write(f'watch_matrix={compact}\n')
-              out.write(f'has_runs={"true" if watch else "false"}\n')
-          PY
+          python tools/zg000_reconcile.py dispatch \
+            --pr "$PR" --sha "$SHA" --ref "$REF" \
+            --manifest zg000-dispatch-manifest.json --github-output "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg000-dispatch-manifest
+          path: zg000-dispatch-manifest.json
+          if-no-files-found: warn
+          retention-days: 7
 
   watch:
     needs: [impact, dispatch]
@@ -173,17 +152,85 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 70
     steps:
-      - name: Require dispatched accepted workflow
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - name: Verify source and attempt before watching
         env:
           GH_TOKEN: ${{ github.token }}
-          WORKFLOW: ${{ matrix.workflow }}
-          STABLE_ID: ${{ matrix.stable_id }}
+          ROW_JSON: ${{ toJSON(matrix) }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          REF: ${{ github.event.pull_request.head.ref }}
+        shell: bash
+        run: python tools/zg000_reconcile.py verify-run --pr "$PR" --sha "$SHA" --ref "$REF" --row-json "$ROW_JSON"
+      - name: Wait for required downstream run without launching another
+        env:
+          GH_TOKEN: ${{ github.token }}
           RUN_ID: ${{ matrix.run_id }}
         shell: bash
+        run: gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --interval 30 --exit-status
+      - name: Verify authoritative terminal identity, attempt and result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ROW_JSON: ${{ toJSON(matrix) }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          REF: ${{ github.event.pull_request.head.ref }}
+          ZG000_REQUIRE_COMPLETE: 'true'
+        shell: bash
+        run: python tools/zg000_reconcile.py verify-run --pr "$PR" --sha "$SHA" --ref "$REF" --row-json "$ROW_JSON"
+
+  finalize:
+    needs: [impact, dispatcher-regression, dispatch, watch]
+    if: >-
+      always() &&
+      needs.impact.outputs.has_work == 'true' &&
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.13'}
+      - uses: actions/download-artifact@v4
+        if: needs.dispatch.result == 'success' || needs.dispatch.result == 'failure'
+        with:
+          name: zg000-dispatch-manifest
+          path: .
+      - name: Make final exact-head qualification decision
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          REF: ${{ github.event.pull_request.head.ref }}
+          WATCH_RESULT: ${{ needs.watch.result }}
+          DISPATCH_RESULT: ${{ needs.dispatch.result }}
+          REGRESSION_RESULT: ${{ needs.dispatcher-regression.result }}
+        shell: bash
         run: |
-          set -euo pipefail
-          echo "Waiting for $WORKFLOW ($STABLE_ID), run $RUN_ID"
-          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --interval 60 --exit-status
+          if [ "$DISPATCH_RESULT" != success ] || [ "$REGRESSION_RESULT" != success ]; then
+            echo "Required dispatcher or regression job failed: $DISPATCH_RESULT/$REGRESSION_RESULT" >&2
+            exit 1
+          fi
+          python tools/zg000_reconcile.py finalize --pr "$PR" --sha "$SHA" \
+            --ref "$REF" --watcher-result "$WATCH_RESULT" \
+            --manifest zg000-dispatch-manifest.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg000-reconciliation-final
+          path: zg000-dispatch-manifest.json
+          if-no-files-found: warn
+          retention-days: 7
 
   fork-policy:
     needs: impact
