@@ -79,8 +79,10 @@ The normal `/timeline` authoring screen now offers an **opt-in**, source-bound
 four-band rack editing slice. Enable the rack, add the existing gain,
 compression or bitcrush stage to one of the four spectral bands, edit its
 contract-defined numeric parameters, reorder stages with the keyboard-accessible
-Move up/Move down buttons, explicitly remove a supported built-in insert by
-stable ID, bypass stages/bands/the rack, and edit crossover frequencies,
+Move up/Move down buttons, reset a built-in insert's numeric parameters to
+contract defaults while preserving its ID, wet/bypass and order, explicitly
+remove a supported built-in insert by stable ID, bypass stages/bands/the rack,
+and edit crossover frequencies,
 wet and confinement. Existing opaque/unsupported insert payloads cannot be
 deleted through the built-in authoring control. A rack proposal is validated and memory
 admitted by the existing Timeline backend; the authoritative RuntimeSession
@@ -93,6 +95,9 @@ stored in that project, and can be recalled from its own source ancestor.
 An existing user preset can be explicitly renamed (display only) or replaced
 with the currently edited rack (sonic state and source provenance included);
 ordinary **Save new preset** never silently overwrites an existing ID.
+**Delete selected preset** requires confirmation, removes only a saved user
+preset (not the active processing rack), and preserves all source revisions
+and factory presets. Dismissing the confirmation makes no change.
 Select a saved preset and use **Export selected preset** to download a portable
 `.zgrack.json` carrying exact rack/sonic digests and source binding.
 **Import rack preset file** works even on a project with no installed rack.

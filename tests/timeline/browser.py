@@ -118,6 +118,22 @@ def main():
             changed_id=rendered('rack-gain-nine')
             changed_pcm=server.timeline.scheduler.result(changed_id).audio_bytes
             assert changed_pcm!=dry_pcm,'editing gain must alter actual rendered PCM'
+            # Reset built-in parameters without replacing the stage identity or
+            # overwriting the separately saved wet/bypass/source settings.
+            stage_before=saved('rack-before-parameter-reset.zgtimeline.json')
+            stage_before=json.loads(stage_before['project']['revisions'][-1]['recipe_json'])['rack']['bands'][1]['inserts'][0]
+            page.locator('#rack-editor .rack-band').nth(1).get_by_role(
+                'button',name='Reset parameters').click();ready()
+            stage_reset=saved('rack-after-parameter-reset.zgtimeline.json')
+            stage_reset=json.loads(stage_reset['project']['revisions'][-1]['recipe_json'])['rack']['bands'][1]['inserts'][0]
+            assert stage_reset['id']==stage_before['id'] and stage_reset['params']['gain_db']==0
+            assert stage_reset['wet']==stage_before['wet'] and stage_reset['bypass']==stage_before['bypass']
+            reset_id=rendered('rack-gain-parameter-reset')
+            assert server.timeline.scheduler.result(reset_id).audio_bytes!=changed_pcm
+            gain_field=page.locator('#rack-editor .rack-band').nth(1).locator('.rack-stage input[type=number]').last
+            gain_field.fill('9');gain_field.dispatch_event('change');ready()
+            reapply_id=rendered('rack-gain-restored-after-reset')
+            assert server.timeline.scheduler.result(reapply_id).audio_bytes==changed_pcm
             # Rack save is project-local, never a source/factory preset mutation.
             page.locator('#rack-editor').get_by_role('button',name='Save new preset').click();ready()
             rack_saved=saved('rack-processed.zgtimeline.json')
@@ -201,6 +217,22 @@ def main():
             page.get_by_role('button',name='Load',exact=True).click();ready()
             portable_id=rendered('rack-portable-recall')
             assert server.timeline.scheduler.result(portable_id).audio_bytes==changed_pcm
+            # Deletion requires user confirmation and only drops the saved
+            # preset inventory. Never rewrite the active rack or factory source.
+            page.get_by_label('Load saved preset').select_option('user.myrack')
+            delete_button=page.get_by_role('button',name='Delete selected preset')
+            page.once('dialog',lambda dialog:dialog.dismiss())
+            delete_button.click()
+            assert 'user.myrack' in saved('rack-preset-deletion-dismissed.zgtimeline.json')['project']['rack_presets']
+            page.once('dialog',lambda dialog:dialog.accept())
+            delete_button.click();ready()
+            after_delete=saved('rack-preset-deleted.zgtimeline.json')
+            assert 'user.myrack' not in after_delete['project']['rack_presets']
+            assert json.loads(after_delete['project']['revisions'][-1]['recipe_json'])['rack']==portable['rack']
+            post_delete_id=rendered('rack-after-preset-delete')
+            assert server.timeline.scheduler.result(post_delete_id).audio_bytes==changed_pcm
+            page.get_by_label('Import rack preset file').set_input_files(portable_path);ready()
+            assert 'user.myrack' in saved('rack-preset-reimported.zgtimeline.json')['project']['rack_presets']
             # Restore the pre-rack document so the following legacy
             # four-bar revision identity/save-reopen regression stays intact.
             page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json')

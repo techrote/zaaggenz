@@ -4,6 +4,7 @@ from copy import deepcopy
 import unittest
 from zaaggenz_timeline.model import default_document, compile_recipe
 from zaaggenz_timeline.rack_edit import edit_rack, editor_state
+from zaaggenz_contracts.rack import processor_definition
 
 
 class RackEditorTests(unittest.TestCase):
@@ -106,6 +107,62 @@ class RackEditorTests(unittest.TestCase):
         reopened = type(self.d).from_json(json.dumps(self.d.to_dict()))
         self.assertEqual(editor_state(reopened)["presets"][0]["name"], "Renamed")
 
+    def test_parameter_reset_retains_stage_identity_and_nonparameter_policy(self):
+        self.act(kind="enable")
+        band = editor_state(self.d)["value"]["bands"][1]["id"]
+        self.act(kind="add", band=band, type_id="zg.compression")
+        self.act(kind="add", band=band, type_id="zg.gain")
+        initial = editor_state(self.d)["value"]["bands"][1]["inserts"]
+        compressor_id, gain_id = [item["id"] for item in initial]
+        self.act(kind="set", scope="parameter", id=band + "/" + gain_id,
+                 field="gain_db", value=9.0)
+        self.act(kind="set", scope="insert", id=band + "/" + gain_id,
+                 field="wet", value=0.4)
+        self.act(kind="set", scope="insert", id=band + "/" + gain_id,
+                 field="bypass", value=True)
+        before = editor_state(self.d)["value"]
+        old_stage = before["bands"][1]["inserts"][1]
+        self.act(kind="reset_insert_params", band=band, id=gain_id)
+        after = editor_state(self.d)["value"]
+        new_stage = after["bands"][1]["inserts"][1]
+        self.assertEqual(new_stage["params"], {
+            key: value["default"] for key, value in
+            processor_definition("zg.gain")["parameters"].items()})
+        self.assertEqual({k: v for k, v in new_stage.items() if k != "params"},
+                         {k: v for k, v in old_stage.items() if k != "params"})
+        self.assertEqual(after["bands"][1]["inserts"][0],
+                         before["bands"][1]["inserts"][0])
+        self.assertEqual(after["source_binding"], before["source_binding"])
+        self.assertEqual(self.d.to_dict()["project"]["revisions"][0],
+                         self.old["project"]["revisions"][0])
+        self.assertEqual(editor_state(type(self.d).from_json(
+            json.dumps(self.d.to_dict())))["value"], after)
+
+    def test_delete_preset_leaves_active_rack_and_source_unmodified(self):
+        self.act(kind="enable")
+        band = editor_state(self.d)["value"]["bands"][1]["id"]
+        self.act(kind="add", band=band, type_id="zg.gain")
+        self.act(kind="save_preset", id="user.first", name="First")
+        self.act(kind="save_preset", id="user.second", name="Second")
+        before = self.d.to_dict()
+        with self.assertRaises(ValueError):
+            edit_rack(self.d, {"kind": "delete_preset", "id": "user.absent"})
+        self.assertEqual(self.d.to_dict(), before)
+        original_recipe = compile_recipe(self.d).to_dict()
+        self.act(kind="delete_preset", id="user.first")
+        self.assertEqual([row["id"] for row in editor_state(self.d)["presets"]],
+                         ["user.second"])
+        self.assertEqual(compile_recipe(self.d).to_dict(), original_recipe)
+        self.assertEqual(self.d.to_dict()["project"]["revisions"],
+                         before["project"]["revisions"])
+        reopened = type(self.d).from_json(json.dumps(self.d.to_dict()))
+        self.assertEqual(editor_state(reopened)["presets"][0]["id"], "user.second")
+        with self.assertRaises(ValueError):
+            edit_rack(reopened, {"kind": "load_preset", "id": "user.first"})
+        self.act(kind="delete_preset", id="user.second")
+        self.assertEqual(editor_state(self.d)["presets"], [])
+        self.assertEqual(compile_recipe(self.d).to_dict(), original_recipe)
+
     def test_portable_preset_import_preserves_source_and_hashes(self):
         self.act(kind="enable")
         band = editor_state(self.d)["value"]["bands"][2]["id"]
@@ -168,6 +225,11 @@ class RackEditorTests(unittest.TestCase):
             {"kind":"remove","band":band,"id":"missing"},
             {"kind":"remove","band":"unknown","id":iid},
             {"kind":"remove","band":band,"id":iid,"surprise":True},
+            {"kind":"reset_insert_params","band":band,"id":"missing"},
+            {"kind":"reset_insert_params","band":band,"id":iid,"surprise":True},
+            {"kind":"delete_preset","id":"user.absent"},
+            {"kind":"delete_preset","id":"../invalid"},
+            {"kind":"delete_preset","id":"user.absent","surprise":False},
             {"kind":"replace_preset","id":"unknown","name":"No"},
             {"kind":"rename_preset","id":"unknown","name":"No"},
             {"kind":"set","scope":"insert","id":band+"/missing","field":"wet","value":1},

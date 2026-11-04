@@ -69,13 +69,17 @@ export function renderRack(host,state,apply,tools={}){
       const buttons=group(block);
       button(buttons,'Move up',{kind:'move',band:band.id,id:stage.id,step:-1},apply,index===0);
       button(buttons,'Move down',{kind:'move',band:band.id,id:stage.id,step:1},apply,index===band.inserts.length-1);
-      if(state.parameters[stage.type_id] && stage.params!==null)
+      if(state.parameters[stage.type_id]){
+        button(buttons,'Reset parameters',{kind:'reset_insert_params',band:band.id,id:stage.id},apply);
         button(buttons,'Remove insert',{kind:'remove',band:band.id,id:stage.id},apply);
+      }
       flag(buttons,'Bypass insert',stage.bypass,set('insert',band.id+'/'+stage.id,'bypass'),apply);
       number(buttons,'Insert wet',stage.wet,mix,set('insert',band.id+'/'+stage.id,'wet'),apply);
       const params=state.parameters[stage.type_id];
       if(!params||stage.params===null){
-        block.append(make('p','Stored processor state preserved; specialized spectral or external controls are not yet implemented here.'));
+        block.append(make('p',params
+          ? 'No active parameter request; use Reset parameters to initialize the supported built-in defaults.'
+          : 'Stored processor state preserved; specialized spectral or external controls are not yet implemented here.'));
         return;
       }
       const fields=group(block);
@@ -121,6 +125,16 @@ function renderPresetTools(host,state,apply,tools){
   exported.title='Download exact source-bound preset; does not change the project.';
   exported.addEventListener('click',()=>{if(select.value)tools.exportPreset?.(select.value);});
   presets.append(exported);
+  const remove=make('button','Delete selected preset');remove.type='button';remove.disabled=true;
+  remove.title='Delete only this saved user preset; do not change the active rack or factory source.';
+  remove.addEventListener('click',()=>{
+    const selected=state.presets.find(item=>item.id===select.value);
+    if(selected&&window.confirm('Delete user rack preset "'+selected.name+'" ('+selected.id+
+      ')? Current rack and source will remain unchanged.')){
+      apply({kind:'delete_preset',id:selected.id});
+    }
+  });
+  presets.append(remove);
   const imported=make('label','Import rack preset file');
   const file=make('input');file.type='file';file.accept='.zgrack.json,.json,application/json';
   file.addEventListener('change',async()=>{
@@ -131,7 +145,7 @@ function renderPresetTools(host,state,apply,tools){
   presets.append(make('p','Portable imports require the matching source; modified hashes and duplicate IDs are rejected.'));
   select.addEventListener('change',()=>{
     const selected=state.presets.find(item=>item.id===select.value);
-    replace.disabled=rename.disabled=exported.disabled=!selected;
+    replace.disabled=rename.disabled=exported.disabled=remove.disabled=!selected;
     if(selected)name.value=selected.name;
   });
 }

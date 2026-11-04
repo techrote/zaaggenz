@@ -164,6 +164,14 @@ def rename_preset(project, identifier, name):
     _install_presets(project, presets)
 
 
+def delete_preset(project, identifier):
+    """Delete only a user-owned preset; leave the current rack and revisions intact."""
+    read_preset(project, identifier)
+    presets = deepcopy(project._rack_presets)
+    del presets[identifier]
+    _install_presets(project, presets)
+
+
 def apply_preset(project, identifier):
     rack = RackRecipe(read_preset(project, identifier)['rack'])
     # with_rack enforces the existing source identity; no source parameter edits.

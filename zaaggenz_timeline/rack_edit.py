@@ -114,6 +114,15 @@ def _update(project, action):
         target = index + action["step"]
         band["inserts"][index], band["inserts"][target] = (
             band["inserts"][target], band["inserts"][index])
+    elif kind == "reset_insert_params":
+        exact(action, {"kind", "band", "id"}, "reset insert parameters")
+        stage = _insert(_band(rack, action["band"]), action["id"])
+        if stage["type_id"] not in EDITABLE:
+            raise TimelineError("only supported built-in parameters can be reset")
+        # Parameter reset is not stage replacement: stable ID, wet/bypass,
+        # order, labels and source binding are all retained verbatim.
+        definitions = processor_definition(stage["type_id"])["parameters"]
+        stage["params"] = {name: definition["default"] for name, definition in definitions.items()}
     elif kind == "remove":
         exact(action, {"kind", "band", "id"}, "remove insert")
         band = _band(rack, action["band"])
@@ -164,6 +173,9 @@ def edit_rack(document, action):
         if type(action["id"]) is not str:
             raise TimelineError("rack preset id must be a string")
         project.rename_rack_preset(action["id"], action["name"])
+    elif kind == "delete_preset":
+        exact(action, {"kind", "id"}, "delete rack preset")
+        project.delete_rack_preset(action["id"])
     elif kind == "import_preset":
         # An imported snapshot has no permission to rebind a different source,
         # inject a revision, or silently replace an existing user preset.
@@ -182,7 +194,7 @@ def edit_rack(document, action):
             raise TimelineError("portable rack preset digest mismatch")
         # Project proves retained no-rack ancestry and exact source binding.
         project.save_rack_preset(record["id"], record["name"], imported)
-    elif kind in ("set", "add", "move", "remove"):
+    elif kind in ("set", "add", "move", "remove", "reset_insert_params"):
         _update(project, action)
     else:
         raise TimelineError("unsupported rack action")
