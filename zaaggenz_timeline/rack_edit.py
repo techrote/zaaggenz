@@ -76,7 +76,7 @@ def _update(project, action):
                 if field not in ("bypass", "wet"):
                     raise TimelineError("unsupported insert control")
                 stage[field] = value
-            else:
+            elif scope == "parameter":
                 definitions = processor_definition(stage["type_id"]).get("parameters", {})
                 if stage["type_id"] not in EDITABLE or field not in definitions:
                     raise TimelineError("unsupported processor parameter")
