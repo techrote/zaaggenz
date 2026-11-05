@@ -82,9 +82,11 @@ class SampledLfoTests(unittest.TestCase):
         with self.assertRaisesRegex(ContractError, 'zero-level onset'):
             SampledLfoSource(origin_s='1/8', phase_cycles='0/1',
                              grid_s='1/8').compile_route('1/2', route_id='no-leak')
-        # Count the explicit onset against the same frozen lane budget.
+        # A delayed origin contributes one counted point. The exact 256
+        # boundary remains legal; one further grid point must be refused.
+        self.assertEqual(len(source.compile_route('256/8', route_id='boundary').points), 256)
         with self.assertRaises(ContractError):
-            source.compile_route('256/8', route_id='over-budget')
+            source.compile_route('257/8', route_id='over-budget')
 
     def test_non_grid_turning_points_are_exact_at_intermediate_times(self):
         source = SampledLfoSource(frequency='3/2', grid_s='1/10')
