@@ -110,7 +110,12 @@ def compile_upstream_rms_route(
     windows = (policy.frames + policy.window_frames - 1) // policy.window_frames
     # The accepted route has <=256 actual points. The initial window
     # supplies route.initial; windows after the first supply points.
-    require(windows <= MAX_POINTS + 1, 'upstream RMS control budget exceeded')
+    # A delayed source must first publish a neutral route, then a transition
+    # at the true physical-time origin. This consumes an extra Point slot.
+    origin = Fraction(policy.origin_s)
+    delayed = bool(windows) and origin > 0
+    require(windows + int(delayed) <= MAX_POINTS + 1,
+            'upstream RMS control budget exceeded')
     source = raw if raw.ndim == 1 else raw[:, policy.channel]
     scale = float(Fraction(policy.reference_amplitude))
     levels = []
@@ -132,10 +137,14 @@ def compile_upstream_rms_route(
               qtext(levels[k]))
         for k in range(1, windows)
     )
-    # Empty source yields a neutral, static zero control. A zero depth
-    # remains static clock semantics, *not* dry bypass.
+    # ModulationRoute.initial applies from absolute time zero. Publishing the
+    # first measured window there for a delayed source would leak future audio
+    # into the clock before the source exists. Insert an explicit transition
+    # at origin, and remain neutral before it; preserve zero-origin byte output.
+    if delayed:
+        points = (Point(qtext(origin), qtext(levels[0])),) + points
     route = ModulationRoute(id=route_id, mapping=mapping, depth=depth,
-                            initial=qtext(levels[0]) if levels else '0/1',
+                            initial='0/1' if delayed or not levels else qtext(levels[0]),
                             points=points, interpolation='step')
     if cancelled is not None and cancelled():
         raise ClockCancelled('upstream RMS cancelled before route publication')
@@ -149,5 +158,7 @@ def compile_upstream_rms_route(
                      'lookahead_s': qtext(Fraction(policy.window_frames,
                                                   policy.sample_rate_hz)),
                      'selected_channel': policy.channel,
-                     'interpolation': 'step', 'clipping': 'reject'},
+                     'interpolation': 'step',
+                     'pre_origin_control': 'neutral_zero' if delayed else 'not_applicable',
+                     'clipping': 'reject'},
     )
