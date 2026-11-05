@@ -96,6 +96,9 @@ class Reconciler:
         self.api, self.repo, self.pr, self.sha, self.ref = api, repo, pr, sha, ref
         self.rows, self.run_id, self.sleep = rows, run_id, sleep
         self.workflow_ids: dict[str, int] = {}
+        # Inventory IDs before every POST, including cancelled runs. A run seen
+        # before an ambiguous POST cannot be presented as its new evidence.
+        self.prior_run_ids: dict[str, set[int]] = {}
         self.manifest: dict[str, Any] = {
             "schema": "zg000-dispatch-v1", "repo": repo, "pr": pr,
             "requested_sha": sha, "current_pr_sha": None, "source_ref": ref,
@@ -180,6 +183,11 @@ class Reconciler:
             candidates.append(run)
         if data.get("total_count", 0) > 100:
             raise ReconcileError(f"{workflow}: exact-head inventory exceeds single-page bound")
+        # Record every listed ID, not just accepted candidates. The next POST
+        # must not adopt an older cancelled or mismatched run after ambiguity.
+        if any(not isinstance(run, dict) or not isinstance(run.get("id"), int) for run in runs):
+            raise ReconcileError(f"{workflow}: invalid pre-dispatch run inventory")
+        self.prior_run_ids[workflow] = {run["id"] for run in runs}
         if not candidates:
             return "missing_or_cancelled", None
         # Latest run/attempt is authoritative: old green may not hide new red.
@@ -197,10 +205,78 @@ class Reconciler:
         raise QualificationFailed(f"{workflow}: latest exact-head run {detail['id']} is "
                                   f"{detail['status']}/{detail.get('conclusion')}; explicit repair required")
 
+    def recover_ambiguous_post(self, row: dict, cause: ReconcileError) -> dict:
+        """Read-only, bounded reconciliation after an uncertain POST outcome.
+
+        A second POST is forbidden. Only ONE newly visible, independently
+        verified exact-head run (absent from the pre-POST inventory) can be
+        adopted. Missing, wrong-source or multiple new runs leave the gate
+        blocked rather than guessing which mutation took place.
+        """
+        workflow = row["workflow"]
+        before = self.prior_run_ids.get(workflow)
+        if before is None:
+            raise ReconcileError(f"{workflow}: missing pre-POST inventory") from cause
+        self.manifest["decisions"].append({
+            "workflow": workflow, "decision": "ambiguous_post",
+            "reason": str(cause),
+            "policy": "read-only reconciliation; never retry POST",
+        })
+        query = urlencode({"event": "workflow_dispatch", "head_sha": self.sha, "per_page": 100})
+        for delay in (0, 2, 5, 10, 20):
+            if delay:
+                self.sleep(delay)
+            self.check_head()
+            try:
+                data = self.api.request(
+                    "GET", self.api_path(f"actions/workflows/{workflow}/runs?{query}"))
+            except ReconcileError:
+                continue  # Bounded read-only API recovery. No second POST.
+            runs = data.get("workflow_runs")
+            if not isinstance(runs, list) or not isinstance(data.get("total_count"), int):
+                raise ReconcileError(f"{workflow}: malformed post-dispatch inventory") from cause
+            if data["total_count"] > 100 or len(runs) > 100:
+                raise ReconcileError(f"{workflow}: post-dispatch inventory exceeds bound") from cause
+            if any(not isinstance(run, dict) or not isinstance(run.get("id"), int) for run in runs):
+                raise ReconcileError(f"{workflow}: invalid post-dispatch run inventory") from cause
+            newly_visible = [run for run in runs if run["id"] not in before]
+            if len(newly_visible) > 1:
+                raise ReconcileError(
+                    f"{workflow}: ambiguous POST followed by multiple new runs; no attribution") from cause
+            if not newly_visible:
+                continue
+            candidate = newly_visible[0]
+            # Verify the list result and authoritative run detail independently.
+            self.verify(row, candidate)
+            try:
+                detail = self.get_run(candidate["id"])
+            except ReconcileError:
+                continue
+            self.verify(row, detail)
+            if detail["run_attempt"] != candidate["run_attempt"]:
+                raise ReconcileError(
+                    f"{workflow}: attempt changed while reconciling ambiguous POST") from cause
+            self.check_head()
+            self.manifest["decisions"].append({
+                "workflow": workflow, "decision": "ambiguous_post_reconciled",
+                "run_id": detail["id"], "run_attempt": detail["run_attempt"],
+            })
+            # This is an observed run, not proof the uncertain POST created it.
+            return detail
+        raise ReconcileError(
+            f"{workflow}: ambiguous POST not reconciled to one newly visible exact-head run; "
+            "no mutation retried") from cause
+
     def dispatch_one(self, row: dict) -> dict:
         workflow = row["workflow"]
-        response = self.api.request("POST", self.api_path(f"actions/workflows/{workflow}/dispatches"),
-                                    {"ref": self.ref})
+        try:
+            response = self.api.request(
+                "POST", self.api_path(f"actions/workflows/{workflow}/dispatches"),
+                {"ref": self.ref})
+        except ReconcileError as exc:
+            # A transport/CLI failure cannot prove whether GitHub dispatched.
+            # Reconcile only pre/post IDs at this exact source, without POSTing.
+            return self.recover_ambiguous_post(row, exc)
         run_id = response.get("workflow_run_id")
         if not isinstance(run_id, int) or run_id < 1:
             raise ReconcileError(f"{workflow}: dispatch returned no authoritative run ID; do not retry")
