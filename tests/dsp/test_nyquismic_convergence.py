@@ -182,6 +182,57 @@ class FrozenConvergenceTests(unittest.TestCase):
         self.assertFalse(result.diagnostics['successive_metrics'][-1]['within_limits'])
         self.assertGreater(result.diagnostics['successive_metrics'][-1]['relative_rms'], 1.)
 
+    def test_quiet_stereo_channel_error_never_hidden_by_loud_channel(self):
+        # A quiet stereo channel is not expendable. Pooling channels before
+        # the RMS/spectral/transient comparison wrongly passes this 50%
+        # attenuation when the other channel is a trillion times louder.
+        # Per-channel normalization must also avoid squared-signal underflow
+        # at very small but exactly nonzero amplitudes.
+        from zaaggenz_dsp.nyquismic_convergence import _metrics
+        t = np.arange(256, dtype=np.float64)
+        tone = np.sin(2 * np.pi * 7 * t / 256)
+        for amplitude in (1e-12, 1e-250):
+            with self.subTest(amplitude=amplitude):
+                reference = np.column_stack((tone, tone * amplitude))
+                changed = np.column_stack((tone, tone * amplitude * .5))
+                metrics = _metrics(changed, reference)
+                for name in ('relative_rms', 'relative_spectrum',
+                             'relative_transient'):
+                    self.assertGreater(metrics[name], .49)
+                self.assertFalse(metrics['null_signal'])
+                self.assertEqual(metrics['zero_reference_metrics'], ())
+
+        def losing_quiet_channel(rate):
+            item = candidate(rate)
+            pcm = np.column_stack((item.audio, item.audio * 1e-12))
+            if rate == RATES[-1]:
+                pcm[:, 1] *= .5
+            return NumericalCandidate(rate, pcm, **HASHES)
+
+        result = evaluate_local_convergence(
+            losing_quiet_channel, **HASHES,
+            policy=FrozenConvergencePolicy(
+                relative_rms_limit=.12,
+                relative_spectrum_limit=.12,
+                relative_transient_limit=.25),
+        )
+        self.assertEqual(result.status, 'inconclusive')
+        self.assertIsNone(result.selected_audio)
+        failed = result.diagnostics['successive_metrics'][-1]
+        self.assertFalse(failed['within_limits'])
+        self.assertGreater(failed['relative_rms'], .49)
+
+    def test_zero_reference_is_channel_specific_even_beside_loud_signal(self):
+        from zaaggenz_dsp.nyquismic_convergence import _metrics
+        tone = np.sin(2 * np.pi * 7 * np.arange(256) / 256)
+        reference = np.column_stack((tone, np.zeros_like(tone)))
+        changed = np.column_stack((tone, tone * 1e-250))
+        metrics = _metrics(changed, reference)
+        self.assertIn('rms_ch1', metrics['zero_reference_metrics'])
+        self.assertIn('spectrum_ch1', metrics['zero_reference_metrics'])
+        self.assertIn('transient_ch1', metrics['zero_reference_metrics'])
+        self.assertGreater(metrics['relative_rms'], 0.)
+
     def test_last_comparator_mismatch_cannot_publish_qualified_pcm(self):
         result = evaluate_local_convergence(
             lambda rate: candidate(rate, corrupt=True), **HASHES,
