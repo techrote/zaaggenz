@@ -148,6 +148,40 @@ class FrozenConvergenceTests(unittest.TestCase):
         self.assertIsNotNone(result.selected_audio)
         self.assertGreater(float(np.sqrt(np.mean(result.selected_audio ** 2))), .6)
 
+    def test_stereo_phase_inversion_is_detected_despite_identical_magnitude_spectra(self):
+        # Independent channel phase matters: averaged/magnitude-only spectra
+        # cannot certify an otherwise audibly inverted channel as identical.
+        from zaaggenz_dsp.nyquismic_convergence import _metrics
+        t = np.arange(256, dtype=np.float64)
+        tone = np.sin(2 * np.pi * 7 * t / 256)
+        reference = np.column_stack((tone, tone))
+        flipped = np.column_stack((tone, -tone))
+        measurements = _metrics(flipped, reference)
+        self.assertAlmostEqual(measurements['relative_spectrum'], 0., places=10)
+        self.assertGreater(measurements['relative_rms'], 1.)
+        self.assertGreater(measurements['relative_transient'], 1.)
+        self.assertFalse(measurements['null_signal'])
+
+        def inverted_last_channel(rate):
+            item = candidate(rate)
+            pcm = np.column_stack((item.audio, item.audio))
+            if rate == RATES[-1]:
+                pcm[:, 1] *= -1
+            return NumericalCandidate(rate, pcm, **HASHES)
+
+        result = evaluate_local_convergence(
+            inverted_last_channel, **HASHES,
+            policy=FrozenConvergencePolicy(
+                relative_rms_limit=.12,
+                relative_spectrum_limit=.12,
+                relative_transient_limit=.25,
+            ),
+        )
+        self.assertEqual(result.status, 'inconclusive')
+        self.assertIsNone(result.selected_audio)
+        self.assertFalse(result.diagnostics['successive_metrics'][-1]['within_limits'])
+        self.assertGreater(result.diagnostics['successive_metrics'][-1]['relative_rms'], 1.)
+
     def test_last_comparator_mismatch_cannot_publish_qualified_pcm(self):
         result = evaluate_local_convergence(
             lambda rate: candidate(rate, corrupt=True), **HASHES,
