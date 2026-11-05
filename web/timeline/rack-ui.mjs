@@ -79,12 +79,26 @@ export function renderRack(host,state,apply,tools={}){
   // only within the same immutable project ancestry. A newly imported source
   // must not silently inherit a draft preset ID or selection from another.
   const oldPreset=host.querySelector('.rack-presets');
-  const presetDraft=oldPreset&&state?.working_context&&
-    oldPreset.dataset.workingContext===state.working_context
+  const sameProject=Boolean(oldPreset&&state?.working_context&&
+    oldPreset.dataset.workingContext===state.working_context);
+  const presetDraft=sameProject
     ?{name:oldPreset.querySelector('[data-preset-field="name"]')?.value,
       id:oldPreset.querySelector('[data-preset-field="id"]')?.value,
       selected:oldPreset.querySelector('[data-preset-field="selected"]')?.value}
     :null;
+  // Specialist add forms are not yet authoritative processing state. Retain
+  // typed values across unrelated validated rack edits, but never carry them
+  // into another source/project or onto a different stable insert identity.
+  const spectralDrafts=new Map();
+  if(sameProject)for(const panel of host.querySelectorAll('.rack-spectral[data-insert-id]')){
+    const get=key=>panel.querySelector('[data-rack-draft="'+key+'"]')?.value;
+    spectralDrafts.set(panel.dataset.insertId,{
+      voiceCount:Number(panel.dataset.voiceCount),
+      segmentCount:Number(panel.dataset.segmentCount),
+      voiceDegree:get('voice-degree'),voiceLabel:get('voice-label'),
+      segmentStart:get('segment-start'),segmentLabel:get('segment-label'),
+    });
+  }
   host.replaceChildren();
   if(!state){host.append(make('p','Rack metadata is unavailable; refresh the validated revision.'));return;}
   const top=group(host);
@@ -166,6 +180,9 @@ export function renderRack(host,state,apply,tools={}){
         }
         const details=make('details');details.className='rack-spectral';
         details.dataset.insertId=stage.id;
+        details.dataset.voiceCount=String(request.voices?.length??0);
+        details.dataset.segmentCount=String(request.segments?.length??0);
+        const draft=spectralDrafts.get(stage.id);
         details.open=openSpectral.has(stage.id);
         block.append(details);
         details.append(make('summary',retune
@@ -234,10 +251,20 @@ export function renderRack(host,state,apply,tools={}){
           const adding=group(details);
           const degreeLabel=make('label','Additional target degree');
           const newDegree=make('input');newDegree.type='number';newDegree.step='1';
-          newDegree.min='-4096';newDegree.max='4096';newDegree.value='0';
+          newDegree.min='-4096';newDegree.max='4096';
+          newDegree.dataset.rackDraft='voice-degree';
+          newDegree.dataset.rackControlKey=controlKey({kind:'spectral_draft',
+            id:stage.id,field:'voice-degree'});
+          newDegree.value=draft?.voiceCount===request.voices.length
+            ?(draft.voiceDegree??'0'):'0';
           degreeLabel.append(newDegree);adding.append(degreeLabel);
           const nameLabel=make('label','Additional voice label');
-          const newName=make('input');newName.maxLength=64;newName.value='Additional target';
+          const newName=make('input');newName.maxLength=64;
+          newName.dataset.rackDraft='voice-label';
+          newName.dataset.rackControlKey=controlKey({kind:'spectral_draft',
+            id:stage.id,field:'voice-label'});
+          newName.value=draft?.voiceCount===request.voices.length
+            ?(draft.voiceLabel??'Additional target'):'Additional target';
           nameLabel.append(newName);adding.append(nameLabel);
           const addVoice=make('button','Add retune voice');addVoice.type='button';
           addVoice.disabled=request.voices.length>=32;
@@ -278,13 +305,24 @@ export function renderRack(host,state,apply,tools={}){
           const startLabel=make('label','New segment start sample');
           const startInput=make('input');startInput.type='number';
           startInput.min='1';startInput.max='691200000';startInput.step='1';
+          startInput.dataset.rackDraft='segment-start';
+          startInput.dataset.rackControlKey=controlKey({kind:'spectral_draft',
+            id:stage.id,field:'segment-start'});
           const lastSegment=request.segments.at(-1);
-          startInput.value=String(Math.min(691200000,
+          startInput.value=draft?.segmentCount===request.segments.length
+            ?(draft.segmentStart??''):String(Math.min(691200000,
+              (lastSegment?.start_sample||0)+Math.max(1,Math.round(rack.sample_rate_hz/4))));
+          if(startInput.value==='')startInput.value=String(Math.min(691200000,
             (lastSegment?.start_sample||0)+Math.max(1,Math.round(rack.sample_rate_hz/4))));
           startLabel.append(startInput);segmentAdd.append(startLabel);
           const segmentNameLabel=make('label','New segment label');
-          const segmentName=make('input');segmentName.value='Target change';
-          segmentName.maxLength=64;segmentNameLabel.append(segmentName);
+          const segmentName=make('input');segmentName.maxLength=64;
+          segmentName.dataset.rackDraft='segment-label';
+          segmentName.dataset.rackControlKey=controlKey({kind:'spectral_draft',
+            id:stage.id,field:'segment-label'});
+          segmentName.value=draft?.segmentCount===request.segments.length
+            ?(draft.segmentLabel??'Target change'):'Target change';
+          segmentNameLabel.append(segmentName);
           segmentAdd.append(segmentNameLabel);
           const addSegment=make('button','Add retune segment');
           addSegment.type='button';addSegment.disabled=request.segments.length>=64;
