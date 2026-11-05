@@ -445,6 +445,7 @@ class RackEditorTests(unittest.TestCase):
 
         before = self.d.to_dict()
         stale = deepcopy(previous[0])
+        stale["label"] = "Superseded snapshot"
         wrong_stage = "unknown"
         bad = [
             {"kind":"add_spectral_segment","band":band,"id":sid,
