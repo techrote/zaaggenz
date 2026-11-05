@@ -458,8 +458,12 @@ class SampledLfoSource(_Record):
         end = rational_value(end_s, 'sampled LFO end seconds', start, MAX_TIME_S)
         grid = Fraction(self.grid_s)
         frequency = Fraction(self.frequency)
+        # A saved tempo change strictly after this requested region cannot
+        # increase its control bandwidth. Including future BPM falsely rejects
+        # a well-resolved short preview despite an unchanged physical phase.
         fastest_bpm = max((Fraction(self.base_bpm),
-                           *(Fraction(p.value) for p in self.tempo_points)))
+                           *(Fraction(p.value) for p in self.tempo_points
+                             if Fraction(p.time_s) < end)))
         cycles_per_s = (frequency if self.mode == 'free_hz'
                         else frequency * fastest_bpm / 60)
         # Sampling too few control points aliases or entirely erases triangle
