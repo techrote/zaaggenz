@@ -22,6 +22,10 @@ function number(parent,label,current,meta,action,apply){
        meta.exclusiveMinimum!==undefined&&value<=meta.exclusiveMinimum){
       node.setCustomValidity(label+' must be greater than '+
         meta.exclusiveMinimum+(meta.unit?' '+meta.unit:'')+'.');
+    }else if(node.value!==''&&Number.isFinite(value)&&
+       meta.exclusiveMaximum!==undefined&&value>=meta.exclusiveMaximum){
+      node.setCustomValidity(label+' must be less than '+
+        meta.exclusiveMaximum+(meta.unit?' '+meta.unit:'')+'.');
     }
     if(!node.reportValidity()||node.value===''||!Number.isFinite(value))return;
     apply({...action,value});
@@ -67,9 +71,17 @@ export function renderRack(host,state,apply,tools={}){
   number(top,'Rack wet',rack.wet,mix,set('rack','rack','wet'),apply);
   button(top,'Remove rack (dry)',{kind:'reset'},apply);
   const crossings=group(host);
-  rack.crossovers.frequencies_hz.forEach((frequency,index)=>{
+  const crossovers=rack.crossovers.frequencies_hz;
+  crossovers.forEach((frequency,index)=>{
+    // The executable rack accepts 20 <= low < mid < high < 0.49*Fs.
+    // HTML min/max are inclusive. Reject equality with either neighbor
+    // before submitting an authoritative rack-edit proposal; never clamp.
+    const upper=index===crossovers.length-1
+      ?0.49*rack.sample_rate_hz:crossovers[index+1];
     number(crossings,'Crossover '+(index+1),frequency,
-      {type:'number',minimum:20,maximum:rack.sample_rate_hz/2,unit:'Hz'},
+      {type:'number',minimum:20,maximum:upper,
+        exclusiveMinimum:index===0?undefined:crossovers[index-1],
+        exclusiveMaximum:upper,unit:'Hz'},
       set('crossover',index,'frequency_hz'),apply);
   });
   for(const band of rack.bands){

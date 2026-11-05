@@ -110,6 +110,34 @@ def main():
             page.locator('#rack-meter-panel').evaluate('(e)=>e.open=true')
             expect(page.locator('#rack-meters')).to_contain_text('dry source path')
             page.locator('#rack-editor').get_by_role('button',name='Enable four-band rack').click();ready()
+            # Crossover UI admission mirrors the exact DSP contract: strictly
+            # increasing neighbors and a strict 0.49*Fs high ceiling. Rejected
+            # controls cannot publish a new revision or silently clamp values.
+            crossover_before=saved('rack-crossovers-before.zgtimeline.json')
+            crossover_identity=server.timeline.session.current_identity()
+            initial_crossovers=json.loads(
+                crossover_before['project']['revisions'][-1]['recipe_json'])['rack']['crossovers']['frequencies_hz']
+            mid=page.locator('#rack-editor').get_by_label('Crossover 2',exact=False)
+            high=page.locator('#rack-editor').get_by_label('Crossover 3',exact=False)
+            high.fill(str(int(0.49*args.sample_rate)))
+            high.dispatch_event('change')
+            assert high.evaluate('(e)=>e.validity.customError')
+            assert 'must be less than' in high.evaluate('(e)=>e.validationMessage')
+            assert saved('rack-crossover-ceiling-rejected.zgtimeline.json')==crossover_before
+            assert server.timeline.session.current_identity()==crossover_identity
+            mid.fill(str(initial_crossovers[2]));mid.dispatch_event('change')
+            assert mid.evaluate('(e)=>e.validity.customError')
+            assert 'must be less than' in mid.evaluate('(e)=>e.validationMessage')
+            assert saved('rack-crossover-order-rejected.zgtimeline.json')==crossover_before
+            assert server.timeline.session.current_identity()==crossover_identity
+            mid.fill('650');mid.dispatch_event('change');ready()
+            changed_crossovers=saved('rack-crossover-valid.zgtimeline.json')
+            assert json.loads(changed_crossovers['project']['revisions'][-1]['recipe_json'])['rack']['crossovers']['frequencies_hz'][1]==650
+            assert changed_crossovers!=crossover_before
+            # Restore the initial numerical routing before the established
+            # dry-versus-processed PCM and persistence acceptance sequence.
+            mid=page.locator('#rack-editor').get_by_label('Crossover 2',exact=False)
+            mid.fill(str(initial_crossovers[1]));mid.dispatch_event('change');ready()
             lowmid=page.locator('#rack-editor .rack-band').nth(1)
             lowmid.get_by_role('button',name='Add gain').click();ready()
             gain_field=page.locator('#rack-editor .rack-band').nth(1).locator('.rack-stage input[type=number]').last

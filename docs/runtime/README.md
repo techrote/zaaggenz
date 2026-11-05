@@ -116,6 +116,12 @@ as preserved but not falsely advertised as editable. External VST3 hosting
 remains outside Phase A and is not implied.
 
 
+Crossover numeric controls enforce the executable rack's actual ordered
+frequency contract before submitting an edit: 20 Hz ≤ low < mid < high <
+0.49 × project sample rate. Equal neighboring frequencies or a high crossover
+at the strict ceiling produce a field-level validation error, not silent
+clamping or a new revision. The backend remains the authoritative validator.
+
 ### Measured completed rack diagnostics (MBR-003 partial)
 The expandable **Measured rack output** area displays actual per-band input,
 post-band-wet, and routed-output peak/RMS readings from the selected, completed
