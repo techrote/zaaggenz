@@ -53,6 +53,23 @@ class NYQ004ControlTests(unittest.TestCase):
             with self.subTest(values=values), self.assertRaises(ContractError):
                 nearest_ladder_hz(Fraction(1), values)
 
+    def test_near_midpoint_quantization_is_exact_after_control_evaluation(self):
+        # This is NOT an exact tie. A rounded 80-digit comparison collapses
+        # distances 1 +/- 1e-90 to the same Decimal and incorrectly chooses
+        # the lower level. Fraction and Decimal inputs represent completed
+        # control values and must use their exact published value for selection.
+        levels = ('100/1', '102/1')
+        epsilon = Fraction(1, 10 ** 90)
+        midpoint = Fraction(101)
+        self.assertEqual(nearest_ladder_hz(midpoint, levels), Fraction(100))
+        self.assertEqual(nearest_ladder_hz(midpoint - epsilon, levels), Fraction(100))
+        self.assertEqual(nearest_ladder_hz(midpoint + epsilon, levels), Fraction(102))
+        upper_decimal = Decimal('101.' + '0' * 89 + '1')
+        self.assertEqual(nearest_ladder_hz(upper_decimal, levels), Fraction(102))
+        # No evaluation-rate-dependent scale or fallback at large positive Hz.
+        self.assertEqual(nearest_ladder_hz(Fraction(1_000_001, 10), levels),
+                         Fraction(102))
+
     def test_seeded_jitter_linked_and_independent_physical_cells(self):
         jitter = JitterSpec(model='uniform_frequency_cells_v1', amount=.125,
                             cell_s='1/1000', seed='152', stream='clock')
