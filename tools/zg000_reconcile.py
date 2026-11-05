@@ -146,8 +146,8 @@ class Reconciler:
             if run.get(key) != value:
                 raise ReconcileError(f"{workflow} run {run.get('id')}: {key}="
                                      f"{run.get(key)!r}, required {value!r}")
-        if not isinstance(run.get("id"), int) or not isinstance(run.get("run_attempt"), int) \
-                or run["run_attempt"] < 1:
+        if (type(run.get("id")) is not int or run["id"] < 1
+                or type(run.get("run_attempt")) is not int or run["run_attempt"] < 1):
             raise ReconcileError(f"{workflow}: missing run ID/attempt")
         status = run.get("status")
         if status not in TERMINAL | ACTIVE:
@@ -235,6 +235,11 @@ class Reconciler:
             "policy": "read-only reconciliation; never retry POST",
         })
         query = urlencode({"event": "workflow_dispatch", "head_sha": self.sha, "per_page": 100})
+        # A newly visible run might not be the only new run: workflow listings
+        # are eventually consistent. Require two separately verified complete
+        # inventories before accepting uniqueness. This is bounded evidence,
+        # not proof of POST attribution or globally atomic discovery.
+        observed: tuple[int, int] | None = None
         for delay in (0, 2, 5, 10, 20):
             if delay:
                 self.sleep(delay)
@@ -258,6 +263,9 @@ class Reconciler:
                 raise ReconcileError(
                     f"{workflow}: ambiguous POST followed by multiple new runs; no attribution") from cause
             if not newly_visible:
+                if observed is not None:
+                    raise ReconcileError(
+                        f"{workflow}: new run disappeared during ambiguous POST confirmation") from cause
                 continue
             candidate = newly_visible[0]
             # Verify the list result and authoritative run detail independently.
@@ -265,11 +273,19 @@ class Reconciler:
             try:
                 detail = self.get_run(candidate["id"])
             except ReconcileError:
+                observed = None  # A missing detail is not a validated observation.
                 continue
             self.verify(row, detail)
             if detail["run_attempt"] != candidate["run_attempt"]:
                 raise ReconcileError(
                     f"{workflow}: attempt changed while reconciling ambiguous POST") from cause
+            identity = (detail["id"], detail["run_attempt"])
+            if observed is None:
+                observed = identity
+                continue  # A second complete inventory must corroborate it.
+            if observed != identity:
+                raise ReconcileError(
+                    f"{workflow}: candidate identity changed during ambiguous POST confirmation") from cause
             self.check_head()
             self.manifest["decisions"].append({
                 "workflow": workflow, "decision": "ambiguous_post_reconciled",
@@ -294,7 +310,7 @@ class Reconciler:
             # Reconcile only pre/post IDs at this exact source, without POSTing.
             return self.recover_ambiguous_post(row, exc)
         run_id = response.get("workflow_run_id")
-        if not isinstance(run_id, int) or run_id < 1:
+        if type(run_id) is not int or run_id < 1:
             raise ReconcileError(f"{workflow}: dispatch returned no authoritative run ID; do not retry")
         self.manifest["dispatched"] += 1
         self.manifest["decisions"].append({"workflow": workflow, "decision": "dispatch_issued", "run_id": run_id})
