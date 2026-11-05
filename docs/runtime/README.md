@@ -124,6 +124,10 @@ clamping or a new revision. The backend remains the authoritative validator.
 
 Rack controls use stable action identities to retain the keyboard's active
 input/button after a successful asynchronous, server-validated rack redraw.
+This includes specialist retune voice labels, partial-ratio text fields and
+timed-target labels, not only ordinary numeric controls. Invalid text retains
+its native field-level validation; valid edits use the same authoritative
+revision and save/reopen contracts.
 This is a focus-management aid only: the accepted Project/rack revision,
 processing order, source identity and export do not depend on browser focus.
 If the active control disappears or becomes disabled (e.g. removing a stage),

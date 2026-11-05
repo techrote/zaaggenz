@@ -476,6 +476,14 @@ def main():
             second=spectral_stage.get_by_role('group',name='Retune target voice 2')
             ratios=second.get_by_label('Voice 2 partial ratios (comma-separated)')
             ratios.fill('1, 1.5, 3');ratios.dispatch_event('change');ready()
+            # Specialist text edits must retain keyboard focus across the
+            # actual authoritative async redraw, just like numeric controls.
+            expect(second.get_by_label('Voice 2 partial ratios (comma-separated)')).to_be_focused()
+            voice_label=second.get_by_label('Voice 2 label')
+            voice_label.fill('Upper interval')
+            voice_label.dispatch_event('change');ready()
+            expect(second.get_by_label('Voice 2 label')).to_be_focused()
+            expect(second.get_by_label('Voice 2 label')).to_have_value('Upper interval')
             before_invalid_ratio=page.locator('#revision').inner_text()
             ratios=second.get_by_label('Voice 2 partial ratios (comma-separated)')
             ratios.fill('1, 1');ratios.dispatch_event('change')
@@ -493,6 +501,10 @@ def main():
             segment=spectral_stage.get_by_role('group',name='Retune target segment 1')
             segment.get_by_label('Segment 1 voice 1 degree').fill('9')
             segment.get_by_label('Segment 1 voice 1 degree').dispatch_event('change');ready()
+            segment_label=segment.get_by_label('Segment 1 label')
+            segment_label.fill('Shifted upper voice')
+            segment_label.dispatch_event('change');ready()
+            expect(segment.get_by_label('Segment 1 label')).to_be_focused()
             before_bad_segment=page.locator('#revision').inner_text()
             segment_start_existing=segment.get_by_label('Segment 1 start sample')
             segment_start_existing.fill('0')
@@ -509,9 +521,11 @@ def main():
             assert spectral_params['voices'][0]['degree']==7
             assert len(spectral_params['voices'])==2
             assert spectral_params['voices'][1]['degree']==12
+            assert spectral_params['voices'][1]['label']=='Upper interval'
             assert spectral_params['voices'][1]['partial_ratios']==[1.0,1.5,3.0]
             assert len(spectral_params['segments'])==1
             assert spectral_params['segments'][0]['start_sample']==1200
+            assert spectral_params['segments'][0]['label']=='Shifted upper voice'
             assert spectral_params['segments'][0]['voices'][0]['degree']==9
             assert spectral_params['segments'][0]['voices'][1]['degree']==12
             assert spectral_params['tuning_spec']==json.loads(

@@ -193,11 +193,15 @@ export function renderRack(host,state,apply,tools={}){
                voice_index:index,expected_voice:voice,field:'degree'},apply);
             const named=make('label','Voice '+(index+1)+' label');
             const label=make('input');label.maxLength=64;label.value=voice.label;
+            label.dataset.rackControlKey=controlKey({kind:'edit_spectral_voice',
+              band:band.id,id:stage.id,voice_index:index,field:'label'});
             label.addEventListener('change',()=>action('label',label.value));
             named.append(label);panel.append(named);
             const ratioLabel=make('label','Voice '+(index+1)+' partial ratios (comma-separated)');
             const ratios=make('input');ratios.type='text';
             ratios.value=voice.partial_ratios.join(', ');
+            ratios.dataset.rackControlKey=controlKey({kind:'edit_spectral_voice',
+              band:band.id,id:stage.id,voice_index:index,field:'partial_ratios'});
             ratios.addEventListener('input',()=>ratios.setCustomValidity(''));
             ratios.addEventListener('change',()=>{
               const parts=ratios.value.split(',').map(v=>v.trim());
@@ -246,6 +250,8 @@ export function renderRack(host,state,apply,tools={}){
               {kind:'edit_spectral_segment',...base,field:'start_sample'},apply);
             const named=make('label','Segment '+(index+1)+' label');
             const name=make('input');name.maxLength=64;name.value=segment.label;
+            name.dataset.rackControlKey=controlKey({kind:'edit_spectral_segment',
+              band:band.id,id:stage.id,segment_index:index,field:'label'});
             name.addEventListener('change',()=>apply({
               kind:'edit_spectral_segment',...base,field:'label',value:name.value}));
             named.append(name);panel.append(named);
