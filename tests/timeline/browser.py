@@ -110,6 +110,16 @@ def main():
             page.locator('#rack-meter-panel').evaluate('(e)=>e.open=true')
             expect(page.locator('#rack-meters')).to_contain_text('dry source path')
             page.locator('#rack-editor').get_by_role('button',name='Enable four-band rack').click();ready()
+            # A server-validated redraw must not throw keyboard users back to
+            # the document root or lose the focused editable rack control.
+            # These are real DOM/async proposal transitions, not mock state.
+            wet_focus=page.locator('#rack-editor').get_by_label('Rack wet')
+            wet_focus.fill('0.8');wet_focus.dispatch_event('change');ready()
+            expect(page.locator('#rack-editor').get_by_label('Rack wet')).to_be_focused()
+            expect(page.locator('#rack-editor').get_by_label('Rack wet')).to_have_value('0.8')
+            wet_focus=page.locator('#rack-editor').get_by_label('Rack wet')
+            wet_focus.fill('1');wet_focus.dispatch_event('change');ready()
+            expect(page.locator('#rack-editor').get_by_label('Rack wet')).to_be_focused()
             # Crossover UI admission mirrors the exact DSP contract: strictly
             # increasing neighbors and a strict 0.49*Fs high ceiling. Rejected
             # controls cannot publish a new revision or silently clamp values.
