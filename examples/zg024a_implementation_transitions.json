@@ -545,6 +545,16 @@
         "zaaggenz_dsp/nyquismic_convergence.py"
       ],
       "reason": "NYQ-003 / draft PR #266 scales opt-in local convergence comparison by common PCM amplitude and refuses undefined zero-reference metrics. This closes an adversarial false-convergence case for very quiet nonzero audio; only zaaggenz_dsp/nyquismic_convergence.py changes among ZG-024a implementation manifest paths, with no accepted sampler, graph, rack, export, calibration/tolerance, factory/source or default DSP change. Before registration, exact-head pre-registration run https://github.com/techrote/zaaggenz/actions/runs/42041980840 at a028cb384355682b34231389848c66a06ad4ff86 independently reproduced implementation SHA 91ea8155ef5705207da268d2b7c79037adfe1c33cca7fba791be22157e33804e on Ubuntu and Windows (six fixtures / 36 candidates on each); unchanged comparison reported only this new identity and the exact seven previously reviewed issue #87 transient-v4 validation projections, no other differences. Candidate transition only; require exact-head cross-platform/reverse CI and independent source review. No owner listening or physical Windows acceptance claimed."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "32c31978402ef40edbee081f2786b440bf2cff48b0108a497b01be1ffaa96636",
+      "issue": 252,
+      "stable_id": "ZG-016",
+      "changed_paths": [
+        "zaaggenz_dsp/nyquismic_convergence.py"
+      ],
+      "reason": "NYQ-003 / draft PR #266: candidate-only identity after opt-in local convergence copies each numerical PCM candidate to a private immutable execution snapshot before validation and delivery conversion, preventing an external cancellation callback from substituting data after provenance checks. Only zaaggenz_dsp/nyquismic_convergence.py changes in ZG-024a's implementation manifest; no accepted clock, graph, rack, renderer, default, source rights, calibration, comparator or numerical thresholds change. Pre-registration https://github.com/techrote/zaaggenz/actions/runs/42061126636 at source commit e51142fe73be0a3d6501b754355b9a22d18782bc independently reproduced this exact identity on Ubuntu and Windows, with 6 fixtures/36 candidates each. Both reported only the unregistered implementation identity plus exactly the seven historical issue #87 transient-v4 validation state/gate projection differences. This candidate transition does NOT constitute independent acceptance or final-head qualification; require terminal direct/reverse CI and independent review."
     }
   ]
 }
