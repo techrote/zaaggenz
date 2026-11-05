@@ -92,24 +92,37 @@ def _metrics(a: np.ndarray, b: np.ndarray) -> dict:
     # that equality as a measured null result, not a convergence certificate.
     # Exact silence is used rather than a hidden amplitude threshold.
     null_signal = not np.any(a) and not np.any(b)
-    diff = a - b
-    eps = 1e-12
+    # Compare on a common amplitude scale. An absolute denominator floor
+    # (formerly 1e-12) falsely certified 100% errors on quiet but nonzero
+    # audio, and squaring the original PCM can underflow for tiny signals.
+    # Scaling both operands is dimensionless; it changes no sonic samples.
+    scale = max(float(np.max(np.abs(a))), float(np.max(np.abs(b))))
+    aa = np.asarray(a, dtype=np.float64) / scale if scale else np.asarray(a, dtype=np.float64)
+    bb = np.asarray(b, dtype=np.float64) / scale if scale else np.asarray(b, dtype=np.float64)
+    diff = aa - bb
+    undefined = []
+    def relative(numerator, denominator, name):
+        if denominator == 0:
+            if numerator != 0:
+                undefined.append(name)
+                # A finite diagnostic, not a zero-reference convergence pass.
+                return 1.0
+            return 0.0
+        return numerator / denominator
     rms = lambda x: float(np.sqrt(np.mean(x * x))) if x.size else 0.0
-    relative_rms = rms(diff) / max(rms(b), eps)
+    relative_rms = relative(rms(diff), rms(bb), 'rms')
     # Axis zero is physical time; preserve independent channel spectra.
-    spectrum_a = np.abs(np.fft.rfft(a, axis=0))
-    spectrum_b = np.abs(np.fft.rfft(b, axis=0))
-    relative_spectrum = float(
-        np.linalg.norm(spectrum_a - spectrum_b) /
-        max(float(np.linalg.norm(spectrum_b)), eps)
-    )
+    spectrum_a = np.abs(np.fft.rfft(aa, axis=0))
+    spectrum_b = np.abs(np.fft.rfft(bb, axis=0))
+    relative_spectrum = relative(
+        float(np.linalg.norm(spectrum_a - spectrum_b)),
+        float(np.linalg.norm(spectrum_b)), 'spectrum')
     if len(a) > 1:
-        transient_a = np.diff(a, axis=0)
-        transient_b = np.diff(b, axis=0)
-        relative_transient = float(
-            np.linalg.norm(transient_a - transient_b) /
-            max(float(np.linalg.norm(transient_b)), eps)
-        )
+        transient_a = np.diff(aa, axis=0)
+        transient_b = np.diff(bb, axis=0)
+        relative_transient = relative(
+            float(np.linalg.norm(transient_a - transient_b)),
+            float(np.linalg.norm(transient_b)), 'transient')
     else:
         relative_transient = relative_rms
     require(all(math.isfinite(x) for x in
@@ -118,6 +131,7 @@ def _metrics(a: np.ndarray, b: np.ndarray) -> dict:
     return {'relative_rms': relative_rms,
             'relative_spectrum': relative_spectrum,
             'relative_transient': relative_transient,
+            'zero_reference_metrics': tuple(undefined),
             'null_signal': bool(null_signal)}
 
 
@@ -200,6 +214,7 @@ def evaluate_local_convergence(
         metrics = _metrics(a, b)
         good = (not metrics.get('empty_extent', False) and
                 not metrics.get('null_signal', False) and
+                not metrics.get('zero_reference_metrics') and
                 metrics['relative_rms'] <= policy.relative_rms_limit and
                 metrics['relative_spectrum'] <= policy.relative_spectrum_limit and
                 metrics['relative_transient'] <= policy.relative_transient_limit)
