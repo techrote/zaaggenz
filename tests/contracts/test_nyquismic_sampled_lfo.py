@@ -126,6 +126,31 @@ class SampledLfoTests(unittest.TestCase):
         self.assertEqual(len(route.points), len(stamps))
         self.assertEqual(SampledLfoSource.from_json(source.to_json()), source)
 
+    def test_future_tempo_cannot_invalidate_short_region_grid(self):
+        # This 100-ms grid resolves the actual 60 BPM/1 Hz portion, but
+        # underresolves the 360 BPM change outside the requested region.
+        # Preview qualification depends on active temporal support only.
+        source = SampledLfoSource(
+            mode='beat_sync', frequency='1/1', base_bpm='60/1',
+            grid_s='1/10', tempo_points=(Point('2/1', '360/1'),))
+        early = source.compile_route('1/1', route_id='short', depth=10.)
+        self.assertEqual(early.initial, '-1/1')
+        self.assertEqual(Fraction(early.points[-1].time_s), Fraction(1))
+        spec = SonicSpec(clock=ClockSpec(rate=VirtualRate('100/1'),
+                                        routes=(early,)))
+        for when in ('1/10', '1/4', '1/2', '3/4', '9/10'):
+            with self.subTest(time=when):
+                expected = 100 + 10 * source.value_at(when)
+                self.assertEqual(
+                    Fraction(evaluate_instantaneous_rate(spec, when).realized_hz),
+                    expected)
+        self.assertEqual(source.compile_route('2/1', route_id='boundary').points[-1].time_s,
+                         '2/1')
+        # Once the faster section is included the identical grid must reject,
+        # not misrepresent the high-rate triangle as a low-rate lane.
+        with self.assertRaisesRegex(ContractError, 'underresolves'):
+            source.compile_route('21/10', route_id='fast')
+
     def test_turning_point_enrichment_respects_total_lane_budget(self):
         # The grid alone fits 256 points, but exact cusps raise the total
         # above that bound and must reject instead of being silently dropped.
