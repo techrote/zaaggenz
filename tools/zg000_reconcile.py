@@ -175,6 +175,14 @@ class Reconciler:
         runs = data.get("workflow_runs")
         if not isinstance(runs, list):
             raise ReconcileError(f"{workflow}: malformed workflow run list")
+        # A short or uncounted inventory cannot prove that dispatch is needed.
+        # The query requests a complete 100-run page for this exact head. If
+        # GitHub reports more entries than it returned, an existing queued or
+        # failed child may be hidden, making a second POST unsafe.
+        total = data.get("total_count")
+        if (type(total) is not int or total < 0 or total > 100
+                or len(runs) != total):
+            raise ReconcileError(f"{workflow}: incomplete or uncounted pre-dispatch inventory")
         candidates = []
         for run in runs:
             if (run.get("head_sha") != self.sha or run.get("event") != "workflow_dispatch"
@@ -182,8 +190,7 @@ class Reconciler:
                 continue
             self.verify(row, run)
             candidates.append(run)
-        if data.get("total_count", 0) > 100:
-            raise ReconcileError(f"{workflow}: exact-head inventory exceeds single-page bound")
+
         # Record every listed ID, not just accepted candidates. The next POST
         # must not adopt an older cancelled or mismatched run after ambiguity.
         if any(not isinstance(run, dict) or not isinstance(run.get("id"), int) for run in runs):
@@ -236,8 +243,9 @@ class Reconciler:
             runs = data.get("workflow_runs")
             if not isinstance(runs, list) or not isinstance(data.get("total_count"), int):
                 raise ReconcileError(f"{workflow}: malformed post-dispatch inventory") from cause
-            if data["total_count"] > 100 or len(runs) > 100:
-                raise ReconcileError(f"{workflow}: post-dispatch inventory exceeds bound") from cause
+            if (type(data["total_count"]) is not int or data["total_count"] < 0
+                    or data["total_count"] > 100 or len(runs) != data["total_count"]):
+                raise ReconcileError(f"{workflow}: incomplete or uncounted post-dispatch inventory") from cause
             if any(not isinstance(run, dict) or not isinstance(run.get("id"), int) for run in runs):
                 raise ReconcileError(f"{workflow}: invalid post-dispatch run inventory") from cause
             newly_visible = [run for run in runs if run["id"] not in before]
