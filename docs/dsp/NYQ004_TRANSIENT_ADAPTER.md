@@ -32,12 +32,16 @@ returns zero at the next window, rather than holding the last onset.
 
 The ordinary saved ModulationRoute is a right-continuous step curve.
 Store both policy JSON and compiled route JSON to retain the authoring
-intent, method hashes and exact source binding. Source origin is currently
-restricted to zero because route.initial otherwise exposes the first
-window's onset before its declared support. A later real graph integration
-must resolve physical origin, graph DAG provenance, placement and cache
-invalidation itself. The sampler, project, rack, export and defaults remain
-unchanged; NYQ-004 is **not** accepted by this component.
+intent, method hashes and exact source binding. A nonzero saved source
+origin is supported: the compiled route remains neutral at absolute time
+zero and publishes the first window's onset as a right-continuous point at
+the exact origin. Its point consumes the existing 256-point route budget;
+an oversized delayed source fails closed. An empty delayed source remains
+neutral. The calculation still requires one window of offline lookahead;
+it does not establish causal realtime semantics. A later real graph
+integration must verify physical origin, graph DAG provenance, placement
+and cache invalidation itself. The sampler, project, rack, export and
+defaults remain unchanged; NYQ-004 is **not** accepted by this component.
 
 Regression:
 python -m unittest discover -s tests/contracts -p 'test_nyquismic_transient.py' -v
@@ -45,5 +49,5 @@ python -m unittest discover -s tests/contracts -p 'test_nyquismic_transient.py' 
 Fixtures cover threshold/tie/step timing, adversarial non-coprime RMS denominator
 re-quantization, actual control-rate evaluation,
 serialisation, first-window rise, falling/steady edges, stereo, empty/silence,
-source tampering, ancestry, delayed origin rejection, point budgets,
+source tampering, ancestry, delayed origin phase and point budgets,
 cancellation and input immutability.

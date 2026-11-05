@@ -38,10 +38,9 @@ class UpstreamTransientPolicy(_Record):
                 'unsupported upstream transient method version')
         record(self.source, UpstreamRmsPolicy, 'transient source policy')
         normalized(self, 'minimum_rise', 0, 1)
-        # An ordinary route.initial owns time zero. A nonzero origin would
-        # prematurely expose the first onset before its declared support.
-        require(Fraction(self.source.origin_s) == 0,
-                'transient source must start at zero until delayed route origin is supported')
+        # The upstream RMS route carries a neutral pre-origin value and an
+        # explicit first-window point at a delayed source origin. The onset
+        # compiler retains that support rather than leaking it at time zero.
 
 
 @dataclass(frozen=True)

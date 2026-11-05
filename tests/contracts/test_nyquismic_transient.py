@@ -104,8 +104,7 @@ class UpstreamTransientTests(unittest.TestCase):
     def test_source_hash_topology_origin_and_policy_fail_closed(self):
         samples = np.array([0., .5, 0., -.5], dtype='<f4')
         p = policy(samples)
-        with self.assertRaises(ContractError):
-            policy(samples, origin_s='1/8')
+        self.assertEqual(policy(samples, origin_s='1/8').source.origin_s, '1/8')
         self.assertEqual(
             UpstreamTransientPolicy(source=p.source, minimum_rise='1/1').minimum_rise,
             '1/1')
@@ -119,6 +118,40 @@ class UpstreamTransientTests(unittest.TestCase):
             compile_upstream_transient_route(
                 samples, p, consumer_id='body', upstream_ids=('body',),
                 route_id='onset')
+
+    def test_delayed_upstream_transients_neutral_before_origin_and_bounded(self):
+        samples = np.array([.5, -.5, .5, -.5,
+                            .75, -.75, .75, -.75,
+                            .25, -.25, .25, -.25], dtype='<f4')
+        chosen = policy(samples, origin_s='1/10', minimum_rise='1/10')
+        result = compile_(samples, chosen, depth=200.)
+        self.assertEqual(result.route.initial, '0/1')
+        self.assertEqual(tuple((p.time_s, p.value) for p in result.route.points),
+                         (('1/10', '2/5'), ('201/2000', '3/20'),
+                          ('101/1000', '0/1')))
+        self.assertEqual(result.diagnostics['source_sha256'], chosen.source.source_sha256)
+        self.assertEqual(UpstreamTransientPolicy.from_json(chosen.to_json()), chosen)
+        self.assertEqual(result.route.to_json(),
+                         compile_(samples, chosen, depth=200.).route.to_json())
+        clock = SonicSpec(clock=ClockSpec(
+            rate=VirtualRate('1000/1'), routes=(result.route,)))
+        for when, hz in (('0/1', '1000/1'), ('199/2000', '1000/1'),
+                         ('1/10', '1080/1'), ('201/2000', '1030/1'),
+                         ('101/1000', '1000/1')):
+            with self.subTest(when=when):
+                self.assertEqual(evaluate_instantaneous_rate(clock, when).realized_hz,
+                                 hz)
+        # Delayed first-window onset consumes a saved Point, not a hidden
+        # unbounded extra event. The underlying RMS budget is still binding.
+        near_limit = np.full(255, .25, dtype='<f4')
+        self.assertEqual(len(compile_(near_limit, policy(
+            near_limit, window_frames=1, origin_s='1/10')).route.points), 255)
+        too_long = np.full(256, .25, dtype='<f4')
+        with self.assertRaises(ContractError):
+            compile_(too_long, policy(too_long, window_frames=1, origin_s='1/10'))
+        empty = np.zeros(0, dtype='<f4')
+        self.assertEqual(compile_(empty, policy(empty, origin_s='1/10')).route.initial,
+                         '0/1')
 
     def test_bound_cancellation_and_source_immutability(self):
         samples = np.ones(258, dtype='<f4') * .25
