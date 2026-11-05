@@ -203,8 +203,10 @@ bounds on physical grid, frequency, BPM and total requested extent.
 Oversized authoring requests reject before materializing output; callers
 may explicitly choose a shorter extent or coarser physical grid, **provided**
 that the grid still samples at least four control points per cycle at the
-fastest saved tempo/frequency. The conservative bound uses all saved tempo
-entries, even those after the requested endpoint. An underresolved LFO fails
+fastest tempo/frequency **actually active in the requested extent**. Future
+saved tempo points strictly after (or exactly at) the endpoint do not cause
+an otherwise resolvable short preview to be rejected. Once a higher BPM is
+within the extent, the same grid rejects it if underresolved. An underresolved LFO fails
 closed rather than quietly collapsing to a static/aliased modulation route.
 
 Evidence: `python -m unittest discover -s tests/contracts -p
