@@ -183,6 +183,12 @@ class Reconciler:
         if (type(total) is not int or total < 0 or total > 100
                 or len(runs) != total):
             raise ReconcileError(f"{workflow}: incomplete or uncounted pre-dispatch inventory")
+        # Validate rows BEFORE reading their fields: a malformed API entry
+        # must produce a recorded blocked manifest, not an uncaught
+        # AttributeError that loses the normal evidence handover.
+        if any(not isinstance(run, dict) or type(run.get("id")) is not int
+               or run["id"] < 1 for run in runs):
+            raise ReconcileError(f"{workflow}: invalid pre-dispatch run inventory")
         candidates = []
         for run in runs:
             if (run.get("head_sha") != self.sha or run.get("event") != "workflow_dispatch"
@@ -193,8 +199,6 @@ class Reconciler:
 
         # Record every listed ID, not just accepted candidates. The next POST
         # must not adopt an older cancelled or mismatched run after ambiguity.
-        if any(not isinstance(run, dict) or not isinstance(run.get("id"), int) for run in runs):
-            raise ReconcileError(f"{workflow}: invalid pre-dispatch run inventory")
         self.prior_run_ids[workflow] = {run["id"] for run in runs}
         if not candidates:
             return "missing_or_cancelled", None
@@ -246,7 +250,8 @@ class Reconciler:
             if (type(data["total_count"]) is not int or data["total_count"] < 0
                     or data["total_count"] > 100 or len(runs) != data["total_count"]):
                 raise ReconcileError(f"{workflow}: incomplete or uncounted post-dispatch inventory") from cause
-            if any(not isinstance(run, dict) or not isinstance(run.get("id"), int) for run in runs):
+            if any(not isinstance(run, dict) or type(run.get("id")) is not int
+                   or run["id"] < 1 for run in runs):
                 raise ReconcileError(f"{workflow}: invalid post-dispatch run inventory") from cause
             newly_visible = [run for run in runs if run["id"] not in before]
             if len(newly_visible) > 1:
