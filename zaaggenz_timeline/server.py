@@ -152,6 +152,10 @@ class Handler(webapp.Handler):
             if path == '/api/timeline/monitor-dry':
                 exact(data, {'document'}, 'raw/dry monitoring request')
                 return self._json(self.server.timeline.submit_dry_monitor(data['document']), 202)
+            if path == '/api/timeline/monitor-band':
+                exact(data, {'document', 'band', 'mode'}, 'band monitoring request')
+                return self._json(self.server.timeline.submit_band_monitor(
+                    data['document'], data['band'], data['mode']), 202)
             if path == '/api/timeline/render':
                 exact(data, {'document', 'region', 'name'}, 'render request')
                 # A Vocal proposal is derived state, never implicit Compose apply.
