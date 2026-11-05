@@ -4,6 +4,7 @@ from fractions import Fraction
 import unittest
 
 from zaaggenz_contracts import ContractError
+from zaaggenz_contracts.nyquismic_clock import ClockCancelled
 from zaaggenz_contracts.nyquismic import ClockSpec, Point, SonicSpec, VirtualRate
 from zaaggenz_contracts.nyquismic_controls import (
     SampledLfoSource, evaluate_instantaneous_rate,
@@ -157,6 +158,35 @@ class SampledLfoTests(unittest.TestCase):
         source = SampledLfoSource(frequency='64/1', grid_s='1/260')
         with self.assertRaises(ContractError):
             source.compile_route('63/64', route_id='overfull')
+
+    def test_lfo_compilation_can_be_cancelled_midway_without_publication(self):
+        source = SampledLfoSource(frequency='1/1', grid_s='1/256')
+        saved = source.to_json()
+        baseline = source.compile_route('1/2', route_id='interruptible', depth=5.)
+        self.assertGreaterEqual(len(baseline.points), 128)
+
+        with self.assertRaises(ClockCancelled):
+            source.compile_route('1/2', route_id='interruptible',
+                                 cancelled=lambda: True)
+
+        checks = [0]
+        def interrupt_during_grid():
+            checks[0] += 1
+            return checks[0] >= 5
+
+        with self.assertRaises(ClockCancelled):
+            source.compile_route('1/2', route_id='interruptible',
+                                 cancelled=interrupt_during_grid)
+        self.assertGreaterEqual(checks[0], 5)
+
+        with self.assertRaises(ContractError):
+            source.compile_route('1/2', route_id='interruptible', cancelled=1)
+
+        # A cancelled attempt does not mutate the saved source or poison a
+        # subsequent deterministic recompilation of the identical lane.
+        self.assertEqual(source.to_json(), saved)
+        self.assertEqual(source.compile_route(
+            '1/2', route_id='interruptible', depth=5.).to_json(), baseline.to_json())
 
     def test_invalid_time_tempo_numerics_and_budget_fail_closed(self):
         bad_specs = (
