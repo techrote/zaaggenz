@@ -188,6 +188,44 @@ class SampledLfoTests(unittest.TestCase):
         self.assertEqual(source.compile_route(
             '1/2', route_id='interruptible', depth=5.).to_json(), baseline.to_json())
 
+    def test_compiled_beat_sync_route_matches_exact_triangle_at_every_segment_midpoint(self):
+        # This is a full piecewise-linear equivalence oracle, not just a few
+        # grid probes: both off-grid tempo changes and exact turning points
+        # must survive authoring into the saved physical-time control lane.
+        source = SampledLfoSource(
+            mode='beat_sync', frequency='3/2', base_bpm='80/1',
+            grid_s='1/16',
+            tempo_points=(Point('1/3', '160/1'), Point('3/4', '120/1')),
+        )
+        source_snapshot = source.to_json()
+        full = source.compile_route('1/1', route_id='midpoint-proof', depth=8.)
+        prefix = source.compile_route('1/2', route_id='midpoint-proof', depth=8.)
+        self.assertEqual(SampledLfoSource.from_json(source_snapshot), source)
+        self.assertTrue({Fraction(1, 3), Fraction(3, 4)} <=
+                        {Fraction(p.time_s) for p in full.points})
+        self.assertEqual(full.points[-1].time_s, '1/1')
+        self.assertEqual(prefix.points[-1].time_s, '1/2')
+
+        full_spec = SonicSpec(clock=ClockSpec(
+            rate=VirtualRate('100/1'), routes=(full,)))
+        prefix_spec = SonicSpec(clock=ClockSpec(
+            rate=VirtualRate('100/1'), routes=(prefix,)))
+        positions = (Fraction(0), *(Fraction(p.time_s) for p in full.points))
+        probes = set(positions)
+        probes.update((a + b) / 2 for a, b in zip(positions, positions[1:]))
+        for t in sorted(probes):
+            written = f'{t.numerator}/{t.denominator}'
+            expected = 100 + 8 * source.value_at(written)
+            with self.subTest(time=written):
+                self.assertEqual(
+                    Fraction(evaluate_instantaneous_rate(
+                        full_spec, written).realized_hz), expected)
+                if t <= Fraction(1, 2):
+                    self.assertEqual(
+                        Fraction(evaluate_instantaneous_rate(
+                            prefix_spec, written).realized_hz), expected)
+        self.assertEqual(source.to_json(), source_snapshot)
+
     def test_invalid_time_tempo_numerics_and_budget_fail_closed(self):
         bad_specs = (
             {'mode': 'unimplemented'}, {'frequency': '0/1'},
