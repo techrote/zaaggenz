@@ -151,10 +151,13 @@ _PROTOCOL_PACKAGES = {
     "vocal": frozenset(("zaaggenz_runtime", "zaaggenz_contracts", "zaaggenz_jobs", "zaaggenz_project", "zaaggenz_timeline", "zaaggenz_vocal", "zaaggenz_textgesture")),
 }
 _EXECUTION_ONLY_PACKAGES = {
-    "timeline": frozenset(("zaaggenz_spectral", "zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_zaag")),
-    "listening": frozenset(("zaaggenz_spectral", "zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_zaag")),
-    "inspector": frozenset(("zaaggenz_spectral", "zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_components", "zaaggenz_zaag")),
-    "vocal": frozenset(("zaaggenz_spectral", "zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_analysis", "zaaggenz_gesture", "zaaggenz_zaag")),
+    # The post-master band monitoring adapter consumes numerical split_bands
+    # at render time. zaaggenz_dsp is an execution dependency, not a browser
+    # request/response schema. Its changes must not masquerade as protocol edits.
+    "timeline": frozenset(("zaaggenz_dsp", "zaaggenz_spectral", "zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_zaag")),
+    "listening": frozenset(("zaaggenz_dsp", "zaaggenz_spectral", "zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_zaag")),
+    "inspector": frozenset(("zaaggenz_dsp", "zaaggenz_spectral", "zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_components", "zaaggenz_zaag")),
+    "vocal": frozenset(("zaaggenz_dsp", "zaaggenz_spectral", "zaaggenz_melody", "zaaggenz_tuning", "zaaggenz_analysis", "zaaggenz_gesture", "zaaggenz_zaag")),
 }
 _HELPER_PATH = "zaaggenz_web_release/__init__.py"
 

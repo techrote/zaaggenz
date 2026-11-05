@@ -67,6 +67,16 @@ class RawDryMonitorTests(unittest.TestCase):
         return self.service.artifact(job_id)
 
     def test_post_master_band_solo_mute_detached_numerical_filter(self):
+        # The default document is silent. Use actual source-derived note PCM
+        # so a vacuous zero result cannot pass the independent band oracle.
+        from zaaggenz_timeline.model import TimelineDocument
+        data = self.original.to_dict()
+        data['end_beat'] = '1/1'
+        data['notes'] = [{'id':'n1', 'beat':'0/1', 'duration_beats':'1/1',
+                          'degree':0, 'detune_cents':0., 'gain_db':0.,
+                          'muted':False, 'roll_density':0}]
+        data['next_id'] = 1
+        self.original = TimelineDocument(data)
         document = self.prepared()
         self.service.validate(document.to_dict())
         identity = self.service.session.current_identity()
