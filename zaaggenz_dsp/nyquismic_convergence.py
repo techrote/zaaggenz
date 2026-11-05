@@ -92,37 +92,49 @@ def _metrics(a: np.ndarray, b: np.ndarray) -> dict:
     # that equality as a measured null result, not a convergence certificate.
     # Exact silence is used rather than a hidden amplitude threshold.
     null_signal = not np.any(a) and not np.any(b)
-    # Compare on a common amplitude scale. An absolute denominator floor
-    # (formerly 1e-12) falsely certified 100% errors on quiet but nonzero
-    # audio, and squaring the original PCM can underflow for tiny signals.
-    # Scaling both operands is dimensionless; it changes no sonic samples.
-    scale = max(float(np.max(np.abs(a))), float(np.max(np.abs(b))))
-    aa = np.asarray(a, dtype=np.float64) / scale if scale else np.asarray(a, dtype=np.float64)
-    bb = np.asarray(b, dtype=np.float64) / scale if scale else np.asarray(b, dtype=np.float64)
+    # A stereo comparison needs an independent amplitude reference for EACH
+    # channel. A global scale and pooled RMS/spectrum can conceal a complete
+    # loss or phase error in a quiet channel beside a loud one. In particular,
+    # squaring a 1e-250 quiet channel after dividing only by the loud channel
+    # can underflow its evidence to zero. Normalize channels independently and
+    # publish the WORST relative channel metric, never a volume-weighted mean.
+    source_a = np.asarray(a, dtype=np.float64)
+    source_b = np.asarray(b, dtype=np.float64)
+    if source_a.ndim == 1:
+        source_a, source_b = source_a[:, None], source_b[:, None]
+    scales = np.maximum(np.max(np.abs(source_a), axis=0),
+                        np.max(np.abs(source_b), axis=0))
+    scales[scales == 0] = 1.0  # Both signals truly silent in this channel.
+    aa, bb = source_a / scales, source_b / scales
     diff = aa - bb
     undefined = []
-    def relative(numerator, denominator, name):
-        if denominator == 0:
-            if numerator != 0:
-                undefined.append(name)
-                # A finite diagnostic, not a zero-reference convergence pass.
-                return 1.0
-            return 0.0
-        return numerator / denominator
-    rms = lambda x: float(np.sqrt(np.mean(x * x))) if x.size else 0.0
+    def relative(numerators, denominators, name):
+        ratios = []
+        for channel, (num, den) in enumerate(zip(numerators, denominators)):
+            if den == 0:
+                if num != 0:
+                    undefined.append(name if len(denominators) == 1
+                                     else f'{name}_ch{channel}')
+                    ratios.append(1.0)  # Diagnostic, NEVER an admission.
+                else:
+                    ratios.append(0.0)
+            else:
+                ratios.append(float(num / den))
+        return max(ratios)
+    rms = lambda x: np.sqrt(np.mean(x * x, axis=0))
     relative_rms = relative(rms(diff), rms(bb), 'rms')
-    # Axis zero is physical time; preserve independent channel spectra.
+    # Axis zero is physical time; keep each channel's spectrum independent.
     spectrum_a = np.abs(np.fft.rfft(aa, axis=0))
     spectrum_b = np.abs(np.fft.rfft(bb, axis=0))
     relative_spectrum = relative(
-        float(np.linalg.norm(spectrum_a - spectrum_b)),
-        float(np.linalg.norm(spectrum_b)), 'spectrum')
+        np.linalg.norm(spectrum_a - spectrum_b, axis=0),
+        np.linalg.norm(spectrum_b, axis=0), 'spectrum')
     if len(a) > 1:
         transient_a = np.diff(aa, axis=0)
         transient_b = np.diff(bb, axis=0)
         relative_transient = relative(
-            float(np.linalg.norm(transient_a - transient_b)),
-            float(np.linalg.norm(transient_b)), 'transient')
+            np.linalg.norm(transient_a - transient_b, axis=0),
+            np.linalg.norm(transient_b, axis=0), 'transient')
     else:
         relative_transient = relative_rms
     require(all(math.isfinite(x) for x in
