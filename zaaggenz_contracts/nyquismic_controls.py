@@ -448,12 +448,22 @@ class SampledLfoSource(_Record):
         return Fraction(1) - 4 * abs(phase - Fraction(1, 2))
 
     def compile_route(self, end_s: str, *, route_id: str, mapping: str = 'add_hz',
-                      depth: float = 0.0) -> ModulationRoute:
+                      depth: float = 0.0, cancelled=None) -> ModulationRoute:
         """Freeze a bounded, explicit physical-time LFO point lane.
 
         Interpolation is precisely the accepted route's piecewise linear
         interpolation, not an assertion of bandlimited waveform fidelity.
+        An optional cancellation hook aborts before any route publication.
         """
+        from .nyquismic_clock import ClockCancelled
+        require(cancelled is None or callable(cancelled),
+                'sampled LFO cancellation hook must be callable')
+
+        def check_cancel():
+            if cancelled is not None and cancelled():
+                raise ClockCancelled('sampled LFO compilation cancelled; no partial route')
+
+        check_cancel()
         start = Fraction(self.origin_s)
         end = rational_value(end_s, 'sampled LFO end seconds', start, MAX_TIME_S)
         grid = Fraction(self.grid_s)
@@ -476,7 +486,11 @@ class SampledLfoSource(_Record):
         # alone cannot represent a triangular wave exactly when a peak,
         # trough or instantaneous tempo change falls between grid samples.
         # Keep those physical-time breakpoints as exact rational events.
-        times = {min(start + k * grid, end) for k in range(1, count + 1)}
+        times = set()
+        for k in range(1, count + 1):
+            if k == 1 or k % 32 == 0:
+                check_cancel()
+            times.add(min(start + k * grid, end))
         tempo_changes = {
             Fraction(p.time_s): Fraction(p.value)
             for p in self.tempo_points
@@ -486,6 +500,7 @@ class SampledLfoSource(_Record):
         boundaries = [start, *sorted(tempo_changes), end]
         bpm = Fraction(self.base_bpm)
         for a, b in zip(boundaries, boundaries[1:]):
+            check_cancel()
             if a in tempo_changes:
                 bpm = tempo_changes[a]  # right-continuous BPM at a
             cycles_per_second = (frequency if self.mode == 'free_hz'
@@ -498,6 +513,7 @@ class SampledLfoSource(_Record):
             twice = 2 * phase_a
             crossing = twice.numerator // twice.denominator + 1
             while Fraction(crossing, 2) < phase_b:
+                check_cancel()
                 at = a + (Fraction(crossing, 2) - phase_a) / cycles_per_second
                 times.add(at)
                 require(len(times) <= MAX_POINTS,
@@ -516,10 +532,15 @@ class SampledLfoSource(_Record):
                     'delayed sampled LFO requires a zero-level onset; nonzero step-plus-linear control is unsupported')
         require(len(times) + int(delayed) <= MAX_POINTS,
                 'sampled LFO point budget exceeded by onset, tempo or turning points')
-        points = tuple(Point(qtext(t), qtext(self.value_at(qtext(t))))
-                       for t in sorted(times))
+        authored = []
+        for index, t in enumerate(sorted(times)):
+            if index % 32 == 0:
+                check_cancel()
+            authored.append(Point(qtext(t), qtext(self.value_at(qtext(t)))))
+        points = tuple(authored)
         if delayed:
             points = (Point(qtext(start), '0/1'),) + points
+        check_cancel()
         return ModulationRoute(id=route_id, mapping=mapping, depth=depth,
                                initial='0/1' if delayed else qtext(onset),
                                points=points, interpolation='linear')
