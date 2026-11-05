@@ -564,6 +564,16 @@
         "zaaggenz_contracts/nyquismic_controls.py"
       ],
       "reason": "NYQ-004 / draft PR #267 corrects the opt-in saved triangle LFO grid admission so only BPM tempo points active strictly before the requested region end determine fastest supported cycle rate. Future tempo changes no longer falsely block an otherwise exact-resolution shorter control route; faster tempo actually in the requested extent still rejects underresolved grids. Source manifest difference is exclusively zaaggenz_contracts/nyquismic_controls.py, with no accepted sampler, rack, export, factory/default or calibration/comparator modification. Pre-registration ZG-024a run https://github.com/techrote/zaaggenz/actions/runs/42042623207 at exact head 35213f28df463046c7a473b26f7733d61e5bb498 independently reproduced implementation identity a4d9896bb94293f4bbe89667f76f3089192c360d8c8d100bb78d034eea07cbdd on Ubuntu and Windows (six fixtures, 36 candidates each), with only the unknown implementation identity and exactly the seven historically reviewed issue #87 transient-v4 validation projections. This row is a candidate only; no reviewer acceptance or physical/owner listening claim. Re-run final-head direct and reverse CI before merge."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "adede50d83633715f7eb165a32b4372245eabee7270cb42420430789399c6648",
+      "issue": 253,
+      "stable_id": "ZG-016",
+      "changed_paths": [
+        "zaaggenz_contracts/nyquismic_controls.py"
+      ],
+      "reason": "NYQ-004 / draft PR #267 adds strictly opt-in cancellation checkpoints to saved sampled-LFO physical-time route authoring. Only zaaggenz_contracts/nyquismic_controls.py changes under ZG-024a's implementation manifest; no accepted sampler clock geometry, autonomous render, graph, rack, factory defaults, calibration, thresholds or comparator changes. Pre-registration exact source-head ZG-024a run https://github.com/techrote/zaaggenz/actions/runs/42062004438 at commit 2d68eeeea617791e6ba0058fd5b9b8da32fce95f independently produced identical SHA adede50d83633715f7eb165a32b4372245eabee7270cb42420430789399c6648 on Ubuntu and Windows with six fixtures / 36 candidates per platform. Only unknown identity and the seven same historical issue #87 transient-v4 validation state/gate projections were reported; no other portable differences. Candidate-only registration, NOT independent admission; final-head cross-platform direct/reverse CI, owner-only gates and reviewer are still outstanding."
     }
   ]
 }
