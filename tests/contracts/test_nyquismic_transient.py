@@ -143,10 +143,10 @@ class UpstreamTransientTests(unittest.TestCase):
                                  hz)
         # Delayed first-window onset consumes a saved Point, not a hidden
         # unbounded extra event. The underlying RMS budget is still binding.
-        near_limit = np.full(255, .25, dtype='<f4')
+        near_limit = np.full(256, .25, dtype='<f4')
         self.assertEqual(len(compile_(near_limit, policy(
-            near_limit, window_frames=1, origin_s='1/10')).route.points), 255)
-        too_long = np.full(256, .25, dtype='<f4')
+            near_limit, window_frames=1, origin_s='1/10')).route.points), 256)
+        too_long = np.full(257, .25, dtype='<f4')
         with self.assertRaises(ContractError):
             compile_(too_long, policy(too_long, window_frames=1, origin_s='1/10'))
         empty = np.zeros(0, dtype='<f4')
