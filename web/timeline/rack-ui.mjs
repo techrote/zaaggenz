@@ -141,7 +141,7 @@ export function renderRack(host,state,apply,tools={}){
         }
         if(retune){
           const target=group(details);
-          target.append(make('p','Saved source tuning is fixed. Voice edits change the requested target lattice, not the source; timed target segments remain untouched. A new voice copies the current primary voice partial ratios.'));
+          target.append(make('p','Saved source tuning is fixed. Voice and timed-segment edits change only the target lattice. New segments inherit the preceding target voices; start times use integer source samples, not beats.'));
           const first=request.voices?.[0];
           if(first)number(target,'Primary target degree',first.degree,
             {type:'integer',minimum:-4096,maximum:4096,unit:'tuning steps'},
@@ -199,6 +199,56 @@ export function renderRack(host,state,apply,tools={}){
               degree:Number(newDegree.value),label:newName.value});
           });
           adding.append(addVoice);
+          const schedule=group(details,'rack-target-segments');
+          schedule.append(make('h5','Timed retune target segments'));
+          schedule.append(make('p','Schedule positions are absolute source-sample offsets from the start of the full phrase. Each change-point replaces the previous target lattice; removing it never edits the source.'));
+          request.segments.forEach((segment,index)=>{
+            const panel=group(schedule,'rack-target-segment');
+            panel.setAttribute('role','group');
+            panel.setAttribute('aria-label','Retune target segment '+(index+1));
+            panel.append(make('h5','Segment '+(index+1)+' · '+(segment.label||'Unlabelled')));
+            const base={band:band.id,id:stage.id,segment_index:index,expected_segment:segment};
+            number(panel,'Segment '+(index+1)+' start sample',segment.start_sample,
+              {type:'integer',minimum:1,maximum:691200000,unit:'samples'},
+              {kind:'edit_spectral_segment',...base,field:'start_sample'},apply);
+            const named=make('label','Segment '+(index+1)+' label');
+            const name=make('input');name.maxLength=64;name.value=segment.label;
+            name.addEventListener('change',()=>apply({
+              kind:'edit_spectral_segment',...base,field:'label',value:name.value}));
+            named.append(name);panel.append(named);
+            segment.voices.forEach((voice,voiceIndex)=>{
+              number(panel,'Segment '+(index+1)+' voice '+(voiceIndex+1)+' degree',
+                voice.degree,{type:'integer',minimum:-4096,maximum:4096,unit:'tuning steps'},
+                {kind:'edit_spectral_segment_voice',...base,voice_index:voiceIndex},apply);
+            });
+            button(panel,'Remove segment '+(index+1),
+              {kind:'remove_spectral_segment',...base},apply);
+          });
+          const segmentAdd=group(schedule);
+          const startLabel=make('label','New segment start sample');
+          const startInput=make('input');startInput.type='number';
+          startInput.min='1';startInput.max='691200000';startInput.step='1';
+          const lastSegment=request.segments.at(-1);
+          startInput.value=String(Math.min(691200000,
+            (lastSegment?.start_sample||0)+Math.max(1,Math.round(rack.sample_rate_hz/4))));
+          startLabel.append(startInput);segmentAdd.append(startLabel);
+          const segmentNameLabel=make('label','New segment label');
+          const segmentName=make('input');segmentName.value='Target change';
+          segmentName.maxLength=64;segmentNameLabel.append(segmentName);
+          segmentAdd.append(segmentNameLabel);
+          const addSegment=make('button','Add retune segment');
+          addSegment.type='button';addSegment.disabled=request.segments.length>=64;
+          addSegment.addEventListener('click',()=>{
+            const start=Number(startInput.value);
+            if(!startInput.reportValidity()||startInput.value===''||
+               !Number.isSafeInteger(start)||start<=0)return;
+            apply({kind:'add_spectral_segment',band:band.id,id:stage.id,
+              start_sample:start,label:segmentName.value,
+              expected_segments:request.segments});
+          });
+          segmentAdd.append(addSegment);
+          schedule.append(make('p','Scheduled changes: '+request.segments.length+
+            ' / 64 · bounded by the full retune target lattice and memory admission.'));
           target.append(make('p','Voices: '+request.voices.length+' / 32 · target segments: '+request.segments.length+' · no implicit tuning conversion.'));
         }else{
           const selector=group(details);

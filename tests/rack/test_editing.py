@@ -403,6 +403,98 @@ class RackEditorTests(unittest.TestCase):
                                "voice_index":0,"expected_voice":primary})
         self.assertEqual(compile_recipe(self.d).to_dict()["source"], original_source)
 
+    def test_sample_time_retune_segments_are_source_bound_and_stale_guarded(self):
+        self.act(kind="enable")
+        band = editor_state(self.d)["value"]["bands"][1]["id"]
+        self.act(kind="add", band=band, type_id="zg.spectral")
+        stage = editor_state(self.d)["value"]["bands"][1]["inserts"][0]
+        sid = stage["id"]
+        original_source = compile_recipe(self.d).to_dict()["source"]
+        original_voice = deepcopy(stage["params"]["voices"][0])
+        self.act(kind="add_spectral_segment", band=band, id=sid,
+                 start_sample=1200, label="First change", expected_segments=[])
+        current = editor_state(self.d)["value"]
+        first = current["bands"][1]["inserts"][0]["params"]["segments"][0]
+        self.assertEqual(first["voices"], [original_voice])
+        before_sonic = RackRecipe(current).sonic_sha256
+        self.act(kind="edit_spectral_segment_voice", band=band, id=sid,
+                 segment_index=0, expected_segment=deepcopy(first),
+                 voice_index=0, degree=7)
+        current = editor_state(self.d)["value"]
+        first = deepcopy(current["bands"][1]["inserts"][0]["params"]["segments"][0])
+        self.assertEqual(first["voices"][0]["degree"], 7)
+        self.assertNotEqual(RackRecipe(current).sonic_sha256, before_sonic)
+        changed_sonic = RackRecipe(current).sonic_sha256
+        self.act(kind="edit_spectral_segment", band=band, id=sid,
+                 segment_index=0, expected_segment=deepcopy(first),
+                 field="label", value="Renamed without DSP change")
+        current = editor_state(self.d)["value"]
+        self.assertEqual(RackRecipe(current).sonic_sha256, changed_sonic)
+        previous = deepcopy(current["bands"][1]["inserts"][0]["params"]["segments"])
+        self.act(kind="add_spectral_segment", band=band, id=sid,
+                 start_sample=2400, label="Second change",
+                 expected_segments=deepcopy(previous))
+        current = editor_state(self.d)["value"]
+        segments = current["bands"][1]["inserts"][0]["params"]["segments"]
+        self.assertEqual([s["start_sample"] for s in segments], [1200, 2400])
+        self.assertEqual(segments[1]["voices"], segments[0]["voices"])
+        self.assertEqual(compile_recipe(self.d).to_dict()["source"], original_source)
+        reopened = type(self.d).from_json(json.dumps(self.d.to_dict()))
+        self.assertEqual(editor_state(reopened)["value"], current)
+        self.assertEqual(compile_recipe(reopened).to_dict()["rack"], current)
+
+        before = self.d.to_dict()
+        stale = deepcopy(previous[0])
+        wrong_stage = "unknown"
+        bad = [
+            {"kind":"add_spectral_segment","band":band,"id":sid,
+             "start_sample":2500,"label":"Changed","expected_segments":[]},
+            {"kind":"add_spectral_segment","band":band,"id":sid,
+             "start_sample":2400,"label":"Duplicate","expected_segments":segments},
+            {"kind":"add_spectral_segment","band":band,"id":sid,
+             "start_sample":True,"label":"Boolean","expected_segments":segments},
+            {"kind":"add_spectral_segment","band":band,"id":sid,
+             "start_sample":2500,"label":"x"*65,"expected_segments":segments},
+            {"kind":"add_spectral_segment","band":band,"id":wrong_stage,
+             "start_sample":2500,"label":"Absent","expected_segments":segments},
+            {"kind":"edit_spectral_segment","band":band,"id":sid,
+             "segment_index":0,"expected_segment":stale,
+             "field":"start_sample","value":1300},
+            {"kind":"edit_spectral_segment","band":band,"id":sid,
+             "segment_index":True,"expected_segment":segments[0],
+             "field":"label","value":"No"},
+            {"kind":"edit_spectral_segment","band":band,"id":sid,
+             "segment_index":0,"expected_segment":segments[0],
+             "field":"start_sample","value":2400},
+            {"kind":"edit_spectral_segment","band":band,"id":sid,
+             "segment_index":0,"expected_segment":segments[0],
+             "field":"voices","value":[]},
+            {"kind":"edit_spectral_segment_voice","band":band,"id":sid,
+             "segment_index":0,"expected_segment":segments[0],
+             "voice_index":True,"degree":5},
+            {"kind":"edit_spectral_segment_voice","band":band,"id":sid,
+             "segment_index":0,"expected_segment":segments[0],
+             "voice_index":0,"degree":True},
+            {"kind":"edit_spectral_segment_voice","band":band,"id":sid,
+             "segment_index":0,"expected_segment":segments[0],
+             "voice_index":0,"degree":4097},
+            {"kind":"remove_spectral_segment","band":band,"id":sid,
+             "segment_index":2,"expected_segment":segments[1]},
+            {"kind":"remove_spectral_segment","band":band,"id":sid,
+             "segment_index":0,"expected_segment":stale},
+        ]
+        for action in bad:
+            with self.subTest(action=action), self.assertRaises(ValueError):
+                edit_rack(self.d, action)
+            self.assertEqual(self.d.to_dict(), before)
+
+        self.act(kind="remove_spectral_segment", band=band, id=sid,
+                 segment_index=1, expected_segment=deepcopy(segments[1]))
+        remaining = editor_state(self.d)["value"]["bands"][1]["inserts"][0]["params"]["segments"]
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(remaining[0]["voices"][0]["degree"], 7)
+        self.assertEqual(compile_recipe(self.d).to_dict()["source"], original_source)
+
     def test_existing_chordness_request_preserves_templates_and_edits_scalars(self):
         self.act(kind="enable")
         project = Project.from_document(self.d.to_dict()["project"])

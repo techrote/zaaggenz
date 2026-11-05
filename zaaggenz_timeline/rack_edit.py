@@ -188,6 +188,74 @@ def _update(project, action):
                 voices[index][field] = action["value"]
         # Full source, schedule, target-lattice and memory validation occurs
         # below, before the detached proposal can enter RuntimeSession.
+    elif kind in ("add_spectral_segment", "edit_spectral_segment",
+                  "remove_spectral_segment", "edit_spectral_segment_voice"):
+        # All schedule changes are detached source-bound proposals. A complete
+        # expected snapshot prevents stale position-based edits, including when
+        # another queued command inserts, removes or relabels a segment.
+        if kind == "add_spectral_segment":
+            exact(action, {"kind", "band", "id", "start_sample", "label",
+                           "expected_segments"}, "add retune segment")
+        elif kind == "edit_spectral_segment":
+            exact(action, {"kind", "band", "id", "segment_index",
+                           "expected_segment", "field", "value"}, "edit retune segment")
+        elif kind == "edit_spectral_segment_voice":
+            exact(action, {"kind", "band", "id", "segment_index",
+                           "expected_segment", "voice_index", "degree"},
+                  "edit retune segment voice")
+        else:
+            exact(action, {"kind", "band", "id", "segment_index",
+                           "expected_segment"}, "remove retune segment")
+        stage = _insert(_band(rack, action["band"]), action["id"])
+        if (stage["type_id"] != SPECTRAL or type(stage["params"]) is not dict or
+                stage["params"].get("kind") != "SpectralRetuneRequest"):
+            raise TimelineError("retune schedule editing requires a saved retune request")
+        params = stage["params"]
+        segments = params["segments"]
+        if kind == "add_spectral_segment":
+            if (type(action["expected_segments"]) is not list or
+                    action["expected_segments"] != segments):
+                raise TimelineError("retune schedule changed; refresh before adding")
+            start = action["start_sample"]
+            label = action["label"]
+            if type(start) is not int or not 1 <= start <= 192000 * 3600:
+                raise TimelineError("segment start_sample must be a bounded positive integer")
+            if type(label) is not str or len(label) > 64:
+                raise TimelineError("segment label must be at most 64 characters")
+            if len(segments) >= 64:
+                raise TimelineError("retune schedule has the maximum 64 segments")
+            if segments and start <= segments[-1]["start_sample"]:
+                raise TimelineError("new segment must start after the last segment")
+            # An explicit new change-point inherits the immediately previous
+            # target lattice, or the initial target for the first change-point.
+            # Only a subsequent user edit changes its sonic target.
+            previous = segments[-1]["voices"] if segments else params["voices"]
+            segments.append({"start_sample": start,
+                             "voices": deepcopy(previous), "label": label})
+        else:
+            index = action["segment_index"]
+            if type(index) is not int or not 0 <= index < len(segments):
+                raise TimelineError("unknown retune segment index")
+            segment = segments[index]
+            if (type(action["expected_segment"]) is not dict or
+                    action["expected_segment"] != segment):
+                raise TimelineError("retune segment changed; refresh before editing")
+            if kind == "remove_spectral_segment":
+                segments.pop(index)
+            elif kind == "edit_spectral_segment":
+                field = action["field"]
+                if field not in ("start_sample", "label"):
+                    raise TimelineError("unsupported retune segment field")
+                segment[field] = action["value"]
+            else:
+                voice_index = action["voice_index"]
+                if type(voice_index) is not int or not 0 <= voice_index < len(segment["voices"]):
+                    raise TimelineError("unknown retune segment voice")
+                # The accepted rack validator checks type/range, schedule
+                # ordering, sample-rate/resource limits and source ancestry.
+                segment["voices"][voice_index]["degree"] = action["degree"]
+        # Never modify source tuning, unrelated segments, or export policy.
+        # The RackRecipe below validates the complete candidate atomically.
     elif kind == "select_spectral_template":
         exact(action, {"kind", "band", "id", "template_id", "value"},
               "select spectral template")
@@ -311,7 +379,9 @@ def edit_rack(document, action):
         project.save_rack_preset(record["id"], record["name"], imported)
     elif kind in ("set", "add", "move", "remove", "reset_insert_params",
                   "select_spectral_template", "add_spectral_voice",
-                  "edit_spectral_voice", "remove_spectral_voice"):
+                  "edit_spectral_voice", "remove_spectral_voice",
+                  "add_spectral_segment", "edit_spectral_segment",
+                  "remove_spectral_segment", "edit_spectral_segment_voice"):
         _update(project, action)
     else:
         raise TimelineError("unsupported rack action")

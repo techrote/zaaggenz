@@ -176,12 +176,24 @@ label in the same specialist panel (up to the contract's 32 voices), re-labelled
 assigned independently validated tuning degrees and strictly increasing
 positive partial ratios (1–128), or removed while retaining at least one
 voice. A new voice initially copies the displayed primary voice's partial
-ratios. Saved source tuning, existing timed target segments and all other
-voices remain unchanged. Each edit validates the complete bounded request
+ratios. Saved source tuning and unrelated target state remain unchanged. Each edit
+validates the complete bounded request
 and source ancestry; stale voice snapshots fail closed. Real numerical
 rendering and save/reopen use the same request, with no separate target engine.
-Editing the contents of timed segments and constructing new Chordness comb
-templates remain out of scope.
+Timed **retune change-points** are now explicitly editable at positive
+absolute source-sample offsets from the start of the complete phrase (not
+beats, playback-wall-clock seconds or crop-relative samples). Add a segment
+after the last change-point, inheriting the preceding saved target voices,
+then change any scheduled voice's degree, the segment start sample or its
+display label, or remove that entire segment. This exposes actual executable
+sample-timed target changes through the original spectral DSP and normal
+revision/save/reopen/export path; it never constructs a second render engine.
+A full expected segment/schedule snapshot rejects stale index edits. The
+existing RackRecipe enforces strictly increasing starts, 64 segments maximum,
+1..32 voices per segment, candidate-lattice/memory bounds and source binding;
+invalid proposals do not adopt. Changing a segment label does not alter its
+sonic digest. New independent scheduled voice inventories and new Chordness
+comb templates remain out of scope.
 
 Imported source-bound `ChordnessRequest` stages expose their accepted mode,
 selection, gain, confidence, assignment and objective-weight scalars, and a
