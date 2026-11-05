@@ -25,6 +25,7 @@ class FakeAPI:
         self.next_id, self.on_call = 1000, None
         self.wrong_sha, self.no_id, self.post_error = None, False, False
         self.delayed, self.fail_get, self.total_count = 0, False, None
+        self.list_limit, self.omit_total_count = None, False
 
     def put(self, workflow=R1["workflow"], sha=None, status="completed",
             conclusion="success", attempt=1, run_id=None, ref=None, event="workflow_dispatch"):
@@ -67,7 +68,10 @@ class FakeAPI:
             params = parse_qs(query)
             runs = [x for x in self.runs.values() if x["path"] == ".github/workflows/"+wf
                     and x["event"] == params["event"][0] and x["head_sha"] == params["head_sha"][0]]
-            return {"workflow_runs":runs, "total_count":self.total_count if self.total_count is not None else len(runs)}
+            total = self.total_count if self.total_count is not None else len(runs)
+            visible = runs[:self.list_limit] if self.list_limit is not None else runs
+            return ({"workflow_runs":visible} if self.omit_total_count else
+                    {"workflow_runs":visible, "total_count":total})
         if "/actions/workflows/" in path:
             wf = path.split("/actions/workflows/")[1]
             return {"id":42, "path":".github/workflows/"+wf,"state":"active"}
@@ -307,6 +311,40 @@ class ZG000RegressionTests(unittest.TestCase):
     def test_35_ambiguous_post_recovery_requires_authoritative_run_detail(self):
         api = FakeAPI(); api.post_error = "after"; api.delayed = 100
         with self.assertRaises(ReconcileError):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+
+    def test_36_initial_truncated_inventory_must_not_dispatch(self):
+        api = FakeAPI()
+        api.put(status="queued", conclusion=None)
+        api.list_limit = 0  # API reports one existing run but returns none.
+        with self.assertRaisesRegex(ReconcileError, "incomplete or uncounted pre-dispatch"):
+            make(api).dispatch()
+        self.assertFalse(api.posts)
+
+    def test_37_initial_missing_count_must_not_dispatch(self):
+        api = FakeAPI()
+        api.omit_total_count = True
+        with self.assertRaisesRegex(ReconcileError, "incomplete or uncounted pre-dispatch"):
+            make(api).dispatch()
+        self.assertFalse(api.posts)
+
+    def test_38_ambiguous_post_truncated_inventory_cannot_adopt_partial_evidence(self):
+        api = FakeAPI()
+        api.post_error = "multiple"
+        api.list_limit = 1  # Complete pre-POST empty; post-POST omits second run.
+        with self.assertRaisesRegex(ReconcileError, "incomplete or uncounted post-dispatch"):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+
+    def test_39_ambiguous_post_missing_count_cannot_be_reconciled(self):
+        api = FakeAPI()
+        api.post_error = "after"
+        api.on_call = lambda method, path, payload: (
+            setattr(api, "omit_total_count", True)
+            if method == "POST" else None
+        )
+        with self.assertRaisesRegex(ReconcileError, "malformed post-dispatch inventory"):
             make(api).dispatch()
         self.assertEqual(1, len(api.posts))
 
