@@ -40,12 +40,16 @@ no clock or reconstruction discrimination: it is reported as
 `null_signal=true`, `within_limits=false` and is **inconclusive** even
 when all three numerical rates return identical silence. Empty extents are
 also inconclusive. No arbitrary minimum loudness threshold is imposed on
-quiet but nonzero signals. Each comparator is scaled by the common maximum
-absolute sample before residual calculations so that an audible model's
-relative error is invariant under even extreme scalar attenuation. There is
-no absolute epsilon denominator: when the reference norm is exactly zero
-but the residual is nonzero, the finite diagnostic records the affected
-`zero_reference_metrics` and refuses convergence, even at tolerance 1.0.
+quiet but nonzero signals. Each comparator is now scaled independently per **physical channel**,
+using the larger absolute PCM amplitude of the two compared rates within
+that channel. Each of the RMS, independent-channel magnitude-spectrum
+and transient residuals reports the *worst* relative channel error; a loud
+left channel cannot hide a lost, phase-shifted or attenuated quiet right
+channel. This also prevents the squared RMS of a 1e-250 quiet channel
+underflowing when a louder channel is present. There is no absolute epsilon
+denominator: when a channel's reference norm is exactly zero but the
+residual is nonzero, the finite diagnostic identifies the affected channel
+in `zero_reference_metrics` and refuses convergence, even at tolerance 1.0.
 Otherwise the explicit status is `inconclusive`
 and `selected_audio=None`; malformed candidate, rate, hash, extent,
 nonfinite data or budget is a hard failure before publication.
