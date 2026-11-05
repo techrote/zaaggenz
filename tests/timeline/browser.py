@@ -384,6 +384,23 @@ def main():
             expect(spectral_stage.locator('.rack-spectral')).to_have_attribute('open','')
             degree=spectral_stage.get_by_label('Primary target degree')
             degree.fill('7');degree.dispatch_event('change');ready()
+            # Explicit second voice construction uses the same saved tuning,
+            # true request validation and numerical DSP, not a separate
+            # simulated monitor or unsaved local-only target.
+            add_degree=spectral_stage.get_by_label('Additional target degree')
+            add_degree.fill('11')
+            spectral_stage.get_by_role('button',name='Add retune voice').click();ready()
+            second=spectral_stage.get_by_role('group',name='Retune target voice 2')
+            ratios=second.get_by_label('Voice 2 partial ratios (comma-separated)')
+            ratios.fill('1, 1.5, 3');ratios.dispatch_event('change');ready()
+            before_invalid_ratio=page.locator('#revision').inner_text()
+            ratios=second.get_by_label('Voice 2 partial ratios (comma-separated)')
+            ratios.fill('1, 1');ratios.dispatch_event('change')
+            assert ratios.evaluate('(e)=>e.validity.customError')
+            expect(page.locator('#revision')).to_have_text(before_invalid_ratio)
+            ratios.fill('1, 1.5, 3')
+            second.get_by_label('Voice 2 degree').fill('12')
+            second.get_by_label('Voice 2 degree').dispatch_event('change');ready()
             spectral_doc=saved('rack-spectral-source-bound.zgtimeline.json')
             spectral_rack=json.loads(spectral_doc['project']['revisions'][-1]['recipe_json'])['rack']
             spectral_params=next(s['params'] for s in spectral_rack['bands'][1]['inserts']
@@ -391,6 +408,9 @@ def main():
             assert spectral_params['kind']=='SpectralRetuneRequest'
             assert spectral_params['amount']==0.7
             assert spectral_params['voices'][0]['degree']==7
+            assert len(spectral_params['voices'])==2
+            assert spectral_params['voices'][1]['degree']==12
+            assert spectral_params['voices'][1]['partial_ratios']==[1.0,1.5,3.0]
             assert spectral_params['tuning_spec']==json.loads(
                 spectral_doc['project']['revisions'][0]['recipe_json'])['tuning']
             spectral_id=rendered('rack-spectral-retune')

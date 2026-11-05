@@ -171,12 +171,24 @@ rack-edit proposal validated by the canonical Project/RackRecipe and adopted
 through the one RuntimeSession. Invalid coupled bounds are rejected rather than
 silently clamped.
 
+Multiple saved retune target voices can now be added by explicit degree and
+label in the same specialist panel (up to the contract's 32 voices), re-labelled,
+assigned independently validated tuning degrees and strictly increasing
+positive partial ratios (1–128), or removed while retaining at least one
+voice. A new voice initially copies the displayed primary voice's partial
+ratios. Saved source tuning, existing timed target segments and all other
+voices remain unchanged. Each edit validates the complete bounded request
+and source ancestry; stale voice snapshots fail closed. Real numerical
+rendering and save/reopen use the same request, with no separate target engine.
+Editing the contents of timed segments and constructing new Chordness comb
+templates remain out of scope.
+
 Imported source-bound `ChordnessRequest` stages expose their accepted mode,
 selection, gain, confidence, assignment and objective-weight scalars, and a
 bounded selection among existing saved comb templates. Switching modes never
 constructs arbitrary new comb teeth, and invalid manual selection fails closed.
 The UI deliberately does **not** reauthor opaque external stages, new comb
-inventories, multiple retune voices or target schedules. These remain preserved
+inventories or target schedules. These remain preserved
 on save/reopen. Additional specialized target construction, monitoring-only
 band solo/mute, RMS/loudness-matched A/B, physical Windows and owner
 audition remain outstanding for MBR-003; passing deterministic/browser CI is

@@ -141,12 +141,65 @@ export function renderRack(host,state,apply,tools={}){
         }
         if(retune){
           const target=group(details);
-          target.append(make('p','Target tuning is inherited from the saved source; the first voice degree is editable. All other target voices, partial ratios and time segments remain preserved.'));
+          target.append(make('p','Saved source tuning is fixed. Voice edits change the requested target lattice, not the source; timed target segments remain untouched. A new voice copies the current primary voice partial ratios.'));
           const first=request.voices?.[0];
           if(first)number(target,'Primary target degree',first.degree,
             {type:'integer',minimum:-4096,maximum:4096,unit:'tuning steps'},
             set('spectral_voice',band.id+'/'+stage.id,'degree'),apply);
-          target.append(make('p','Voices: '+request.voices.length+' · target segments: '+request.segments.length+' · no implicit tuning conversion.'));
+          const voices=group(details,'rack-target-voices');
+          request.voices.forEach((voice,index)=>{
+            const panel=group(voices,'rack-target-voice');
+            panel.setAttribute('role','group');
+            panel.setAttribute('aria-label','Retune target voice '+(index+1));
+            panel.append(make('h5','Voice '+(index+1)+' · '+(voice.label||'Unlabelled')));
+            const action=(field,value)=>apply({kind:'edit_spectral_voice',
+              band:band.id,id:stage.id,voice_index:index,expected_voice:voice,field,value});
+            if(index>0)number(panel,'Voice '+(index+1)+' degree',voice.degree,
+              {type:'integer',minimum:-4096,maximum:4096,unit:'tuning steps'},
+              {kind:'edit_spectral_voice',band:band.id,id:stage.id,
+               voice_index:index,expected_voice:voice,field:'degree'},apply);
+            const named=make('label','Voice '+(index+1)+' label');
+            const label=make('input');label.maxLength=64;label.value=voice.label;
+            label.addEventListener('change',()=>action('label',label.value));
+            named.append(label);panel.append(named);
+            const ratioLabel=make('label','Voice '+(index+1)+' partial ratios (comma-separated)');
+            const ratios=make('input');ratios.type='text';
+            ratios.value=voice.partial_ratios.join(', ');
+            ratios.addEventListener('input',()=>ratios.setCustomValidity(''));
+            ratios.addEventListener('change',()=>{
+              const parts=ratios.value.split(',').map(v=>v.trim());
+              const values=parts.map(v=>Number(v));
+              const valid=parts.length>=1&&parts.length<=128&&
+                parts.every(s=>s!=='')&&values.every((v,i)=>Number.isFinite(v)&&
+                  v>0&&(i===0||v>values[i-1]));
+              if(!valid){
+                ratios.setCustomValidity('Enter 1–128 strictly increasing positive finite ratios, separated by commas.');
+                ratios.reportValidity();return;
+              }
+              ratios.setCustomValidity('');action('partial_ratios',values);
+            });
+            ratioLabel.append(ratios);panel.append(ratioLabel);
+            if(request.voices.length>1)
+              button(panel,'Remove voice '+(index+1),{kind:'remove_spectral_voice',
+                band:band.id,id:stage.id,voice_index:index,expected_voice:voice},apply);
+          });
+          const adding=group(details);
+          const degreeLabel=make('label','Additional target degree');
+          const newDegree=make('input');newDegree.type='number';newDegree.step='1';
+          newDegree.min='-4096';newDegree.max='4096';newDegree.value='0';
+          degreeLabel.append(newDegree);adding.append(degreeLabel);
+          const nameLabel=make('label','Additional voice label');
+          const newName=make('input');newName.maxLength=64;newName.value='Additional target';
+          nameLabel.append(newName);adding.append(nameLabel);
+          const addVoice=make('button','Add retune voice');addVoice.type='button';
+          addVoice.disabled=request.voices.length>=32;
+          addVoice.addEventListener('click',()=>{
+            if(!newDegree.reportValidity()||newDegree.value===''||!Number.isSafeInteger(Number(newDegree.value)))return;
+            apply({kind:'add_spectral_voice',band:band.id,id:stage.id,
+              degree:Number(newDegree.value),label:newName.value});
+          });
+          adding.append(addVoice);
+          target.append(make('p','Voices: '+request.voices.length+' / 32 · target segments: '+request.segments.length+' · no implicit tuning conversion.'));
         }else{
           const selector=group(details);
           selector.append(make('p','Manual template selection is bounded by the saved max selected templates. Changing selection never rewrites comb teeth.'));

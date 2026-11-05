@@ -332,6 +332,77 @@ class RackEditorTests(unittest.TestCase):
             self.assertEqual(self.d.to_dict(), before)
 
 
+
+    def test_retune_multiple_target_voices_and_partial_ratios_are_source_bound(self):
+        self.act(kind="enable")
+        band = editor_state(self.d)["value"]["bands"][1]["id"]
+        self.act(kind="add", band=band, type_id="zg.spectral")
+        stage = editor_state(self.d)["value"]["bands"][1]["inserts"][0]
+        sid = stage["id"]
+        original_source = compile_recipe(self.d).to_dict()["source"]
+        primary = deepcopy(stage["params"]["voices"][0])
+        self.act(kind="add_spectral_voice", band=band, id=sid,
+                 degree=11, label="Explicit fifth")
+        stages = editor_state(self.d)["value"]["bands"][1]["inserts"]
+        params = stages[0]["params"]
+        self.assertEqual([v["degree"] for v in params["voices"]], [0, 11])
+        self.assertEqual(params["voices"][1]["partial_ratios"], primary["partial_ratios"])
+        expected = deepcopy(params["voices"][1])
+        self.act(kind="edit_spectral_voice", band=band, id=sid, voice_index=1,
+                 expected_voice=expected, field="partial_ratios", value=[1., 1.5, 3.])
+        expected = deepcopy(editor_state(self.d)["value"]["bands"][1]["inserts"][0]["params"]["voices"][1])
+        self.act(kind="edit_spectral_voice", band=band, id=sid, voice_index=1,
+                 expected_voice=expected, field="degree", value=12)
+        expected = deepcopy(editor_state(self.d)["value"]["bands"][1]["inserts"][0]["params"]["voices"][1])
+        self.act(kind="edit_spectral_voice", band=band, id=sid, voice_index=1,
+                 expected_voice=expected, field="label", value="New second voice")
+        edited = editor_state(self.d)["value"]
+        self.assertEqual(edited["bands"][1]["inserts"][0]["params"]["voices"][1],
+                         {"degree":12, "partial_ratios":[1., 1.5, 3.],
+                          "label":"New second voice"})
+        self.assertEqual(compile_recipe(self.d).to_dict()["source"], original_source)
+        reopened = type(self.d).from_json(json.dumps(self.d.to_dict()))
+        self.assertEqual(editor_state(reopened)["value"], edited)
+        before = self.d.to_dict()
+        bad = [
+            {"kind":"add_spectral_voice","band":band,"id":sid,"degree":True,"label":"invalid"},
+            {"kind":"add_spectral_voice","band":band,"id":sid,"degree":1.5,"label":"invalid"},
+            {"kind":"add_spectral_voice","band":band,"id":sid,"degree":1,"label":"x"*65},
+            {"kind":"add_spectral_voice","band":band,"id":sid,"degree":1,"label":"x","extra":0},
+            {"kind":"edit_spectral_voice","band":band,"id":sid,"voice_index":1,
+             "expected_voice":primary,"field":"degree","value":1},
+            {"kind":"edit_spectral_voice","band":band,"id":sid,"voice_index":True,
+             "expected_voice":expected,"field":"degree","value":1},
+            {"kind":"edit_spectral_voice","band":band,"id":sid,"voice_index":7,
+             "expected_voice":expected,"field":"degree","value":1},
+            {"kind":"edit_spectral_voice","band":band,"id":sid,"voice_index":1,
+             "expected_voice":edited["bands"][1]["inserts"][0]["params"]["voices"][1],
+             "field":"partial_ratios","value":[1., 1.]},
+            {"kind":"edit_spectral_voice","band":band,"id":sid,"voice_index":1,
+             "expected_voice":edited["bands"][1]["inserts"][0]["params"]["voices"][1],
+             "field":"partial_ratios","value":[1., True]},
+            {"kind":"edit_spectral_voice","band":band,"id":sid,"voice_index":1,
+             "expected_voice":edited["bands"][1]["inserts"][0]["params"]["voices"][1],
+             "field":"tuning_spec","value":{}},
+            {"kind":"remove_spectral_voice","band":band,"id":sid,
+             "voice_index":1,"expected_voice":primary},
+            {"kind":"remove_spectral_voice","band":band,"id":sid,
+             "voice_index":-1,"expected_voice":expected},
+        ]
+        for command in bad:
+            with self.subTest(command=command), self.assertRaises(ValueError):
+                edit_rack(self.d, command)
+            self.assertEqual(self.d.to_dict(), before)
+        current = deepcopy(edited["bands"][1]["inserts"][0]["params"]["voices"][1])
+        self.act(kind="remove_spectral_voice", band=band, id=sid,
+                 voice_index=1, expected_voice=current)
+        self.assertEqual(editor_state(self.d)["value"]["bands"][1]["inserts"][0]["params"]["voices"],
+                         [primary])
+        with self.assertRaises(ValueError):
+            edit_rack(self.d, {"kind":"remove_spectral_voice","band":band,"id":sid,
+                               "voice_index":0,"expected_voice":primary})
+        self.assertEqual(compile_recipe(self.d).to_dict()["source"], original_source)
+
     def test_existing_chordness_request_preserves_templates_and_edits_scalars(self):
         self.act(kind="enable")
         project = Project.from_document(self.d.to_dict()["project"])

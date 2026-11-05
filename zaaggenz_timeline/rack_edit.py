@@ -145,6 +145,49 @@ def _update(project, action):
             "bypass": False, "wet": 1.0, "automation": [],
             "params": params,
         })
+    elif kind in ("add_spectral_voice", "edit_spectral_voice", "remove_spectral_voice"):
+        # These are explicitly requested authoring edits, never silent
+        # re-generation of a saved tuning, voice lattice or target schedule.
+        if kind == "add_spectral_voice":
+            exact(action, {"kind", "band", "id", "degree", "label"}, "add retune voice")
+        elif kind == "edit_spectral_voice":
+            exact(action, {"kind", "band", "id", "voice_index", "expected_voice",
+                           "field", "value"}, "edit retune voice")
+        else:
+            exact(action, {"kind", "band", "id", "voice_index", "expected_voice"},
+                  "remove retune voice")
+        stage = _insert(_band(rack, action["band"]), action["id"])
+        if (stage["type_id"] != SPECTRAL or type(stage["params"]) is not dict or
+                stage["params"].get("kind") != "SpectralRetuneRequest"):
+            raise TimelineError("target voice editing requires a saved retune request")
+        voices = stage["params"]["voices"]
+        if kind == "add_spectral_voice":
+            if len(voices) >= 32:
+                raise TimelineError("retune target has the maximum 32 voices")
+            # Displayed in Compose: inherit the primary voice's partial ratios,
+            # but require the user to choose the degree and label explicitly.
+            # LatticeVoice and RackRecipe enforce all numerical/work bounds.
+            added = LatticeVoice(action["degree"],
+                                 tuple(voices[0]["partial_ratios"]), action["label"])
+            voices.append(added.to_dict())
+        else:
+            index = action["voice_index"]
+            if type(index) is not int or not 0 <= index < len(voices):
+                raise TimelineError("unknown retune voice index")
+            if type(action["expected_voice"]) is not dict or voices[index] != action["expected_voice"]:
+                raise TimelineError("retune voice changed; refresh before editing")
+            if kind == "remove_spectral_voice":
+                if len(voices) == 1:
+                    raise TimelineError("a retune request must retain at least one voice")
+                voices.pop(index)
+            else:
+                field = action["field"]
+                if field not in ("degree", "label", "partial_ratios"):
+                    raise TimelineError("unsupported retune voice field")
+                # No unchecked coercion of booleans, paths or unknown payloads.
+                voices[index][field] = action["value"]
+        # Full source, schedule, target-lattice and memory validation occurs
+        # below, before the detached proposal can enter RuntimeSession.
     elif kind == "select_spectral_template":
         exact(action, {"kind", "band", "id", "template_id", "value"},
               "select spectral template")
@@ -267,7 +310,8 @@ def edit_rack(document, action):
         # Project proves retained no-rack ancestry and exact source binding.
         project.save_rack_preset(record["id"], record["name"], imported)
     elif kind in ("set", "add", "move", "remove", "reset_insert_params",
-                  "select_spectral_template"):
+                  "select_spectral_template", "add_spectral_voice",
+                  "edit_spectral_voice", "remove_spectral_voice"):
         _update(project, action)
     else:
         raise TimelineError("unsupported rack action")
