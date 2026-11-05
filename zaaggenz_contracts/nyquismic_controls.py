@@ -499,12 +499,25 @@ class SampledLfoSource(_Record):
                 require(len(times) <= MAX_POINTS,
                         'sampled LFO exact turning-point budget exceeded')
                 crossing += 1
-        require(len(times) <= MAX_POINTS,
-                'sampled LFO point budget exceeded by tempo or turning points')
+        # ModulationRoute.initial applies from absolute time zero even when
+        # this source has a later physical-time onset. Never extrapolate
+        # triangle modulation into the pre-source interval.
+        delayed = start > 0
+        onset = self.value_at(qtext(start))
+        if delayed:
+            # Frozen ModulationRoute has one interpolation mode per lane.
+            # A nonzero step onset followed by a linear triangle cannot be
+            # represented exactly without leaking a pre-onset ramp.
+            require(onset == 0,
+                    'delayed sampled LFO requires a zero-level onset; nonzero step-plus-linear control is unsupported')
+        require(len(times) + int(delayed) <= MAX_POINTS,
+                'sampled LFO point budget exceeded by onset, tempo or turning points')
         points = tuple(Point(qtext(t), qtext(self.value_at(qtext(t))))
                        for t in sorted(times))
+        if delayed:
+            points = (Point(qtext(start), '0/1'),) + points
         return ModulationRoute(id=route_id, mapping=mapping, depth=depth,
-                               initial=qtext(self.value_at(qtext(start))),
+                               initial='0/1' if delayed else qtext(onset),
                                points=points, interpolation='linear')
 
 

@@ -53,14 +53,38 @@ class SampledLfoTests(unittest.TestCase):
         source = SampledLfoSource(frequency='3/2', origin_s='1/8',
                                   phase_cycles='1/4', grid_s='1/16')
         route = source.compile_route('3/10', route_id='partial', depth=3.)
-        self.assertEqual(route.initial, source.value_at('1/8').numerator.__str__() + '/' + str(source.value_at('1/8').denominator))
+        self.assertEqual(route.initial, '0/1')
+        self.assertEqual((route.points[0].time_s, route.points[0].value), ('1/8', '0/1'))
         self.assertEqual(Fraction(route.points[-1].time_s), Fraction(3, 10))
         # The exact peak at 7/24 seconds falls between 1/16-second grid
         # samples, and must now be preserved in the compiled route.
-        self.assertEqual(len(route.points), 4)
+        self.assertEqual(len(route.points), 5)
         self.assertIn(Fraction(7, 24), {Fraction(p.time_s) for p in route.points})
         self.assertEqual(Fraction(route.points[-1].value), source.value_at('3/10'))
-        self.assertEqual(len(source.compile_route('1/8', route_id='empty').points), 0)
+        self.assertEqual(len(source.compile_route('1/8', route_id='empty').points), 1)
+
+    def test_delayed_lfo_neutral_pre_origin_and_nonzero_step_refusal(self):
+        source = SampledLfoSource(origin_s='1/8', phase_cycles='1/4',
+                                  frequency='1/1', grid_s='1/8')
+        route = source.compile_route('1/2', route_id='delayed', depth=20.)
+        self.assertEqual(route.initial, '0/1')
+        self.assertEqual((route.points[0].time_s, route.points[0].value),
+                         ('1/8', '0/1'))
+        spec = SonicSpec(clock=ClockSpec(rate=VirtualRate('100/1'), routes=(route,)))
+        for at, expected in (('0/1', 100), ('1/16', 100),
+                             ('1/8', 100), ('1/4', 110)):
+            with self.subTest(at=at):
+                self.assertEqual(Fraction(evaluate_instantaneous_rate(
+                    spec, at).realized_hz), expected)
+        self.assertEqual(route.to_json(),
+                         source.compile_route('1/2', route_id='delayed', depth=20.).to_json())
+        # A uniform linear lane cannot have an exact nonzero step at origin.
+        with self.assertRaisesRegex(ContractError, 'zero-level onset'):
+            SampledLfoSource(origin_s='1/8', phase_cycles='0/1',
+                             grid_s='1/8').compile_route('1/2', route_id='no-leak')
+        # Count the explicit onset against the same frozen lane budget.
+        with self.assertRaises(ContractError):
+            source.compile_route('256/8', route_id='over-budget')
 
     def test_non_grid_turning_points_are_exact_at_intermediate_times(self):
         source = SampledLfoSource(frequency='3/2', grid_s='1/10')

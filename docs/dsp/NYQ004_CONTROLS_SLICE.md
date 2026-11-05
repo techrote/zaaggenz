@@ -176,7 +176,15 @@ fractional phase and frequency values are accepted within hard bounds.
 The saved source holds version, mode, frequency, phase, origin, time grid,
 base BPM and tempo breakpoints. The compiled route holds explicit sample
 times, exact rational triangle values, `linear` interpolation, requested
-mapping and depth. **Store both** if later editing of the original LFO
+mapping and depth.
+For a delayed physical-time origin, the frozen linear route is now emitted
+with neutral pre-origin control and a separate counted onset point only when
+its triangle value at onset is **exactly zero** (quarter/three-quarter phase).
+Other delayed phases would require both an abrupt step and linear ramps in a
+single saved route; they **fail closed** instead of leaking a pre-onset ramp.
+This uses the existing 256-point budget, does not change zero-origin routes,
+and does not claim a production sampler/graph capability.
+ **Store both** if later editing of the original LFO
 intent is required: the existing `SonicSpec` only stores its concrete
 `ModulationRoute` and does not yet contain a nested LFO-source identity.
 The compiler now **retains exact rational half-cycle turning points
