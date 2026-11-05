@@ -122,6 +122,13 @@ frequency contract before submitting an edit: 20 Hz ≤ low < mid < high <
 at the strict ceiling produce a field-level validation error, not silent
 clamping or a new revision. The backend remains the authoritative validator.
 
+Rack controls use stable action identities to retain the keyboard's active
+input/button after a successful asynchronous, server-validated rack redraw.
+This is a focus-management aid only: the accepted Project/rack revision,
+processing order, source identity and export do not depend on browser focus.
+If the active control disappears or becomes disabled (e.g. removing a stage),
+no alternative action is invoked and focus is not redirected to another stage.
+
 ### Measured completed rack diagnostics (MBR-003 partial)
 The expandable **Measured rack output** area displays actual per-band input,
 post-band-wet, and routed-output peak/RMS readings from the selected, completed
