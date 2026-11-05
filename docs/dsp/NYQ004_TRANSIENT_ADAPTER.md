@@ -15,7 +15,14 @@ upstream RMS adapter, inheriting full-copy validation, rejection of foreign
 source hashes/invalid channels/nonfinite audio, explicit verified-upstream
 ancestor IDs and bounded windows. It computes the dimensionless value for
 window k as max(0, RMS[k] - RMS[k-1] - minimum_rise), with RMS[-1]=0.
-All arithmetic after the RMS quantizer is rational, and control changes
+Subtraction and threshold comparison after the RMS quantizer are exact
+rational arithmetic. A difference of two independently bounded-denominator
+RMS levels can require a denominator near 10^12; the compiled rise is therefore
+rounded once, deterministically, to at most 1,000,000 denominator (the RMS
+source resolution), before entering the frozen Point contract. Very small
+positive rises can become zero at that declared resolution; no rate clipping,
+reordering or unbounded precision is introduced. The manifest/diagnostics
+record both RMS and rise quantization denominators. Control changes
 take effect at exact half-open window start times. The detector is a
 positive window-envelope difference, **not** a sample-accurate broadband
 transient detector or spectral-centroid feature, and it requires up to
@@ -35,7 +42,8 @@ unchanged; NYQ-004 is **not** accepted by this component.
 Regression:
 python -m unittest discover -s tests/contracts -p 'test_nyquismic_transient.py' -v
 
-Fixtures cover threshold/tie/step timing, actual control-rate evaluation,
+Fixtures cover threshold/tie/step timing, adversarial non-coprime RMS denominator
+re-quantization, actual control-rate evaluation,
 serialisation, first-window rise, falling/steady edges, stereo, empty/silence,
 source tampering, ancestry, delayed origin rejection, point budgets,
 cancellation and input immutability.

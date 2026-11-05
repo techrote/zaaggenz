@@ -1,5 +1,6 @@
 """NYQ-004 immutable upstream positive RMS-rise transient controls."""
 import hashlib
+from fractions import Fraction
 import unittest
 
 import numpy as np
@@ -60,6 +61,25 @@ class UpstreamTransientTests(unittest.TestCase):
                          '1080/1')
         self.assertEqual(evaluate_instantaneous_rate(clock, '1/1000').realized_hz,
                          '1000/1')
+
+    def test_non_coprime_rms_differences_fit_frozen_rational_contract(self):
+        # Real f32 RMS windows can quantize to unrelated <=1e6
+        # denominators; their exact difference may require ~1e12. Preserve
+        # the physical rise while serializing to the frozen point budget.
+        samples = np.array([.111111, -.111111, .112345, -.112345], dtype='<f4')
+        result = compile_(samples, policy(samples, window_frames=2), depth=120.)
+        a, b = float(abs(samples[0])), float(abs(samples[2]))
+        exact_rise = (Fraction.from_float(b).limit_denominator(1_000_000)
+                      - Fraction.from_float(a).limit_denominator(1_000_000))
+        self.assertGreater(exact_rise.denominator, 1_000_000_000)
+        expected = exact_rise.limit_denominator(1_000_000)
+        self.assertEqual(Fraction(result.route.points[0].value), expected)
+        self.assertGreater(expected, 0)
+        self.assertLessEqual(expected.denominator, 1_000_000)
+        self.assertEqual(result.diagnostics['rise_quantization_denominator'], 1_000_000)
+        self.assertEqual(result.route.to_json(),
+                         compile_(samples, policy(samples, window_frames=2),
+                                  depth=120.).route.to_json())
 
     def test_first_window_is_rise_from_silence_and_no_hidden_level_hold(self):
         samples = np.array([.25, -.25, .25, -.25,

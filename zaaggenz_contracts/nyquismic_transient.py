@@ -79,13 +79,18 @@ def compile_upstream_transient_route(
             raise ClockCancelled('upstream transient cancelled; no partial route')
         rises.append(max(Fraction(0), level - previous - threshold))
         previous = level
+    # Each RMS level is deliberately quantized to <=1e6 denominator. Exact
+    # subtraction of two such fractions may have a denominator near 1e12,
+    # which the frozen Point contract (<=1e9) cannot serialize. Quantize the
+    # derived rise *after* exact subtraction back to the input RMS resolution;
+    # do not widen the public rational contract or silently clip the clock.
     points = tuple(
-        Point(p.time_s, qtext(rises[i + 1]))
+        Point(p.time_s, qtext(rises[i + 1].limit_denominator(1_000_000)))
         for i, p in enumerate(base.route.points)
     )
     route = ModulationRoute(
         id=route_id, mapping=mapping, depth=depth,
-        initial=qtext(rises[0]) if rises else '0/1',
+        initial=qtext(rises[0].limit_denominator(1_000_000)) if rises else '0/1',
         points=points, interpolation='step',
     )
     if cancelled is not None and cancelled():
@@ -105,6 +110,7 @@ def compile_upstream_transient_route(
             'minimum_rise': policy.minimum_rise,
             'detector': 'positive-RMS-rise/previous-window-v1',
             'rms_quantization_denominator': 1000000,
+            'rise_quantization_denominator': 1000000,
             'clipping': 'reject-upstream-rms-and-no-transient-clipping',
             'graph_topology': 'caller-verified-only',
         },
