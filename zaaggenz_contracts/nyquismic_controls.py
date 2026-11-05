@@ -61,9 +61,15 @@ def nearest_ladder_hz(value: Fraction | Decimal, levels: tuple[str, ...]) -> Fra
     require(type(levels) is tuple and 0 < len(levels) <= 64, 'rate ladder requires 1..64 entries')
     parsed = [rational_value(s, 'rate ladder entry', MIN_RATE_HZ, MAX_RATE_HZ) for s in levels]
     require(all(a < b for a, b in zip(parsed, parsed[1:])), 'rate ladder must be ascending/unique')
+    # Bound-check with the existing 80-digit control model, but select the
+    # ladder using the exact resulting rational/Decimal value. Rounding BOTH
+    # distances in decimal80 can turn a real near-midpoint preference into a
+    # false tie and silently choose the lower level. An exact Fraction also
+    # preserves the advertised deterministic tie rule for large route products.
     with localcontext(Context(prec=80)):
         _range(value, 'unquantized rate')
-        return min(parsed, key=lambda hz: (abs(_d(value) - _d(hz)), hz))
+    exact = Fraction(value)
+    return min(parsed, key=lambda hz: (abs(exact - hz), hz))
 
 
 @dataclass(frozen=True)
