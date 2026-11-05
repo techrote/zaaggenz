@@ -649,6 +649,65 @@
         }
       ],
       "reason": "NYQ-003 / PR #266 narrowly carries forward the exact seven previously reviewed #87 transient-v4 state/gate validation path/from/to changes for the new isolated convergence-source implementation identity 30ffdc47e4fc17a528bf3e521a6eb6a074a7a0655125e2bbcb646571afbc171c. Pre-registration https://github.com/techrote/zaaggenz/actions/runs/42025988301 reproduced the same implementation SHA and exactly the seven historical projection differences across Ubuntu and Windows (6 fixtures/36 candidates each). No additional exceptions, calibration/fixture changes, threshold relaxation, source/preset defaults, ranking, score, receipt or comparator changes. Candidate only, still requires terminal exact-head cross-platform and reverse qualification and independent review."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "91ea8155ef5705207da268d2b7c79037adfe1c33cca7fba791be22157e33804e",
+      "issue": 252,
+      "stable_id": "ZG-024",
+      "changes": [
+        {
+          "from": "accepted",
+          "path": "/fixtures/0/candidates/8/holdout/validation/0/state",
+          "to": "rejected"
+        },
+        {
+          "from": [],
+          "path": "/fixtures/0/candidates/8/holdout/validation/0/triggered_gates",
+          "to": [
+            "transient_loss"
+          ]
+        },
+        {
+          "from": [
+            "level_mismatch",
+            "energy_collapse",
+            "transient_loss",
+            "normalisation_suspect"
+          ],
+          "path": "/fixtures/4/candidates/0/holdout/validation/0/triggered_gates",
+          "to": [
+            "level_mismatch",
+            "energy_collapse",
+            "normalisation_suspect"
+          ]
+        },
+        {
+          "from": "accepted",
+          "path": "/fixtures/4/candidates/0/whole_signal/validation/0/state",
+          "to": "rejected"
+        },
+        {
+          "from": [],
+          "path": "/fixtures/4/candidates/0/whole_signal/validation/0/triggered_gates",
+          "to": [
+            "transient_loss"
+          ]
+        },
+        {
+          "from": "rejected",
+          "path": "/fixtures/4/candidates/1/whole_signal/validation/0/state",
+          "to": "accepted"
+        },
+        {
+          "from": [
+            "transient_loss"
+          ],
+          "path": "/fixtures/4/candidates/1/whole_signal/validation/0/triggered_gates",
+          "to": []
+        }
+      ],
+      "reason": "NYQ-003 / draft PR #266 carries forward only the same seven previously reviewed issue #87 transient-v4 state/gate path/from/to projections for new opt-in convergence-source implementation identity 91ea8155ef5705207da268d2b7c79037adfe1c33cca7fba791be22157e33804e. Pre-registration https://github.com/techrote/zaaggenz/actions/runs/42041980840 at a028cb384355682b34231389848c66a06ad4ff86 independently reproduced this identity and exactly those seven historical paths on Ubuntu and Windows (six fixtures/36 candidates each), no other portable comparison difference. No comparator, numerical threshold, fixture, score, rank, recipe, source, factory or acceptance criterion changed. Candidate only; exact-head cross-platform/reverse CI and independent review required."
     }
   ],
   "version": "1.0.0"
