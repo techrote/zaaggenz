@@ -114,6 +114,40 @@ class FrozenConvergenceTests(unittest.TestCase):
         self.assertEqual(result.diagnostics['passes'], 3)
         self.assertEqual(result.diagnostics['candidate_conversion'][0]['ratio_down'], 4)
 
+    def test_mutable_renderer_pcm_is_frozen_before_converter_callbacks(self):
+        # A cancellation callback is external code. It may mutate the array
+        # returned by the renderer after the convergence evaluator checks
+        # that candidate. The converted PCM must still correspond to the
+        # snapshot validated at the candidate boundary, not the new bytes.
+        buffers = {}
+        checks = [0]
+
+        def render(rate):
+            item = candidate(rate)
+            buffers[rate] = item.audio
+            return item
+
+        def mutate_without_cancelling():
+            checks[0] += 1
+            if checks[0] == 2:
+                # First call precedes rendering; second is inside the
+                # first candidate's delivery conversion.
+                buffers[RATES[0]][:] = 0.0
+            return False
+
+        result = evaluate_local_convergence(
+            render, **HASHES, cancelled=mutate_without_cancelling,
+            policy=FrozenConvergencePolicy(
+                relative_rms_limit=.12,
+                relative_spectrum_limit=.12,
+                relative_transient_limit=.25),
+        )
+        self.assertTrue(np.all(buffers[RATES[0]] == 0))
+        self.assertGreaterEqual(checks[0], 2)
+        self.assertEqual(result.status, 'converged')
+        self.assertIsNotNone(result.selected_audio)
+        self.assertGreater(float(np.sqrt(np.mean(result.selected_audio ** 2))), .6)
+
     def test_last_comparator_mismatch_cannot_publish_qualified_pcm(self):
         result = evaluate_local_convergence(
             lambda rate: candidate(rate, corrupt=True), **HASHES,
