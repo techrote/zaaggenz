@@ -22,6 +22,12 @@ rate. No pre-trimming of nonlinear source frequencies is introduced.
 Passes are bounded by the existing four-reference-pass limit, each
 source/output by the normal finite frame/tap budgets, and cancellation
 is tested before candidates, conversions, comparisons and publication.
+Candidate PCM is copied into one private, bounded snapshot **before**
+finite-sample validation and delivery conversion: an external cancellation
+callback cannot substitute different samples in a caller-owned array after
+validation while retaining the declared source/sonic identity. The copied
+snapshot is numerical isolation, **not** independent verification that the
+renderer honored its advertised clock and source hashes.
 
 The result reports all exact rates, delivery filter method/coefficient
 hashes and three independent *relative* successive-pass metrics:
