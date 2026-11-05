@@ -99,12 +99,13 @@ class Reconciler:
         # Inventory IDs before every POST, including cancelled runs. A run seen
         # before an ambiguous POST cannot be presented as its new evidence.
         self.prior_run_ids: dict[str, set[int]] = {}
+        self.reconciled_workflows: set[str] = set()
         self.manifest: dict[str, Any] = {
             "schema": "zg000-dispatch-v1", "repo": repo, "pr": pr,
             "requested_sha": sha, "current_pr_sha": None, "source_ref": ref,
             "orchestrator_run_id": run_id, "selected": rows,
             "runs": [], "rejected": [], "decisions": [], "state": "pending",
-            "reused": 0, "dispatched": 0, "avoided_dispatches": 0,
+            "reused": 0, "dispatched": 0, "reconciled": 0, "avoided_dispatches": 0,
             "policy": "no child cancellation; no ambiguous dispatch retry",
         }
 
@@ -262,6 +263,8 @@ class Reconciler:
                 "run_id": detail["id"], "run_attempt": detail["run_attempt"],
             })
             # This is an observed run, not proof the uncertain POST created it.
+            self.reconciled_workflows.add(workflow)
+            self.manifest["reconciled"] += 1
             return detail
         raise ReconcileError(
             f"{workflow}: ambiguous POST not reconciled to one newly visible exact-head run; "
@@ -309,7 +312,8 @@ class Reconciler:
             self.check_head()
             if detail is None:
                 detail = self.dispatch_one(row)
-                decision = "dispatched"
+                decision = ("reconciled_ambiguous_post" if row["workflow"] in self.reconciled_workflows
+                            else "dispatched")
             else:
                 self.manifest["reused"] += 1
                 self.manifest["avoided_dispatches"] += 1
