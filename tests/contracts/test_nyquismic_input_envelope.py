@@ -67,6 +67,34 @@ class InputEnvelopeTests(unittest.TestCase):
         self.assertNotEqual(result.route.initial,
                             compile_(stereo, make(stereo, window=2, channel=0)).route.initial)
 
+    def test_delayed_source_has_no_pre_origin_control_leakage(self):
+        audio = np.array([.5, -.5, .5, -.5, .25, -.25, .25, -.25],
+                         dtype='<f4')
+        policy = make(audio, origin_s='1/10')
+        result = compile_(audio, policy, depth=200.)
+        self.assertEqual(result.route.initial, '0/1')
+        self.assertEqual(tuple((p.time_s, p.value) for p in result.route.points),
+                         (('1/10', '1/2'), ('201/2000', '1/4')))
+        self.assertEqual(result.diagnostics['pre_origin_control'], 'neutral_zero')
+        spec = SonicSpec(clock=ClockSpec(rate=VirtualRate('1000/1'),
+                                        routes=(result.route,)))
+        for instant, expected in (('0/1', '1000/1'),
+                                  ('199/2000', '1000/1'),
+                                  ('1/10', '1100/1'),
+                                  ('201/2000', '1050/1')):
+            with self.subTest(instant=instant):
+                self.assertEqual(evaluate_instantaneous_rate(
+                    spec, instant).realized_hz, expected)
+        self.assertEqual(result.route.to_json(),
+                         compile_(audio, policy, depth=200.).route.to_json())
+        # The delayed start uses a real point slot; never silently lose the
+        # final window at the 256-point saved-route budget.
+        long_audio = np.ones(257, dtype='<f4') * .25
+        self.assertEqual(len(compile_(long_audio,
+                             make(long_audio, window=1)).route.points), 256)
+        with self.assertRaises(ContractError):
+            compile_(long_audio, make(long_audio, window=1, origin_s='1/10'))
+
     def test_silent_and_empty_inputs_have_neutral_control(self):
         for audio in (np.zeros(0, dtype='<f4'), np.zeros((5, 2), dtype='<f4')):
             p = make(audio, channel=0)
