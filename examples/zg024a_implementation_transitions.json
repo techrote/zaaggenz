@@ -554,6 +554,16 @@
         "zaaggenz_contracts/nyquismic_controls.py"
       ],
       "reason": "NYQ-004 / PR #267 bounded delayed SampledLfoSource pre-origin neutrality/fail-closed correction in the opt-in linear route compiler. One manifest path, zaaggenz_contracts/nyquismic_controls.py, changes from the last candidate; no accepted NYQ-001/002 sampler geometry, default/export, source rights, comparator or frozen calibration modification. Before registration, exact-head pre-registration run https://github.com/techrote/zaaggenz/actions/runs/42024783641 at 7ac1b2a48c84ef459ff16f39c005d5c2eb0afc6b reported the identical candidate implementation SHA on Ubuntu and Windows (6 fixtures, 36 candidates) and precisely the seven historical #87 transient-v4 state/gate projection changes. The test-only 256-point assertion correction at 4b3d299f7cf45929f7234d729ea08200e56ab5a1 does not change production source. This is a narrow candidate transition, not independent approval: final-head cross-platform and reverse CI and reviewer acceptance are required."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "a4d9896bb94293f4bbe89667f76f3089192c360d8c8d100bb78d034eea07cbdd",
+      "issue": 253,
+      "stable_id": "ZG-016",
+      "changed_paths": [
+        "zaaggenz_contracts/nyquismic_controls.py"
+      ],
+      "reason": "NYQ-004 / draft PR #267 corrects the opt-in saved triangle LFO grid admission so only BPM tempo points active strictly before the requested region end determine fastest supported cycle rate. Future tempo changes no longer falsely block an otherwise exact-resolution shorter control route; faster tempo actually in the requested extent still rejects underresolved grids. Source manifest difference is exclusively zaaggenz_contracts/nyquismic_controls.py, with no accepted sampler, rack, export, factory/default or calibration/comparator modification. Pre-registration ZG-024a run https://github.com/techrote/zaaggenz/actions/runs/42042623207 at exact head 35213f28df463046c7a473b26f7733d61e5bb498 independently reproduced implementation identity a4d9896bb94293f4bbe89667f76f3089192c360d8c8d100bb78d034eea07cbdd on Ubuntu and Windows (six fixtures, 36 candidates each), with only the unknown implementation identity and exactly the seven historically reviewed issue #87 transient-v4 validation projections. This row is a candidate only; no reviewer acceptance or physical/owner listening claim. Re-run final-head direct and reverse CI before merge."
     }
   ]
 }
