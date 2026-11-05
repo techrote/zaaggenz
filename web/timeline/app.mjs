@@ -5,6 +5,7 @@ const $=id=>document.getElementById(id),transport=new RenderTransport();
 let editor,token,selected=null,validation=null,epoch=0,validationSequence=0,job=null,slots=[],activeSlot=null,presetCatalogue=null,rackEditing=false;
 const rackEditQueue=[],MAX_QUEUED_RACK_EDITS=16;
 let dryMonitor=null,dryJob=null,dryRequestSequence=0;
+let bandMonitor=null,bandJob=null,bandRequestSequence=0;
 const status=(message,error=false)=>{ $('status').textContent=message;$('status').classList.toggle('error',error); };
 async function api(path,payload){
   const response=await fetch('/api/timeline/'+path,payload===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Zaaggenz-Token':token},body:JSON.stringify(payload)});
@@ -20,7 +21,8 @@ function monitorPeaks(){
 }
 function applyMonitorVolume(which){
   const peaks=monitorPeaks();
-  const matched=$('peak-match').checked&&peaks&&
+  const matched=$('audio').dataset.monitorKind!=='band'&&
+    $('peak-match').checked&&peaks&&
     dryMonitor?.slotId===activeSlot?.id&&
     validation?.revision_id===activeSlot?.revision;
   const volume=matched?Math.min(1,Math.min(peaks.processed,peaks.dry)/peaks[which]):1;
@@ -34,13 +36,29 @@ function updateDryControls(){
   const current=!!validation&&!!activeSlot&&!rackEditing&&!rackEditQueue.length&&
     validation.revision_id===activeSlot.revision&&
     JSON.stringify(editor.document)===JSON.stringify(activeSlot.document);
-  $('prepare-dry').disabled=!current||!validation?.rack_editor?.present||!!dryMonitor||!!dryJob;
-  const ready=current&&!!dryMonitor&&dryMonitor.slotId===activeSlot.id;
-  $('hear-dry').disabled=!ready;$('hear-processed').disabled=!ready;
-  $('peak-match').disabled=!ready||!monitorPeaks();
-  if(!ready)$('peak-match').checked=false;
+  const rackReady=current&&!!validation?.rack_editor?.present;
+  $('prepare-dry').disabled=!rackReady||!!dryMonitor||!!dryJob;
+  $('prepare-band').disabled=!rackReady||!!bandMonitor||!!bandJob;
+  const dryReady=current&&!!dryMonitor&&dryMonitor.slotId===activeSlot.id;
+  const bandReady=current&&!!bandMonitor&&bandMonitor.slotId===activeSlot.id;
+  $('hear-dry').disabled=!dryReady;
+  $('hear-band').disabled=!bandReady;
+  $('hear-processed').disabled=!(dryReady||bandReady);
+  const matching=dryReady&&$('audio').dataset.monitorKind!=='band'&&!!monitorPeaks();
+  $('peak-match').disabled=!matching;
+  if(!matching)$('peak-match').checked=false;
+}
+function discardBandMonitor(){
+  bandRequestSequence++;
+  if(bandJob)quietCancel(bandJob);
+  bandJob=null;
+  if(bandMonitor)URL.revokeObjectURL(bandMonitor.url);
+  bandMonitor=null;
+  $('hear-band').dataset.jobId='';
+  $('hear-band').disabled=true;
 }
 function discardDryMonitor(){
+  discardBandMonitor();
   dryRequestSequence++;
   if(dryJob)quietCancel(dryJob);
   dryJob=null;
@@ -52,6 +70,7 @@ function discardDryMonitor(){
   $('hear-dry').dataset.jobId='';
   $('monitor-mode').textContent='Processed output · no raw/dry comparison prepared.';
   $('prepare-dry').disabled=true;$('hear-dry').disabled=true;$('hear-processed').disabled=true;
+  $('prepare-band').disabled=true;$('hear-band').disabled=true;
 }
 function clearPlayback(){
   discardDryMonitor();
@@ -248,7 +267,8 @@ function publish(slot){
   const generation=transport.begin('timeline',slot.revision,artifact.recipe_sha256,artifact.cache_key,artifact.product);
   if(!transport.accept('timeline',{accepted:true,state:'completed',generation,revision_id:slot.revision,artifact,audio:slot.url}))throw Error('Stale audio rejected.');
   const snapshot=transport.current('timeline');activeSlot=slot;
-  $('audio').src=snapshot.audio;$('audio').dataset.revision=snapshot.revisionId;$('play').disabled=false;
+  $('audio').src=snapshot.audio;$('audio').dataset.revision=snapshot.revisionId;
+  $('audio').dataset.monitorKind='processed';$('play').disabled=false;
   $('playback-revision').textContent=snapshot.revisionId;$('waveform').dataset.revision=snapshot.revisionId;
   renderRackMeters($('rack-meters'),artifact);
   $('revision').textContent=snapshot.revisionId;$('outputs').value=slot.id;
@@ -314,20 +334,97 @@ function hearDryMonitor(){
   if(!dryMonitor||!activeSlot||dryMonitor.slotId!==activeSlot.id||
      !validation||validation.revision_id!==activeSlot.revision)return;
   $('audio').pause();$('audio').src=dryMonitor.url;
-  $('audio').dataset.revision=dryMonitor.revision;$('audio').load();
+  $('audio').dataset.revision=dryMonitor.revision;
+  $('audio').dataset.monitorKind='dry';$('audio').load();
   $('playback-revision').textContent=dryMonitor.revision+' · DRY MONITOR ONLY';
   $('waveform').getContext('2d').clearRect(0,0,1200,140);
   $('waveform').dataset.revision='';
   renderRackMeters($('rack-meters'),null);
   $('monitor-mode').textContent='Hearing raw/dry source. Waveform/meters are hidden; Download processed WAV still exports the processed selection.';
   applyMonitorVolume('dry');
+  updateDryControls();
   $('play').disabled=false;
 }
+async function prepareBandMonitor(){
+  if(!validation||!activeSlot||!validation.rack_editor?.present||rackEditing||
+      rackEditQueue.length||bandJob||bandMonitor){
+    status('Select an exact current processed rack render before band monitoring.',true);return;
+  }
+  const band=$('monitor-band').value,mode=$('monitor-action').value;
+  if(!['sub','lowmid','highmid','air'].includes(band)||!['solo','mute'].includes(mode))return;
+  const slot=activeSlot,source=copy(editor.document),sourceEpoch=epoch,sequence=++bandRequestSequence;
+  const current=()=>sequence===bandRequestSequence&&epoch===sourceEpoch&&
+    activeSlot===slot&&$('monitor-band').value===band&&$('monitor-action').value===mode&&
+    JSON.stringify(editor.document)===JSON.stringify(source);
+  $('prepare-band').disabled=true;
+  $('monitor-mode').textContent='Rendering '+mode+' '+band+' from the completed full processed mix…';
+  try{
+    const request=await api('monitor-band',{document:source,band,mode});
+    if(!current()){quietCancel(request.job_id);return;}
+    if(request.monitor_source_revision_id!==slot.revision||
+       request.monitor_policy!=='non-authoritative post-master band; no export slot'||
+       request.monitor_band!==band||request.monitor_mode!==mode)
+      throw Error('Band monitor source or mode identity mismatch.');
+    bandJob=request.job_id;
+    for(;;){
+      const result=await api('jobs/'+request.job_id);
+      if(!current())return;
+      if(['failed','cancelled','stale'].includes(result.state))
+        throw Error(result.error||'Band monitor '+result.state);
+      if(result.state==='completed'){
+        const evidence=result.artifact?.scopes?.diagnostics?.monitor;
+        if(result.revision_id!==request.revision_id||
+           result.artifact?.revision_id!==request.revision_id||
+           result.artifact?.recipe_sha256!==request.recipe_sha256||
+           result.artifact?.cache_key!==request.cache_key||
+           evidence?.band!==band||evidence?.mode!==mode||
+           evidence?.policy!=='post-master filtering; non-authoritative listening only')
+          throw Error('Band monitor artifact identity/policy mismatch.');
+        const response=await fetch('/api/timeline/jobs/'+request.job_id+'/audio');
+        if(!response.ok||response.headers.get('X-Timeline-Revision')!==request.revision_id)
+          throw Error('Band monitor audio identity mismatch.');
+        const blob=await response.blob();
+        if(!current())return;
+        bandMonitor={slotId:slot.id,revision:request.revision_id,url:URL.createObjectURL(blob),
+          band,mode};
+        $('hear-band').dataset.jobId=request.job_id;
+        $('monitor-mode').textContent='Band '+band+' '+mode+' ready · post-master filter audition only; processed WAV unchanged.';
+        status('Monitoring job ready; authoritative session and exported PCM were not modified.');
+        return;
+      }
+      await new Promise(resolve=>setTimeout(resolve,120));
+    }
+  }catch(e){
+    if(current()){
+      $('monitor-mode').textContent='Band audition unavailable; processed output remains selected.';
+      status(e.message,true);
+    }
+  }finally{
+    if(sequence===bandRequestSequence){bandJob=null;updateDryControls();}
+  }
+}
+function hearBandMonitor(){
+  if(!bandMonitor||!activeSlot||bandMonitor.slotId!==activeSlot.id||
+      !validation||validation.revision_id!==activeSlot.revision)return;
+  $('audio').pause();$('audio').src=bandMonitor.url;
+  $('audio').dataset.revision=bandMonitor.revision;
+  $('audio').dataset.monitorKind='band';$('audio').load();
+  $('audio').volume=1;$('peak-match').checked=false;
+  $('peak-match-status').textContent='Post-master band audition at original monitor level; processed WAV unchanged.';
+  $('playback-revision').textContent=bandMonitor.revision+' · BAND '+bandMonitor.band.toUpperCase()+
+    ' '+bandMonitor.mode.toUpperCase()+' MONITOR ONLY';
+  $('waveform').getContext('2d').clearRect(0,0,1200,140);
+  $('waveform').dataset.revision='';
+  renderRackMeters($('rack-meters'),null);
+  $('monitor-mode').textContent='Hearing post-master '+bandMonitor.band+' '+bandMonitor.mode+
+    ' filter audition; not the pre-rack band stem. Download processed WAV is unchanged.';
+  updateDryControls();$('play').disabled=false;
+}
 function hearProcessedMonitor(){
-  if(!dryMonitor||!activeSlot||!validation||
+  if((!dryMonitor&&!bandMonitor)||!activeSlot||!validation||
      validation.revision_id!==activeSlot.revision)return;
   publish(activeSlot);
-  $('monitor-mode').textContent='Hearing processed source · raw/dry A/B ready. Download processed WAV is unchanged.';
+  $('monitor-mode').textContent='Hearing processed source · monitoring alternatives available. Download processed WAV is unchanged.';
 }
 async function render(region){
   if(!validation||rackEditing||rackEditQueue.length)return;const data=editor.document,revision=validation.revision_id,requestEpoch=++epoch;
@@ -381,9 +478,18 @@ function bind(){
   $('clips').onchange=()=>{const clip=editor.document.clips.find(c=>c.id===$('clips').value);if(clip){$('region-start').value=clip.start_beat;$('region-end').value=clip.end_beat;}};
   $('prepare-dry').onclick=()=>void prepareDryMonitor();
   $('hear-dry').onclick=()=>hearDryMonitor();
+  $('prepare-band').onclick=()=>void prepareBandMonitor();
+  $('hear-band').onclick=()=>hearBandMonitor();
+  for(const id of ['monitor-band','monitor-action'])$(id).onchange=()=>{
+    if(bandMonitor){
+      discardBandMonitor();
+      $('monitor-mode').textContent='Band selection changed; prepare a fresh monitored result.';
+    }
+    updateDryControls();
+  };
   $('hear-processed').onclick=()=>hearProcessedMonitor();
   $('peak-match').onchange=()=>applyMonitorVolume(
-    dryMonitor&&$('audio').dataset.revision===dryMonitor.revision?'dry':'processed');
+    $('audio').dataset.monitorKind==='dry'?'dry':'processed');
   $('render').onclick=()=>render(null);
   $('render-region').onclick=()=>safe(()=>render({start_beat:rational($('region-start').value),end_beat:rational($('region-end').value)}));
   $('cancel').onclick=()=>{epoch++;quietCancel(job);job=null;discardDryMonitor();status('Render cancelled; editing state is unchanged.');};

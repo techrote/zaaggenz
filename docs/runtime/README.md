@@ -110,7 +110,7 @@ changing source presets, locked_bloom or retained BODY/AUX/SUB ownership.
 
 This is a bounded MBR-003 development slice, **not full MBR-003 acceptance**:
 specialist spectral retuning/Chordness authoring, cross-band monitoring,
-monitor-only band solo/mute, full spectral target construction, complete control-surface usability/accessibility and physical Windows acceptance
+full spectral target construction, complete control-surface usability/accessibility and physical Windows acceptance
 remain outstanding. Existing spectral and external insert payloads are shown
 as preserved but not falsely advertised as editable. External VST3 hosting
 remains outside Phase A and is not implied.
@@ -130,8 +130,8 @@ Previously saved outputs are deliberately revision-bound; selecting one reopens
 its exact snapshot rather than applying stale measurements to the new edit.
 Region previews retain whole-phrase rack meter context, not cropped-region
 meter readings. Missing metrics are explicitly marked unavailable. No
-monitoring-only solo/mute, A/B dry render, or export-level compensation is
-implemented by this change; saved/exported PCM and rack contracts are unchanged.
+saved-state solo/mute, A/B dry render, or export-level compensation is
+implemented by the measured-meter panel itself; saved/exported PCM and rack contracts are unchanged.
 
 
 ### Raw/dry monitoring-only A/B (MBR-003 partial)
@@ -154,8 +154,23 @@ side to the quieter side's measured peak; it never amplifies, changes a saved
 recipe, replaces the processed download, or claims RMS/loudness equivalence.
 Switching dry/processed restores the corresponding gain; edits, changing
 outputs and stopping playback reset volume to unity and revoke the comparison.
-There is no monitor-only band solo/mute yet. Hosted browser
-qualification does not constitute physical Windows/owner auditory acceptance.
+**Band solo/mute audition** is now an optional, separately queued numerical
+job, bound to the exact selected processed Compose revision. Its four bands
+use the rack's saved Butterworth crossover values on the **completed
+post-master full-phrase mix**. Solo hears that filtered band; mute hears
+the final processed mix minus that band. This is an honest post-master
+listening filter, **not** a reconstructed pre-rack band stem or an alteration
+to individual processor chains. The saved rack, working revision, original
+completed output, selected download, factory sources and full-render PCM are
+never changed. The temporary monitor is rejected on stale revisions and
+invalidated on edits/output changes. Its extra filter memory is included
+in the scheduler's admission budget. Monitor-only audio has no waveform
+or rack meters masquerading as the full processed output; A/B peak matching
+is disabled while band audition is selected. Changing band or mode discards
+the previous audition so the user must prepare a new bounded job.
+
+Hosted browser qualification does not constitute physical Windows/owner
+auditory acceptance.
 
 
 ### MBR-003 internal spectral authoring (draft #270)
@@ -202,6 +217,6 @@ constructs arbitrary new comb teeth, and invalid manual selection fails closed.
 The UI deliberately does **not** reauthor opaque external stages, new comb
 inventories or target schedules. These remain preserved
 on save/reopen. Additional specialized target construction, monitoring-only
-band solo/mute, RMS/loudness-matched A/B, physical Windows and owner
+pre-rack band-stem inspection, RMS/loudness-matched A/B, physical Windows and owner
 audition remain outstanding for MBR-003; passing deterministic/browser CI is
 not a musical acceptance claim.

@@ -174,6 +174,40 @@ def main():
             expect(page.locator('#rack-meters')).to_contain_text('LOWMID')
             assert abs(page.locator('#audio').evaluate('(e)=>e.volume')-processed_volume)<1e-6
             assert server.timeline.session.current_identity()==before_monitor
+            # Post-master band solo/mute is a separate numerical listening job:
+            # the full processed output remains the sole downloadable artifact.
+            expect(page.locator('#prepare-band')).to_be_enabled()
+            page.locator('#monitor-band').select_option('lowmid')
+            page.locator('#monitor-action').select_option('solo')
+            page.locator('#prepare-band').click()
+            expect(page.locator('#hear-band')).to_be_enabled(timeout=120000)
+            band_job=page.locator('#hear-band').get_attribute('data-job-id')
+            assert band_job
+            band_artifact=server.timeline.status(band_job)['artifact']
+            assert band_artifact['scopes']['diagnostics']['monitor']['band']=='lowmid'
+            assert band_artifact['scopes']['diagnostics']['monitor']['mode']=='solo'
+            assert server.timeline.scheduler.result(band_job).audio_bytes!=changed_pcm
+            page.locator('#hear-band').click()
+            expect(page.locator('#playback-revision')).to_contain_text('BAND LOWMID SOLO MONITOR ONLY')
+            expect(page.locator('#monitor-mode')).to_contain_text('not the pre-rack band stem')
+            expect(page.locator('#peak-match')).to_be_disabled()
+            expect(page.locator('#rack-meters')).to_contain_text('No current completed render')
+            with page.expect_download() as monitor_download:
+                page.locator('#download').click()
+            monitor_path=args.out/'rack-band-monitor-processed-export.wav'
+            monitor_download.value.save_as(monitor_path)
+            assert monitor_path.read_bytes()==(args.out/'rack-gain-nine.wav').read_bytes()
+            assert server.timeline.session.current_identity()==before_monitor
+            page.locator('#monitor-action').select_option('mute')
+            expect(page.locator('#hear-band')).to_be_disabled()
+            page.locator('#prepare-band').click()
+            expect(page.locator('#hear-band')).to_be_enabled(timeout=120000)
+            mute_job=page.locator('#hear-band').get_attribute('data-job-id')
+            assert mute_job!=band_job
+            assert server.timeline.status(mute_job)['artifact']['scopes']['diagnostics']['monitor']['mode']=='mute'
+            page.locator('#hear-processed').click()
+            expect(page.locator('#playback-revision')).to_have_text(page.locator('#revision').inner_text())
+            expect(page.locator('#rack-meters')).to_contain_text('LOWMID')
             # Reset built-in parameters without replacing the stage identity or
             # overwriting the separately saved wet/bypass/source settings.
             stage_before=saved('rack-before-parameter-reset.zgtimeline.json')
