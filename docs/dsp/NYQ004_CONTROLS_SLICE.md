@@ -209,6 +209,13 @@ an otherwise resolvable short preview to be rejected. Once a higher BPM is
 within the extent, the same grid rejects it if underresolved. An underresolved LFO fails
 closed rather than quietly collapsing to a static/aliased modulation route.
 
+An optional callable `cancelled` hook is checked before work, during
+bounded grid, tempo/turning-point and point-materialization loops, and again
+before the route is published. A cancellation raises `ClockCancelled` with
+**no partial route**, and does not mutate the saved source or the previously
+compiled result. A noncallable hook is rejected. This is only authoring
+cancellation, not proof of cancel-safe audio rendering or rack integration.
+
 Evidence: `python -m unittest discover -s tests/contracts -p
 'test_nyquismic_sampled_lfo.py' -v` checks exact free-Hz quarter-cycle
 values, right-continuous tempo changes and accumulated beat phase, stable
