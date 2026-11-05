@@ -501,14 +501,28 @@ def main():
             assert ratios.evaluate('(e)=>e.validity.customError')
             expect(page.locator('#revision')).to_have_text(before_invalid_ratio)
             ratios.fill('1, 1.5, 3')
+            # Unsubmitted specialist add forms are local authoring drafts.
+            # A separate validated voice edit must not discard their values.
+            spectral_stage.get_by_label('Additional target degree').fill('13')
+            spectral_stage.get_by_label('Additional voice label').fill('Future voice')
+            spectral_stage.get_by_label('New segment start sample').fill('1800')
+            spectral_stage.get_by_label('New segment label').fill('Future segment')
             second.get_by_label('Voice 2 degree').fill('12')
             second.get_by_label('Voice 2 degree').dispatch_event('change');ready()
+            expect(spectral_stage.get_by_label('Additional target degree')).to_have_value('13')
+            expect(spectral_stage.get_by_label('Additional voice label')).to_have_value('Future voice')
+            expect(spectral_stage.get_by_label('New segment start sample')).to_have_value('1800')
+            expect(spectral_stage.get_by_label('New segment label')).to_have_value('Future segment')
             # Explicit sample-time retune change-point: the first segment
             # inherits the validated voices, then a numerical degree edit
             # changes only its scheduled lattice, not the source or export route.
             segment_start=spectral_stage.get_by_label('New segment start sample')
             segment_start.fill('1200')
             spectral_stage.get_by_role('button',name='Add retune segment').click();ready()
+            # Consumed segment drafts are not re-used after a structural add;
+            # the new default is derived from the new accepted target chain.
+            expect(spectral_stage.get_by_label('New segment label')).to_have_value('Target change')
+            assert spectral_stage.get_by_label('New segment start sample').input_value() != '1200'
             segment=spectral_stage.get_by_role('group',name='Retune target segment 1')
             segment.get_by_label('Segment 1 voice 1 degree').fill('9')
             segment.get_by_label('Segment 1 voice 1 degree').dispatch_event('change');ready()
