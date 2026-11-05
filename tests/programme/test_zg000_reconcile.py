@@ -27,6 +27,7 @@ class FakeAPI:
         self.delayed, self.fail_get, self.total_count = 0, False, None
         self.list_limit, self.omit_total_count = None, False
         self.invalid_inventory_row = False
+        self.boolean_run_id = False
 
     def put(self, workflow=R1["workflow"], sha=None, status="completed",
             conclusion="success", attempt=1, run_id=None, ref=None, event="workflow_dispatch"):
@@ -61,6 +62,8 @@ class FakeAPI:
                 raise ReconcileError("POST timed out; ambiguous mutation")
             if self.no_id:
                 return {}
+            if self.boolean_run_id:
+                return {"workflow_run_id": True}
             workflow = path.split("/actions/workflows/")[1].split("/")[0]
             run = self.put(workflow, sha=self.wrong_sha or self.sha, status="queued", conclusion=None)
             return {"workflow_run_id":run["id"]}
@@ -371,6 +374,71 @@ class ZG000RegressionTests(unittest.TestCase):
         with self.assertRaisesRegex(ReconcileError, "invalid post-dispatch run inventory"):
             make(api).dispatch()
         self.assertEqual(1, len(api.posts))
+
+
+    def test_42_second_new_run_visible_on_confirmation_must_block(self):
+        api = FakeAPI()
+        api.post_error = "after"
+        observations = [0]
+
+        def add_late_run(method, path, payload):
+            if method == "GET" and "/runs?" in path and api.posts:
+                observations[0] += 1
+                if observations[0] == 2:
+                    api.put(status="queued", conclusion=None)
+
+        api.on_call = add_late_run
+        with self.assertRaisesRegex(ReconcileError, "multiple new runs"):
+            make(api).dispatch()
+        self.assertEqual(2, observations[0])
+        self.assertEqual(1, len(api.posts))
+
+    def test_43_candidate_only_visible_at_last_poll_must_block(self):
+        api = FakeAPI()
+        api.post_error = True
+        observations = [0]
+
+        def add_at_final_poll(method, path, payload):
+            if method == "GET" and "/runs?" in path and api.posts:
+                observations[0] += 1
+                if observations[0] == 5:
+                    api.put(status="queued", conclusion=None)
+
+        api.on_call = add_at_final_poll
+        with self.assertRaisesRegex(ReconcileError, "not reconciled"):
+            make(api).dispatch()
+        self.assertEqual(5, observations[0])
+        self.assertEqual(1, len(api.posts))
+
+    def test_44_second_inventory_becomes_partial_must_block(self):
+        api = FakeAPI()
+        api.post_error = "after"
+        observations = [0]
+
+        def truncate_second_poll(method, path, payload):
+            if method == "GET" and "/runs?" in path and api.posts:
+                observations[0] += 1
+                if observations[0] == 2:
+                    api.list_limit = 0
+
+        api.on_call = truncate_second_poll
+        with self.assertRaisesRegex(ReconcileError, "incomplete or uncounted post-dispatch"):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+
+    def test_45_boolean_dispatch_id_cannot_pass_positive_integer_check(self):
+        api = FakeAPI()
+        api.boolean_run_id = True
+        with self.assertRaisesRegex(ReconcileError, "no authoritative run ID"):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+
+    def test_46_boolean_run_attempt_cannot_qualify(self):
+        api = FakeAPI()
+        api.put(attempt=True)
+        with self.assertRaisesRegex(ReconcileError, "missing run ID/attempt"):
+            make(api).dispatch()
+        self.assertFalse(api.posts)
 
 
 if __name__ == "__main__":
