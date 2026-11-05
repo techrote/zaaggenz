@@ -201,7 +201,7 @@ def _update(project, action):
                            "expected_segment", "field", "value"}, "edit retune segment")
         elif kind == "edit_spectral_segment_voice":
             exact(action, {"kind", "band", "id", "segment_index",
-                           "expected_segment", "voice_index", "degree"},
+                           "expected_segment", "voice_index", "value"},
                   "edit retune segment voice")
         else:
             exact(action, {"kind", "band", "id", "segment_index",
@@ -253,7 +253,7 @@ def _update(project, action):
                     raise TimelineError("unknown retune segment voice")
                 # The accepted rack validator checks type/range, schedule
                 # ordering, sample-rate/resource limits and source ancestry.
-                segment["voices"][voice_index]["degree"] = action["degree"]
+                segment["voices"][voice_index]["degree"] = action["value"]
         # Never modify source tuning, unrelated segments, or export policy.
         # The RackRecipe below validates the complete candidate atomically.
     elif kind == "select_spectral_template":

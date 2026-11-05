@@ -419,7 +419,7 @@ class RackEditorTests(unittest.TestCase):
         before_sonic = RackRecipe(current).sonic_sha256
         self.act(kind="edit_spectral_segment_voice", band=band, id=sid,
                  segment_index=0, expected_segment=deepcopy(first),
-                 voice_index=0, degree=7)
+                 voice_index=0, value=7)
         current = editor_state(self.d)["value"]
         first = deepcopy(current["bands"][1]["inserts"][0]["params"]["segments"][0])
         self.assertEqual(first["voices"][0]["degree"], 7)
@@ -472,13 +472,13 @@ class RackEditorTests(unittest.TestCase):
              "field":"voices","value":[]},
             {"kind":"edit_spectral_segment_voice","band":band,"id":sid,
              "segment_index":0,"expected_segment":segments[0],
-             "voice_index":True,"degree":5},
+             "voice_index":True,"value":5},
             {"kind":"edit_spectral_segment_voice","band":band,"id":sid,
              "segment_index":0,"expected_segment":segments[0],
-             "voice_index":0,"degree":True},
+             "voice_index":0,"value":True},
             {"kind":"edit_spectral_segment_voice","band":band,"id":sid,
              "segment_index":0,"expected_segment":segments[0],
-             "voice_index":0,"degree":4097},
+             "voice_index":0,"value":4097},
             {"kind":"remove_spectral_segment","band":band,"id":sid,
              "segment_index":2,"expected_segment":segments[1]},
             {"kind":"remove_spectral_segment","band":band,"id":sid,
