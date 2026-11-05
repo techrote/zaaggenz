@@ -282,6 +282,11 @@ def main():
             reapply_id=rendered('rack-gain-restored-after-reset')
             assert server.timeline.scheduler.result(reapply_id).audio_bytes==changed_pcm
             # Rack save is project-local, never a source/factory preset mutation.
+            # The draft-continuity exercise above deliberately changed the
+            # form fields. Restore the established preset fixture identity
+            # before running the separate portable import/export oracle.
+            page.locator('#rack-editor').get_by_label('Preset name').fill('My rack')
+            page.locator('#rack-editor').get_by_label('Preset ID',exact=False).fill('user.myrack')
             page.locator('#rack-editor').get_by_role('button',name='Save new preset').click();ready()
             rack_saved=saved('rack-processed.zgtimeline.json')
             assert 'rack' in json.loads(rack_saved['project']['revisions'][-1]['recipe_json'])
