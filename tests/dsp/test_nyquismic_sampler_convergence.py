@@ -27,18 +27,18 @@ def setup(audio=None, rate=48000):
 
 
 class SamplerBackedConvergenceTests(unittest.TestCase):
-    def test_zero_fixture_converges_with_verified_event_ledger(self):
+    def test_zero_fixture_verifies_event_ledger_but_not_numerical_quality(self):
         source, sonic = setup()
         result = evaluate_sampler_model_convergence(source, sonic)
-        self.assertEqual(result.status, 'converged')
+        self.assertEqual(result.status, 'inconclusive')
         self.assertEqual(result.diagnostics['sampler_bridge_method'], METHOD)
         self.assertTrue(result.diagnostics['event_schedule_verified_across_rates'])
         self.assertGreater(result.diagnostics['event_count'], 0)
         self.assertEqual(len(result.diagnostics['event_ledger_sha256']), 64)
         self.assertEqual(len(set(result.diagnostics['sampler_render_sha256_by_rate'].values())), 3)
-        self.assertEqual(result.selected_audio.shape, (96,))
-        self.assertFalse(result.selected_audio.flags.writeable)
-        np.testing.assert_array_equal(result.selected_audio, np.zeros(96))
+        self.assertIsNone(result.selected_audio)
+        self.assertTrue(all(row['null_signal'] and not row['within_limits']
+                            for row in result.diagnostics['successive_metrics']))
         self.assertFalse(result.diagnostics['analytic_oracle_verified'])
         self.assertFalse(result.diagnostics['product_export_verified'])
 

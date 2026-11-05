@@ -24,7 +24,10 @@ Normal event, FIR, frame, cancellation and memory budgets remain in force,
 and numerical-to-delivery conversion remains *after* artistic sampling.
 Diagnostics include all sampler render hashes, the shared physical event
 ledger, all numerical residual metrics and a distinct inconclusive status
-without qualified PCM for empty or divergent cases.
+without qualified PCM for empty, exact-silent or divergent cases. Even an
+exact-silent fixture may validate the physical event ledger, but cannot
+qualify reconstruction/alias behavior: identical zero PCM at every rate is
+reported as `null_signal=true` rather than a successful convergence verdict.
 
 This narrows the unbound arbitrary-renderer-identity gap for the accepted
 sampler subset. It does **not** independently verify the clock mathematics,
