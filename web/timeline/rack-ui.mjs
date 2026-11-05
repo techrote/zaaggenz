@@ -2,13 +2,29 @@
 // contract metadata. Never silently change a source, render, or output slot.
 const make=(name,label)=>{const node=document.createElement(name);if(label!==undefined)node.textContent=label;return node;};
 function group(parent,klass='rack-controls'){const node=make('div');node.className=klass;parent.append(node);return node;}
+// A validated revision redraws this entire editor. Give operable controls
+// stable identity independent of their current DOM node or display position.
+// No source state, processing order, or saved project identity uses this key.
+function controlKey(action){
+  return JSON.stringify([action.kind,action.scope,action.id,action.field,
+    action.band,action.type_id,action.step,action.template_id,
+    action.voice_index,action.segment_index].map(v=>v??null));
+}
+function restoreControlFocus(host,key){
+  if(!key)return;
+  const target=Array.from(host.querySelectorAll('[data-rack-control-key]'))
+    .find(node=>node.dataset.rackControlKey===key&&!node.disabled);
+  target?.focus({preventScroll:true});
+}
 function button(parent,label,action,apply,disabled=false){
   const node=make('button',label);node.type='button';node.disabled=disabled;
+  node.dataset.rackControlKey=controlKey(action);
   node.addEventListener('click',()=>apply(action));parent.append(node);return node;
 }
 function number(parent,label,current,meta,action,apply){
   const wrapper=make('label',label+(meta.unit?' · '+meta.unit:''));const node=make('input');
   node.type='number';node.value=String(current);
+  node.dataset.rackControlKey=controlKey(action);
   node.step=meta.type==='integer'?'1':'any';
   if(meta.minimum!==undefined)node.min=String(meta.minimum);
   if(meta.maximum!==undefined)node.max=String(meta.maximum);
@@ -35,19 +51,24 @@ function number(parent,label,current,meta,action,apply){
 function choice(parent,label,current,values,action,apply){
   const wrapper=make('label',label);const node=make('select');
   for(const value of values)node.append(new Option(value,value));
-  node.value=current;
+  node.value=current;node.dataset.rackControlKey=controlKey(action);
   node.addEventListener('change',()=>apply({...action,value:node.value}));
   wrapper.append(node);parent.append(wrapper);
 }
 function flag(parent,label,current,action,apply){
   const wrapper=make('label');wrapper.className='check';
   const node=make('input');node.type='checkbox';node.checked=Boolean(current);
+  node.dataset.rackControlKey=controlKey(action);
   node.addEventListener('change',()=>apply({...action,value:node.checked}));
   wrapper.append(node,document.createTextNode(label));parent.append(wrapper);
 }
 function set(scope,id,field){return {kind:'set',scope,id,field};}
 const mix={type:'number',minimum:0,maximum:1,unit:'0–1'};
 export function renderRack(host,state,apply,tools={}){
+  // Restore keyboard focus only when the user is still interacting inside
+  // this editor at redraw time. Never steal focus from external controls.
+  const focused=host.contains(document.activeElement)
+    ?document.activeElement.dataset.rackControlKey:null;
   // Retain explicitly expanded specialist controls while the authoritative
   // revision is re-rendered after each async edit. The stable instance ID,
   // not an insert index, anchors this purely presentational preference.
@@ -291,6 +312,7 @@ export function renderRack(host,state,apply,tools={}){
     });
   }
   renderPresetTools(host,state,apply,tools);
+  restoreControlFocus(host,focused);
 }
 
 function renderPresetTools(host,state,apply,tools){
