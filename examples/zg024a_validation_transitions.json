@@ -826,6 +826,65 @@
         }
       ],
       "reason": "NYQ-004 / draft PR #267 carries forward exactly the seven previously reviewed issue #87 transient-v4 validation path/from/to changes for the narrow optional LFO admission source identity a4d9896bb94293f4bbe89667f76f3089192c360d8c8d100bb78d034eea07cbdd. Pre-registration https://github.com/techrote/zaaggenz/actions/runs/42042623207 at exact head 35213f28df463046c7a473b26f7733d61e5bb498 reports the same source SHA and exactly these seven historical projections on Ubuntu and Windows (six fixtures/36 candidates each), no additional portable comparison discrepancy. No frozen calibration, numerical threshold, rank/score, source/factory preset, recipe, oracle or comparator change is permitted. Candidate only; independent reviewer and successful final-head cross-platform/reverse CI remain mandatory."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "adede50d83633715f7eb165a32b4372245eabee7270cb42420430789399c6648",
+      "issue": 253,
+      "stable_id": "ZG-024",
+      "changes": [
+        {
+          "from": "accepted",
+          "path": "/fixtures/0/candidates/8/holdout/validation/0/state",
+          "to": "rejected"
+        },
+        {
+          "from": [],
+          "path": "/fixtures/0/candidates/8/holdout/validation/0/triggered_gates",
+          "to": [
+            "transient_loss"
+          ]
+        },
+        {
+          "from": [
+            "level_mismatch",
+            "energy_collapse",
+            "transient_loss",
+            "normalisation_suspect"
+          ],
+          "path": "/fixtures/4/candidates/0/holdout/validation/0/triggered_gates",
+          "to": [
+            "level_mismatch",
+            "energy_collapse",
+            "normalisation_suspect"
+          ]
+        },
+        {
+          "from": "accepted",
+          "path": "/fixtures/4/candidates/0/whole_signal/validation/0/state",
+          "to": "rejected"
+        },
+        {
+          "from": [],
+          "path": "/fixtures/4/candidates/0/whole_signal/validation/0/triggered_gates",
+          "to": [
+            "transient_loss"
+          ]
+        },
+        {
+          "from": "rejected",
+          "path": "/fixtures/4/candidates/1/whole_signal/validation/0/state",
+          "to": "accepted"
+        },
+        {
+          "from": [
+            "transient_loss"
+          ],
+          "path": "/fixtures/4/candidates/1/whole_signal/validation/0/triggered_gates",
+          "to": []
+        }
+      ],
+      "reason": "NYQ-004 / draft PR #267 retains precisely the seven historically reviewed issue #87 transient-v4 validation projection path/from/to values for opt-in LFO cancellation source identity adede50d83633715f7eb165a32b4372245eabee7270cb42420430789399c6648. Pre-registration https://github.com/techrote/zaaggenz/actions/runs/42062004438 at 2d68eeeea617791e6ba0058fd5b9b8da32fce95f reproduced this same implementation SHA on Ubuntu and Windows, six fixtures/36 candidates each and only the unregistered identity plus exactly these seven historical differences. No new validation exception, changed comparison method, calibration, numerical tolerance, objective, rank, score, recipe, source-rights or factory/default preset is authorized. Candidate only, pending independent review and terminal direct/reverse exact-head CI."
     }
   ],
   "version": "1.0.0"
