@@ -50,6 +50,12 @@ class FakeAPI:
                 raise ReconcileError("2026-03-10 workflow dispatch request contains unsupported fields")
             self.posts.append(payload)
             if self.post_error:
+                if self.post_error in ("after", "multiple", "wrong_source"):
+                    workflow = path.split("/actions/workflows/")[1].split("/")[0]
+                    self.put(workflow, sha=B if self.post_error == "wrong_source" else self.sha,
+                             status="queued", conclusion=None)
+                    if self.post_error == "multiple":
+                        self.put(workflow, status="queued", conclusion=None)
                 raise ReconcileError("POST timed out; ambiguous mutation")
             if self.no_id:
                 return {}
@@ -254,6 +260,55 @@ class ZG000RegressionTests(unittest.TestCase):
         self.assertEqual([{"ref": REF}], api.posts)
         self.assertEqual(1000, selected[0]["run_id"])
         self.assertEqual("dispatched", selected[0]["decision"])
+
+    def test_30_ambiguous_post_with_unique_new_run_is_reconciled_without_retry(self):
+        api = FakeAPI(); api.post_error = "after"
+        rec = make(api); selected = rec.dispatch()
+        self.assertEqual(1, len(api.posts))
+        self.assertEqual("reconciled_ambiguous_post", selected[0]["decision"])
+        self.assertEqual(1000, selected[0]["run_id"])
+        self.assertEqual(1, rec.manifest["reconciled"])
+        self.assertEqual(0, rec.manifest["dispatched"])
+        self.assertIn("ambiguous_post_reconciled",
+                      [row["decision"] for row in rec.manifest["decisions"]])
+        api.runs[1000].update(status="completed", conclusion="success")
+        rec.finalize("success")
+        self.assertEqual("qualified", rec.manifest["state"])
+
+    def test_31_ambiguous_post_without_evidence_remains_blocked(self):
+        api = FakeAPI(); api.post_error = True
+        rec = make(api)
+        with self.assertRaisesRegex(ReconcileError, "no mutation retried"):
+            rec.dispatch()
+        self.assertEqual(1, len(api.posts))
+        self.assertEqual(0, rec.manifest["reconciled"])
+
+    def test_32_ambiguous_post_multiple_new_runs_fail_closed(self):
+        api = FakeAPI(); api.post_error = "multiple"
+        with self.assertRaisesRegex(ReconcileError, "multiple new runs"):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+
+    def test_33_ambiguous_post_wrong_source_cannot_qualify(self):
+        api = FakeAPI(); api.post_error = "wrong_source"
+        with self.assertRaises(ReconcileError):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+        self.assertEqual(B, api.runs[1000]["head_sha"])
+
+    def test_34_ambiguous_post_does_not_adopt_prior_cancelled_run(self):
+        api = FakeAPI(); old = api.put(conclusion="cancelled")
+        api.post_error = True
+        with self.assertRaises(ReconcileError):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+        self.assertEqual(old["id"], 1000)
+
+    def test_35_ambiguous_post_recovery_requires_authoritative_run_detail(self):
+        api = FakeAPI(); api.post_error = "after"; api.delayed = 100
+        with self.assertRaises(ReconcileError):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
 
 
 if __name__ == "__main__":
