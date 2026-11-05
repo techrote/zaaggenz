@@ -87,6 +87,11 @@ def _metrics(a: np.ndarray, b: np.ndarray) -> dict:
     if a.shape[0] == 0:
         return {'relative_rms': 0.0, 'relative_spectrum': 0.0,
                 'relative_transient': 0.0, 'empty_extent': True}
+    # Perfect silence trivially agrees at every numerical rate, even when
+    # no actual clock/reconstruction behavior has been exercised. Preserve
+    # that equality as a measured null result, not a convergence certificate.
+    # Exact silence is used rather than a hidden amplitude threshold.
+    null_signal = not np.any(a) and not np.any(b)
     diff = a - b
     eps = 1e-12
     rms = lambda x: float(np.sqrt(np.mean(x * x))) if x.size else 0.0
@@ -112,7 +117,8 @@ def _metrics(a: np.ndarray, b: np.ndarray) -> dict:
             'convergence produced nonfinite metrics')
     return {'relative_rms': relative_rms,
             'relative_spectrum': relative_spectrum,
-            'relative_transient': relative_transient}
+            'relative_transient': relative_transient,
+            'null_signal': bool(null_signal)}
 
 
 def evaluate_local_convergence(
@@ -193,6 +199,7 @@ def evaluate_local_convergence(
             raise ClockCancelled('convergence cancelled before comparison')
         metrics = _metrics(a, b)
         good = (not metrics.get('empty_extent', False) and
+                not metrics.get('null_signal', False) and
                 metrics['relative_rms'] <= policy.relative_rms_limit and
                 metrics['relative_spectrum'] <= policy.relative_spectrum_limit and
                 metrics['relative_transient'] <= policy.relative_transient_limit)

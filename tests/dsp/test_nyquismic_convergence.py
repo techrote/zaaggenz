@@ -33,17 +33,34 @@ class FrozenConvergenceTests(unittest.TestCase):
         def zeros(rate):
             return NumericalCandidate(rate, np.zeros(rate // 50), **HASHES)
         result = evaluate_local_convergence(zeros, policy=policy, **HASHES)
-        self.assertEqual(result.status, 'converged')
+        self.assertEqual(result.status, 'inconclusive')
         self.assertEqual(result.diagnostics['method'], METHOD)
         self.assertEqual(result.diagnostics['rates_hz'], list(RATES))
-        self.assertEqual(result.selected_audio.shape, (960,))
-        self.assertFalse(result.selected_audio.flags.writeable)
+        self.assertIsNone(result.selected_audio)
         for pair in result.diagnostics['successive_metrics']:
             self.assertEqual(pair['relative_rms'], 0)
             self.assertEqual(pair['relative_spectrum'], 0)
             self.assertEqual(pair['relative_transient'], 0)
+            self.assertTrue(pair['null_signal'])
+            self.assertFalse(pair['within_limits'])
         self.assertFalse(result.diagnostics['analytic_oracle_verified'])
         self.assertFalse(result.diagnostics['product_export_verified'])
+
+    def test_silent_reference_with_spurious_output_does_not_pass(self):
+        def spuriously_nonzero(rate):
+            # The final numerical rate has a visible DC error; the earlier
+            # silent comparison is independently null/inconclusive.
+            frames = rate // 50
+            audio = np.zeros(frames, dtype=np.float64)
+            if rate == RATES[-1]:
+                audio[frames // 2] = .001
+            return NumericalCandidate(rate, audio, **HASHES)
+        result = evaluate_local_convergence(spuriously_nonzero, **HASHES)
+        self.assertEqual(result.status, 'inconclusive')
+        self.assertIsNone(result.selected_audio)
+        self.assertTrue(result.diagnostics['successive_metrics'][0]['null_signal'])
+        self.assertFalse(result.diagnostics['successive_metrics'][0]['within_limits'])
+        self.assertFalse(result.diagnostics['successive_metrics'][1]['within_limits'])
 
     def test_analytic_tone_stays_in_physical_frequency_and_bounded(self):
         result = evaluate_local_convergence(candidate, **HASHES,

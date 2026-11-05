@@ -28,10 +28,15 @@ hashes and three independent *relative* successive-pass metrics:
 time-domain RMS residual, delivery-band magnitude-spectrum residual
 and first-difference/transient residual. Two consecutive adjacent
 comparisons across **three distinct rates** must each pass all limits.
-Output is only returned when agreement is achieved. Otherwise the
-explicit status is `inconclusive` and `selected_audio=None`; malformed
-candidate, rate, hash, extent, nonfinite data or budget is a hard failure
-before publication.
+Output is only returned when nontrivial numerical agreement is achieved.
+A completely silent pair has exactly zero measured residuals, but exercises
+no clock or reconstruction discrimination: it is reported as
+`null_signal=true`, `within_limits=false` and is **inconclusive** even
+when all three numerical rates return identical silence. Empty extents are
+also inconclusive. No arbitrary minimum loudness threshold is imposed on
+quiet but nonzero signals. Otherwise the explicit status is `inconclusive`
+and `selected_audio=None`; malformed candidate, rate, hash, extent,
+nonfinite data or budget is a hard failure before publication.
 
 **Limit:** agreement across multiple evaluation rates does *not*
 prove the same underlying dirty clock model, analytic truth, perceptual
