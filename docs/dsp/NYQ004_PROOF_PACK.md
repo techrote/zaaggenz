@@ -12,10 +12,11 @@ python tools/nyq004_proof_pack.py --out nyq004-proof-pack
 python -m unittest discover -s tests/dsp -p 'test_nyquismic_proof_pack.py' -v
 ```
 
-The pack contains `manifest.json`, one synthetic input WAV and six real
+The pack contains `manifest.json`, one synthetic input WAV and seven real
 controlled-clock WAV files: static hold, physical-time stepped rate, explicit
 nearest-Hz rate ladder, counter-addressed seeded frequency-cell jitter,
-time-linear reconstruction, and an **input-derived RMS clock**. The latter
+time-linear reconstruction, an **input-derived RMS clock**, and an
+**input-derived positive RMS-rise transient clock**. The latter
 compiles the immutable synthetic input into eight exact, 1/8-second,
 right-continuous control windows with an explicitly documented 1/8-second
 full-window lookahead and 240 Hz per-unit RMS depth over a 360 Hz base.
@@ -24,11 +25,16 @@ source** and run at its 12 kHz native grid for one second. The source is
 entirely generated from integer periodic sequences in the script, with no
 external samples or licensed reference audio.
 
+The v3 manifest additionally records a separate sixteen-window transient
+policy and compiled positive-RMS-rise lane, with 1/16-second full-window
+lookahead, a 360 Hz base, a 960 Hz-per-unit rise depth, and no hidden
+onset hold or smoothing. Both derived examples use the identical original
+synthetic PCM; their rates and physical event ledgers are different.
 The v2 manifest records the RMS source content hash, bounded policy, compiled
 route/identity and method diagnostics, plus the declared synthetic upstream
 relationship. **Graph ancestry is not verified**: the proof script declares
 its own source tap, but does not certify production acyclic cross-band routing
-or confidence-aware feature-graph validation. Earlier v1 packs are immutable
+or confidence-aware feature-graph validation. Earlier v1/v2 packs are immutable
 historical evidence and are not overwritten or silently relabelled.
 
 Each case records the full saved SonicSpec, source identity, exact physical

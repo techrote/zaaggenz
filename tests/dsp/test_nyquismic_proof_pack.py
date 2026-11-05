@@ -18,12 +18,12 @@ class Nyq004ProofPackTests(unittest.TestCase):
             second = generate_pack(b)
             self.assertEqual(first, second)
             self.assertEqual(first['format'], PACK_VERSION)
-            self.assertEqual(len(first['cases']), 7)
+            self.assertEqual(len(first['cases']), 8)
             self.assertIn('NOT Compose/export qualified', first['scope'])
             self.assertEqual(
                 (a/'manifest.json').read_bytes(), (b/'manifest.json').read_bytes())
             paths = sorted(x.name for x in a.iterdir())
-            self.assertEqual(len(paths), 8)
+            self.assertEqual(len(paths), 9)
             self.assertEqual(paths, sorted(x.name for x in b.iterdir()))
             pids = set()
             ledgers = set()
@@ -52,7 +52,7 @@ class Nyq004ProofPackTests(unittest.TestCase):
                                                 case['sonic_spec']).sonic_sha256)
                     pids.add(case['pcm_sha256'])
                     ledgers.add(case['diagnostics']['event_ledger_sha256'])
-            derived = first['cases'][-1]
+            derived = first['cases'][-2]
             self.assertEqual(derived['file'], '06_input_rms.wav')
             control = derived['control_provenance']
             self.assertFalse(control['graph_ancestry_verified'])
@@ -72,6 +72,30 @@ class Nyq004ProofPackTests(unittest.TestCase):
                              control['route'])
             self.assertNotEqual(derived['pcm_sha256'],
                                 first['cases'][1]['pcm_sha256'])
+            transient = first['cases'][-1]
+            self.assertEqual(transient['file'], '07_input_rms_rise.wav')
+            tc = transient['control_provenance']
+            self.assertFalse(tc['graph_ancestry_verified'])
+            self.assertEqual(tc['consumer_id'], 'proof-transient-clock')
+            self.assertEqual(tc['declared_upstream_ids'], ['proof-input'])
+            self.assertEqual(tc['policy']['source']['source_sha256'],
+                             first['cases'][0]['pcm_sha256'])
+            self.assertEqual(tc['compiler']['windows'], 16)
+            self.assertEqual(tc['compiler']['lookahead_s'], '1/16')
+            self.assertEqual(tc['compiler']['policy_sha256'],
+                             __import__('zaaggenz_contracts.nyquismic_transient',
+                                        fromlist=['UpstreamTransientPolicy']).UpstreamTransientPolicy.from_dict(
+                                            tc['policy']).sha256)
+            self.assertEqual(tc['compiler']['route_sha256'],
+                             __import__('zaaggenz_contracts.nyquismic',
+                                        fromlist=['ModulationRoute']).ModulationRoute.from_dict(
+                                            tc['route']).sha256)
+            self.assertEqual(transient['sonic_spec']['clock']['routes'][0],
+                             tc['route'])
+            self.assertGreater(sum(p['value'] != '0/1' for p in tc['route']['points']), 1)
+            self.assertNotEqual(transient['diagnostics']['event_ledger_sha256'],
+                                derived['diagnostics']['event_ledger_sha256'])
+            self.assertNotEqual(transient['pcm_sha256'], derived['pcm_sha256'])
             self.assertGreaterEqual(len(pids), 3)
             self.assertGreaterEqual(len(ledgers), 3)
             with self.assertRaises(FileExistsError):

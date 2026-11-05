@@ -23,6 +23,9 @@ from zaaggenz_contracts.nyquismic import (
 from zaaggenz_contracts.nyquismic_input_envelope import (
     UpstreamRmsPolicy, compile_upstream_rms_route,
 )
+from zaaggenz_contracts.nyquismic_transient import (
+    UpstreamTransientPolicy, compile_upstream_transient_route,
+)
 from zaaggenz_dsp.nyquismic import FrozenInput
 from zaaggenz_dsp.nyquismic_controlled_audio_proof import (
     METHOD, render_controlled_audio_proof,
@@ -30,7 +33,7 @@ from zaaggenz_dsp.nyquismic_controlled_audio_proof import (
 
 RATE = 12000
 FRAMES = RATE
-PACK_VERSION = 'nyq004.native-grid-audition-pack.v2'
+PACK_VERSION = 'nyq004.native-grid-audition-pack.v3'
 
 
 def _source() -> np.ndarray:
@@ -136,6 +139,45 @@ def generate_pack(destination: Path) -> dict:
                 'compiler': rms.diagnostics,
                 'route': rms.route.to_dict(),
                 'consumer_id': 'proof-clock',
+                'declared_upstream_ids': ['proof-input'],
+                'graph_ancestry_verified': False,
+            },
+        )
+        # Distinct input-derived transient lane, compiled from the same frozen
+        # synthetic source as the RMS case. Sixteen half-open windows expose
+        # genuine positive window-to-window rises, not a fabricated impulse
+        # trigger or the current output fed back into its own clock.
+        transient_source = UpstreamRmsPolicy(
+            source_id='proof-input', source_sha256=rms_policy.source_sha256,
+            sample_rate_hz=RATE, frames=FRAMES, channel=0,
+            window_frames=RATE // 16, reference_amplitude='1/1',
+        )
+        transient_policy = UpstreamTransientPolicy(
+            source=transient_source, minimum_rise='0/1',
+        )
+        transient = compile_upstream_transient_route(
+            raw, transient_policy, consumer_id='proof-transient-clock',
+            upstream_ids=('proof-input',), route_id='proof-input-rms-rise',
+            mapping='add_hz', depth=960.0,
+        )
+        if not any(point.value != '0/1' for point in transient.route.points):
+            raise AssertionError('transient demonstration is not time varying')
+        transient_spec = SonicSpec(clock=ClockSpec(
+            rate=VirtualRate('360/1'), routes=(transient.route,)))
+        transient_audio = render_controlled_audio_proof(source, transient_spec)
+        if transient_audio.diagnostics['product_rack_export_qualified']:
+            raise AssertionError('transient demonstration is not product export')
+        write_audio(
+            '07_input_rms_rise', transient_audio.audio,
+            description=('Input-derived positive RMS-rise clock: 360 Hz base '
+                         'plus 960 Hz per-unit onset strength, 1/16-second '
+                         'windows with full-window offline lookahead'),
+            spec=transient_spec, diagnostics=transient_audio.diagnostics,
+            control_provenance={
+                'policy': transient_policy.to_dict(),
+                'compiler': transient.diagnostics,
+                'route': transient.route.to_dict(),
+                'consumer_id': 'proof-transient-clock',
                 'declared_upstream_ids': ['proof-input'],
                 'graph_ancestry_verified': False,
             },
