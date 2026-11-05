@@ -62,6 +62,45 @@ class FrozenConvergenceTests(unittest.TestCase):
         self.assertFalse(result.diagnostics['successive_metrics'][0]['within_limits'])
         self.assertFalse(result.diagnostics['successive_metrics'][1]['within_limits'])
 
+    def test_relative_metrics_do_not_erase_quiet_numerical_errors(self):
+        # An absolute 1e-12 denominator floor made these nonzero signals
+        # appear numerically identical despite a full-scale relative error.
+        from zaaggenz_dsp.nyquismic_convergence import _metrics
+        reference = np.sin(2 * np.pi * np.arange(128) / 128)
+        full = _metrics(reference * 1.1, reference)
+        for amplitude in (1e-18, 1e-250):
+            with self.subTest(amplitude=amplitude):
+                quiet = _metrics(reference * 1.1 * amplitude,
+                                 reference * amplitude)
+                for field in ('relative_rms', 'relative_spectrum',
+                              'relative_transient'):
+                    self.assertAlmostEqual(quiet[field], full[field], places=10)
+                self.assertFalse(quiet['null_signal'])
+                self.assertEqual(quiet['zero_reference_metrics'], ())
+
+        def lost_at_highest_rate(rate):
+            pcm = np.full(rate // 50, 1e-18, dtype=np.float64)
+            if rate == RATES[-1]:
+                pcm.fill(0.)
+            return NumericalCandidate(rate, pcm, **HASHES)
+        result = evaluate_local_convergence(lost_at_highest_rate, **HASHES)
+        self.assertEqual(result.status, 'inconclusive')
+        self.assertIsNone(result.selected_audio)
+        last = result.diagnostics['successive_metrics'][-1]
+        self.assertFalse(last['within_limits'])
+        self.assertGreaterEqual(last['relative_rms'], .99)
+        self.assertIn('rms', last['zero_reference_metrics'])
+        self.assertIn('spectrum', last['zero_reference_metrics'])
+
+    def test_undefined_transient_reference_must_not_pass_at_limit_one(self):
+        from zaaggenz_dsp.nyquismic_convergence import _metrics
+        flat = np.full(128, 1e-250, dtype=np.float64)
+        changed = flat.copy()
+        changed[64] *= 2
+        metrics = _metrics(changed, flat)
+        self.assertIn('transient', metrics['zero_reference_metrics'])
+        self.assertGreater(metrics['relative_transient'], 0)
+
     def test_analytic_tone_stays_in_physical_frequency_and_bounded(self):
         result = evaluate_local_convergence(candidate, **HASHES,
             policy=FrozenConvergencePolicy(
