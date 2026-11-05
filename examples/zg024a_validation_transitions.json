@@ -885,6 +885,65 @@
         }
       ],
       "reason": "NYQ-004 / draft PR #267 retains precisely the seven historically reviewed issue #87 transient-v4 validation projection path/from/to values for opt-in LFO cancellation source identity adede50d83633715f7eb165a32b4372245eabee7270cb42420430789399c6648. Pre-registration https://github.com/techrote/zaaggenz/actions/runs/42062004438 at 2d68eeeea617791e6ba0058fd5b9b8da32fce95f reproduced this same implementation SHA on Ubuntu and Windows, six fixtures/36 candidates each and only the unregistered identity plus exactly these seven historical differences. No new validation exception, changed comparison method, calibration, numerical tolerance, objective, rank, score, recipe, source-rights or factory/default preset is authorized. Candidate only, pending independent review and terminal direct/reverse exact-head CI."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "f55b4a97f46a63523d719e7518f691ee285db671166c264379e8e84f390454c6",
+      "issue": 253,
+      "stable_id": "ZG-024",
+      "changes": [
+        {
+          "from": "accepted",
+          "path": "/fixtures/0/candidates/8/holdout/validation/0/state",
+          "to": "rejected"
+        },
+        {
+          "from": [],
+          "path": "/fixtures/0/candidates/8/holdout/validation/0/triggered_gates",
+          "to": [
+            "transient_loss"
+          ]
+        },
+        {
+          "from": [
+            "level_mismatch",
+            "energy_collapse",
+            "transient_loss",
+            "normalisation_suspect"
+          ],
+          "path": "/fixtures/4/candidates/0/holdout/validation/0/triggered_gates",
+          "to": [
+            "level_mismatch",
+            "energy_collapse",
+            "normalisation_suspect"
+          ]
+        },
+        {
+          "from": "accepted",
+          "path": "/fixtures/4/candidates/0/whole_signal/validation/0/state",
+          "to": "rejected"
+        },
+        {
+          "from": [],
+          "path": "/fixtures/4/candidates/0/whole_signal/validation/0/triggered_gates",
+          "to": [
+            "transient_loss"
+          ]
+        },
+        {
+          "from": "rejected",
+          "path": "/fixtures/4/candidates/1/whole_signal/validation/0/state",
+          "to": "accepted"
+        },
+        {
+          "from": [
+            "transient_loss"
+          ],
+          "path": "/fixtures/4/candidates/1/whole_signal/validation/0/triggered_gates",
+          "to": []
+        }
+      ],
+      "reason": "NYQ-004 / draft PR #267 carries forward exactly the seven historically reviewed issue #87 transient-v4 validation path/from/to projections for the opt-in final Hz-ladder midpoint discrimination correction. Pre-registration exact-head https://github.com/techrote/zaaggenz/actions/runs/42119453281 at 9d56408a98dbdbd0c6f143ebc4430928d9088510 independently reported matching implementation SHA f55b4a97f46a63523d719e7518f691ee285db671166c264379e8e84f390454c6 on hosted Ubuntu and Windows, six fixtures/36 candidates each, only this unknown identity and these identical seven historical projections. No new validation exception or changed comparator, tolerance, calibration, source/preset rights, ranking, objective or score. Candidate only: shared NYQ-003/#266 ledgers require guarded reconciliation, independent review and successful exact-final-head direct/reverse CI before any merge."
     }
   ],
   "version": "1.0.0"
