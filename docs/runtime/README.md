@@ -220,3 +220,5 @@ on save/reopen. Additional specialized target construction, monitoring-only
 pre-rack band-stem inspection, RMS/loudness-matched A/B, physical Windows and owner
 audition remain outstanding for MBR-003; passing deterministic/browser CI is
 not a musical acceptance claim.
+Band solo/mute selection changes now invalidate any prior or in-flight monitoring request (including A→B→A selection reversals), cancel known jobs and restore the exact processed output if a monitor was playing. Exported PCM and the saved rack remain unchanged.
+

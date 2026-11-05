@@ -198,6 +198,17 @@ def main():
             monitor_download.value.save_as(monitor_path)
             assert monitor_path.read_bytes()==(args.out/'rack-gain-nine.wav').read_bytes()
             assert server.timeline.session.current_identity()==before_monitor
+            # Changing the monitoring choice revokes the old object URL and
+            # restores authoritative processed playback, rather than leaving
+            # an old band audition under the newly selected mode. Even an
+            # A→B→A reversal must not resurrect a stale monitoring result.
+            page.locator('#monitor-action').select_option('mute')
+            expect(page.locator('#hear-band')).to_be_disabled()
+            expect(page.locator('#audio')).to_have_attribute('data-monitor-kind', 'processed')
+            expect(page.locator('#playback-revision')).to_have_text(page.locator('#revision').inner_text())
+            page.locator('#monitor-action').select_option('solo')
+            expect(page.locator('#hear-band')).to_be_disabled()
+            expect(page.locator('#prepare-band')).to_be_enabled()
             page.locator('#monitor-action').select_option('mute')
             expect(page.locator('#hear-band')).to_be_disabled()
             page.locator('#prepare-band').click()

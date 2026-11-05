@@ -481,10 +481,18 @@ function bind(){
   $('prepare-band').onclick=()=>void prepareBandMonitor();
   $('hear-band').onclick=()=>hearBandMonitor();
   for(const id of ['monitor-band','monitor-action'])$(id).onchange=()=>{
-    if(bandMonitor){
-      discardBandMonitor();
-      $('monitor-mode').textContent='Band selection changed; prepare a fresh monitored result.';
+    // Always invalidate the request generation, including while the POST
+    // creating a job is still unresolved. Otherwise an A→B→A selection can
+    // make an old in-flight result appear current (ABA), even though its
+    // chosen input was superseded. Known jobs are cancelled; late responses
+    // are rejected and cancelled by prepareBandMonitor's identity guard.
+    const hearingBand=$('audio').dataset.monitorKind==='band';
+    discardBandMonitor();
+    if(hearingBand&&activeSlot){
+      $('audio').pause();
+      publish(activeSlot);
     }
+    $('monitor-mode').textContent='Band selection changed; prepare a fresh monitored result. Processed WAV unchanged.';
     updateDryControls();
   };
   $('hear-processed').onclick=()=>hearProcessedMonitor();
