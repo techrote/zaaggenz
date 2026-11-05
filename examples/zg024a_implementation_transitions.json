@@ -574,6 +574,16 @@
         "zaaggenz_contracts/nyquismic_controls.py"
       ],
       "reason": "NYQ-004 / draft PR #267 adds strictly opt-in cancellation checkpoints to saved sampled-LFO physical-time route authoring. Only zaaggenz_contracts/nyquismic_controls.py changes under ZG-024a's implementation manifest; no accepted sampler clock geometry, autonomous render, graph, rack, factory defaults, calibration, thresholds or comparator changes. Pre-registration exact source-head ZG-024a run https://github.com/techrote/zaaggenz/actions/runs/42062004438 at commit 2d68eeeea617791e6ba0058fd5b9b8da32fce95f independently produced identical SHA adede50d83633715f7eb165a32b4372245eabee7270cb42420430789399c6648 on Ubuntu and Windows with six fixtures / 36 candidates per platform. Only unknown identity and the seven same historical issue #87 transient-v4 validation state/gate projections were reported; no other portable differences. Candidate-only registration, NOT independent admission; final-head cross-platform direct/reverse CI, owner-only gates and reviewer are still outstanding."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "f55b4a97f46a63523d719e7518f691ee285db671166c264379e8e84f390454c6",
+      "issue": 253,
+      "stable_id": "ZG-016",
+      "changed_paths": [
+        "zaaggenz_contracts/nyquismic_controls.py"
+      ],
+      "reason": "NYQ-004 / draft PR #267 fixes exact final rate-ladder selection near true rational Hz midpoints without changing the upstream Decimal80 control model, sampler/graph/rack/export execution, presets, sources, calibrated objectives, or tolerances. Only the opt-in zaaggenz_contracts/nyquismic_controls.py source changes in the implementation manifest. Pre-registration exact-head ZG-024a run https://github.com/techrote/zaaggenz/actions/runs/42119453281 on commit 9d56408a98dbdbd0c6f143ebc4430928d9088510 independently reproduced f55b4a97f46a63523d719e7518f691ee285db671166c264379e8e84f390454c6 on hosted Ubuntu and Windows, six fixtures/36 candidates on each, with only the unregistered source identity and the seven previously reviewed issue #87 transient-v4 validation projections. No other portable comparison difference was reported. Candidate transition only; NOT independent admission. Shared ledger with NYQ-003/#266 requires guarded reconciliation before either merge; final-head direct/reverse cross-platform CI and owner-only gates remain required."
     }
   ]
 }
