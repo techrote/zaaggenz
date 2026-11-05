@@ -18,12 +18,12 @@ class Nyq004ProofPackTests(unittest.TestCase):
             second = generate_pack(b)
             self.assertEqual(first, second)
             self.assertEqual(first['format'], PACK_VERSION)
-            self.assertEqual(len(first['cases']), 6)
+            self.assertEqual(len(first['cases']), 7)
             self.assertIn('NOT Compose/export qualified', first['scope'])
             self.assertEqual(
                 (a/'manifest.json').read_bytes(), (b/'manifest.json').read_bytes())
             paths = sorted(x.name for x in a.iterdir())
-            self.assertEqual(len(paths), 7)
+            self.assertEqual(len(paths), 8)
             self.assertEqual(paths, sorted(x.name for x in b.iterdir()))
             pids = set()
             ledgers = set()
@@ -52,6 +52,26 @@ class Nyq004ProofPackTests(unittest.TestCase):
                                                 case['sonic_spec']).sonic_sha256)
                     pids.add(case['pcm_sha256'])
                     ledgers.add(case['diagnostics']['event_ledger_sha256'])
+            derived = first['cases'][-1]
+            self.assertEqual(derived['file'], '06_input_rms.wav')
+            control = derived['control_provenance']
+            self.assertFalse(control['graph_ancestry_verified'])
+            self.assertEqual(control['declared_upstream_ids'], ['proof-input'])
+            self.assertEqual(control['consumer_id'], 'proof-clock')
+            self.assertEqual(control['policy']['source_sha256'],
+                             first['cases'][0]['pcm_sha256'])
+            self.assertEqual(control['compiler']['source_sha256'],
+                             first['cases'][0]['pcm_sha256'])
+            self.assertEqual(control['compiler']['windows'], 8)
+            self.assertEqual(control['compiler']['lookahead_s'], '1/8')
+            self.assertEqual(control['compiler']['route_sha256'],
+                             __import__('zaaggenz_contracts.nyquismic',
+                                        fromlist=['ModulationRoute']).ModulationRoute.from_dict(
+                                            control['route']).sha256)
+            self.assertEqual(derived['sonic_spec']['clock']['routes'][0],
+                             control['route'])
+            self.assertNotEqual(derived['pcm_sha256'],
+                                first['cases'][1]['pcm_sha256'])
             self.assertGreaterEqual(len(pids), 3)
             self.assertGreaterEqual(len(ledgers), 3)
             with self.assertRaises(FileExistsError):

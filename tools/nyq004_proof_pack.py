@@ -20,6 +20,9 @@ from zaaggenz_contracts.nyquismic import (
     ClockSpec, JitterSpec, ModulationRoute, Point, RateQuantizer, SonicSpec,
     VirtualRate,
 )
+from zaaggenz_contracts.nyquismic_input_envelope import (
+    UpstreamRmsPolicy, compile_upstream_rms_route,
+)
 from zaaggenz_dsp.nyquismic import FrozenInput
 from zaaggenz_dsp.nyquismic_controlled_audio_proof import (
     METHOD, render_controlled_audio_proof,
@@ -27,7 +30,7 @@ from zaaggenz_dsp.nyquismic_controlled_audio_proof import (
 
 RATE = 12000
 FRAMES = RATE
-PACK_VERSION = 'nyq004.native-grid-audition-pack.v1'
+PACK_VERSION = 'nyq004.native-grid-audition-pack.v2'
 
 
 def _source() -> np.ndarray:
@@ -76,7 +79,8 @@ def generate_pack(destination: Path) -> dict:
         source = FrozenInput.from_pcm(raw, RATE)
         rows = []
 
-        def write_audio(name, data, *, description, spec=None, diagnostics=None):
+        def write_audio(name, data, *, description, spec=None, diagnostics=None,
+                        control_provenance=None):
             pcm = np.asarray(data, dtype='<f4')
             if pcm.shape != (FRAMES,) or not np.isfinite(pcm).all():
                 raise ValueError('proof output shape or finiteness violation')
@@ -88,7 +92,7 @@ def generate_pack(destination: Path) -> dict:
                 'pcm_sha256':sha256(pcm.tobytes()).hexdigest(),
                 'wav_sha256':sha256(filepath.read_bytes()).hexdigest(),
                 'sonic_spec':None if spec is None else spec.to_dict(),
-                'diagnostics':diagnostics,
+                'diagnostics':diagnostics, 'control_provenance':control_provenance,
             })
 
         write_audio('00_source', raw,
@@ -101,6 +105,41 @@ def generate_pack(destination: Path) -> dict:
                 raise AssertionError('unrecognized controlled clock method')
             write_audio(f'{i:02d}_{name}', result.audio, description=description,
                         spec=spec, diagnostics=result.diagnostics)
+
+        # Demonstrate actual immutable input-derived modulation using the
+        # existing bounded upstream-RMS compiler and physical-clock renderer.
+        # This is a declared synthetic upstream tap, not proof of graph
+        # ancestry, cross-band routing or production feature integration.
+        rms_policy = UpstreamRmsPolicy(
+            source_id='proof-input', source_sha256=sha256(raw.tobytes()).hexdigest(),
+            sample_rate_hz=RATE, frames=FRAMES, channel=0,
+            window_frames=RATE // 8, reference_amplitude='1/1',
+        )
+        rms = compile_upstream_rms_route(
+            raw, rms_policy, consumer_id='proof-clock',
+            upstream_ids=('proof-input',), route_id='proof-input-rms',
+            mapping='add_hz', depth=240.0,
+        )
+        rms_spec = SonicSpec(clock=ClockSpec(
+            rate=VirtualRate('360/1'), routes=(rms.route,)))
+        rms_audio = render_controlled_audio_proof(source, rms_spec)
+        if rms_audio.diagnostics['product_rack_export_qualified']:
+            raise AssertionError('input-derived demonstration is not product export')
+        write_audio(
+            '06_input_rms', rms_audio.audio,
+            description=('Input-derived RMS clock: 360 Hz base plus 240 Hz '
+                         'per-unit upstream RMS; 1/8-second right-continuous '
+                         'steps with 1/8-second full-window lookahead'),
+            spec=rms_spec, diagnostics=rms_audio.diagnostics,
+            control_provenance={
+                'policy': rms_policy.to_dict(),
+                'compiler': rms.diagnostics,
+                'route': rms.route.to_dict(),
+                'consumer_id': 'proof-clock',
+                'declared_upstream_ids': ['proof-input'],
+                'graph_ancestry_verified': False,
+            },
+        )
         manifest = {
             'format':PACK_VERSION,
             'scope':'opt-in native-grid experimental PCM; NOT Compose/export qualified',
