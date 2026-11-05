@@ -535,6 +535,16 @@
         "zaaggenz_dsp/nyquismic_convergence.py"
       ],
       "reason": "NYQ-003 / PR #266 changes strictly opt-in local frozen-rate convergence evaluation: exactly silent multi-rate PCM is now tagged null_signal/inconclusive, not promoted to quality-certified output without discriminating data. Only zaaggenz_dsp/nyquismic_convergence.py differs among source-manifest paths from previously reviewed NYQ-003 identity; no production graph, default sampler, saved recipe, export, source/reference assets or comparison thresholds change. Before registration ZG-024a run https://github.com/techrote/zaaggenz/actions/runs/42025988301 at df7ea1d7e8d4dca8a303768f276d9e0fb9274de3 independently produced implementation SHA 30ffdc47e4fc17a528bf3e521a6eb6a074a7a0655125e2bbcb646571afbc171c on Ubuntu and Windows, with only the unknown implementation identity and seven historic issue #87 transient-v4 validation projections among 6 fixtures/36 candidates. The earlier CI test assertion was corrected separately without modifying production source. Candidate-only registration, not independent acceptance. Exact-final-head direct/reverse CI, owner-only gates and separate reviewer remain required."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "91ea8155ef5705207da268d2b7c79037adfe1c33cca7fba791be22157e33804e",
+      "issue": 252,
+      "stable_id": "ZG-016",
+      "changed_paths": [
+        "zaaggenz_dsp/nyquismic_convergence.py"
+      ],
+      "reason": "NYQ-003 / draft PR #266 scales opt-in local convergence comparison by common PCM amplitude and refuses undefined zero-reference metrics. This closes an adversarial false-convergence case for very quiet nonzero audio; only zaaggenz_dsp/nyquismic_convergence.py changes among ZG-024a implementation manifest paths, with no accepted sampler, graph, rack, export, calibration/tolerance, factory/source or default DSP change. Before registration, exact-head pre-registration run https://github.com/techrote/zaaggenz/actions/runs/42041980840 at a028cb384355682b34231389848c66a06ad4ff86 independently reproduced implementation SHA 91ea8155ef5705207da268d2b7c79037adfe1c33cca7fba791be22157e33804e on Ubuntu and Windows (six fixtures / 36 candidates on each); unchanged comparison reported only this new identity and the exact seven previously reviewed issue #87 transient-v4 validation projections, no other differences. Candidate transition only; require exact-head cross-platform/reverse CI and independent source review. No owner listening or physical Windows acceptance claimed."
     }
   ]
 }
