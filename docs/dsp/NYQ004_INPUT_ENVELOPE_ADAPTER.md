@@ -19,7 +19,12 @@ For each half-open `window_frames` source interval, compute RMS in float64
 and divide by the **explicit saved reference amplitude**. Quantize to a
 bounded 1,000,000-denominator rational (not to the evaluation sample clock).
 This is a deterministic physical-time, right-continuous *step* control; its
-value owns the interval beginning at that window start. Because it measures
+value owns the interval beginning at that window start. With a nonzero saved
+`origin_s`, the route holds a **neutral zero value until the exact source
+origin**, then inserts the first measured value as an additional step point;
+it cannot disclose future PCM before that origin. The extra point consumes
+one of the same 256-point budget slots, failing closed if over capacity.
+Because it measures
 the entire window before applying the value, it requires **up to one window
 of offline lookahead**, recorded in diagnostics; no causal/realtime claim.
 Incomplete final windows use actual samples, not implicit zeros. The
@@ -37,5 +42,6 @@ execution before claiming input-driven cross-band instrument support.
 
 Test: `python -m unittest discover -s tests/contracts -p 'test_nyquismic_input_envelope.py' -v`.
 Tests cover exact step/window boundaries, actual clock inspector consumption,
-source tampering, upstream identity/cycle admission, mono/stereo/partial/empty
+source tampering, upstream identity/cycle admission, pre-origin leakage and
+strict delayed-source point budgets, mono/stereo/partial/empty
 input, full-snapshot persistence, deterministic repeat, bounds and cancellation.
