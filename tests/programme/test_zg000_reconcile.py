@@ -26,6 +26,7 @@ class FakeAPI:
         self.wrong_sha, self.no_id, self.post_error = None, False, False
         self.delayed, self.fail_get, self.total_count = 0, False, None
         self.list_limit, self.omit_total_count = None, False
+        self.invalid_inventory_row = False
 
     def put(self, workflow=R1["workflow"], sha=None, status="completed",
             conclusion="success", attempt=1, run_id=None, ref=None, event="workflow_dispatch"):
@@ -70,6 +71,8 @@ class FakeAPI:
                     and x["event"] == params["event"][0] and x["head_sha"] == params["head_sha"][0]]
             total = self.total_count if self.total_count is not None else len(runs)
             visible = runs[:self.list_limit] if self.list_limit is not None else runs
+            if self.invalid_inventory_row and visible:
+                visible = [None, *visible[1:]]
             return ({"workflow_runs":visible} if self.omit_total_count else
                     {"workflow_runs":visible, "total_count":total})
         if "/actions/workflows/" in path:
@@ -345,6 +348,27 @@ class ZG000RegressionTests(unittest.TestCase):
             if method == "POST" else None
         )
         with self.assertRaisesRegex(ReconcileError, "malformed post-dispatch inventory"):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+    def test_40_invalid_pre_dispatch_row_is_recorded_blocker_not_crash(self):
+        api = FakeAPI()
+        api.put(status="queued", conclusion=None)
+        api.invalid_inventory_row = True
+        rec = make(api)
+        with self.assertRaisesRegex(ReconcileError, "invalid pre-dispatch run inventory") as caught:
+            rec.dispatch()
+        rec.record_error(caught.exception)
+        self.assertEqual("blocked", rec.manifest["state"])
+        self.assertFalse(api.posts)
+
+    def test_41_invalid_post_dispatch_row_never_triggers_second_post(self):
+        api = FakeAPI()
+        api.post_error = "after"
+        api.on_call = lambda method, path, payload: (
+            setattr(api, "invalid_inventory_row", True)
+            if method == "POST" else None
+        )
+        with self.assertRaisesRegex(ReconcileError, "invalid post-dispatch run inventory"):
             make(api).dispatch()
         self.assertEqual(1, len(api.posts))
 
