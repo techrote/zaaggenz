@@ -34,7 +34,13 @@ no clock or reconstruction discrimination: it is reported as
 `null_signal=true`, `within_limits=false` and is **inconclusive** even
 when all three numerical rates return identical silence. Empty extents are
 also inconclusive. No arbitrary minimum loudness threshold is imposed on
-quiet but nonzero signals. Otherwise the explicit status is `inconclusive`
+quiet but nonzero signals. Each comparator is scaled by the common maximum
+absolute sample before residual calculations so that an audible model's
+relative error is invariant under even extreme scalar attenuation. There is
+no absolute epsilon denominator: when the reference norm is exactly zero
+but the residual is nonzero, the finite diagnostic records the affected
+`zero_reference_metrics` and refuses convergence, even at tolerance 1.0.
+Otherwise the explicit status is `inconclusive`
 and `selected_audio=None`; malformed candidate, rate, hash, extent,
 nonfinite data or budget is a hard failure before publication.
 
