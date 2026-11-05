@@ -16,7 +16,13 @@ saved Compose/UI execution.
   (`f *= 2 ** (depth * control)`, Decimal80 numerical approximation).
 - Nearest finite positive Hz rate ladder, strict ordered finite cardinality,
   lower-Hz tie; ratios are expanded using explicitly stored references before
-  selection, never the numerical evaluation rate.
+  selection, never the numerical evaluation rate. Final candidate selection
+  compares the **exact rational representation** of the computed control Hz
+  with the saved rational ladder levels. The logarithmic-route control value
+  may itself have been approximated in Decimal80, but its completed value is
+  not rounded a second time during nearest-level distance comparison.
+  Fraction/Decimal cases a mere 1e-90 Hz across a ladder midpoint are tested;
+  these must not collapse into an artificial lower-Hz tie.
 - Stateless, counter-addressed `uniform_frequency_cells_v1` jitter through
   existing physical-time SHA-256 cell identity. Same stable instance/group and
   linked stereo share draws; independent channels are distinguished. Zero
