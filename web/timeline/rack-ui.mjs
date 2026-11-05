@@ -75,13 +75,24 @@ export function renderRack(host,state,apply,tools={}){
   const openSpectral=new Set(Array.from(
     host.querySelectorAll('.rack-spectral[open][data-insert-id]'),
     node=>node.dataset.insertId));
+  // Retain in-progress preset draft/selection across authoritative rack edits
+  // only within the same immutable project ancestry. A newly imported source
+  // must not silently inherit a draft preset ID or selection from another.
+  const oldPreset=host.querySelector('.rack-presets');
+  const presetDraft=oldPreset&&state?.working_context&&
+    oldPreset.dataset.workingContext===state.working_context
+    ?{name:oldPreset.querySelector('[data-preset-field="name"]')?.value,
+      id:oldPreset.querySelector('[data-preset-field="id"]')?.value,
+      selected:oldPreset.querySelector('[data-preset-field="selected"]')?.value}
+    :null;
   host.replaceChildren();
   if(!state){host.append(make('p','Rack metadata is unavailable; refresh the validated revision.'));return;}
   const top=group(host);
   if(!state.present){
     top.append(make('p','No rack is installed in this project. Legacy audio and source presets remain unchanged.'));
     button(top,'Enable four-band rack',{kind:'enable'},apply);
-    renderPresetTools(host,state,apply,tools);
+    renderPresetTools(host,state,apply,tools,presetDraft);
+    restoreControlFocus(host,focused);
     return;
   }
   const rack=state.value;
@@ -317,23 +328,33 @@ export function renderRack(host,state,apply,tools={}){
       }
     });
   }
-  renderPresetTools(host,state,apply,tools);
+  renderPresetTools(host,state,apply,tools,presetDraft);
   restoreControlFocus(host,focused);
 }
 
-function renderPresetTools(host,state,apply,tools){
+function renderPresetTools(host,state,apply,tools,draft=null){
   const presets=group(host,'rack-controls rack-presets');
+  presets.dataset.workingContext=state.working_context||'';
   presets.append(make('h3','User rack presets (stored in the saved project)'));
   const named=make('label','Preset name');const name=make('input');
-  name.value='My rack';name.maxLength=128;named.append(name);presets.append(named);
+  name.value=draft?.name??'My rack';name.maxLength=128;
+  name.dataset.presetField='name';
+  name.dataset.rackControlKey=controlKey({kind:'preset_draft',field:'name'});
+  named.append(name);presets.append(named);
   const keyed=make('label','Preset ID (a–z, digits, dots, dashes)');const id=make('input');
-  id.value='user.myrack';id.maxLength=64;keyed.append(id);presets.append(keyed);
+  id.value=draft?.id??'user.myrack';id.maxLength=64;
+  id.dataset.presetField='id';
+  id.dataset.rackControlKey=controlKey({kind:'preset_draft',field:'id'});
+  keyed.append(id);presets.append(keyed);
   const save=make('button','Save new preset');save.type='button';
   save.addEventListener('click',()=>apply({kind:'save_preset',id:id.value,name:name.value}));
   presets.append(save);
   const saved=make('label','Load saved preset');const select=make('select');
   select.append(new Option('Select saved preset',''));
   for(const item of state.presets)select.append(new Option(item.name+' ('+item.id+')',item.id));
+  select.dataset.presetField='selected';
+  select.dataset.rackControlKey=controlKey({kind:'preset_draft',field:'selected'});
+  if(state.presets.some(item=>item.id===draft?.selected))select.value=draft.selected;
   saved.append(select);presets.append(saved);
   const load=make('button','Load');load.type='button';load.disabled=!state.presets.length;
   load.addEventListener('click',()=>{if(select.value)apply({kind:'load_preset',id:select.value});});
@@ -368,11 +389,13 @@ function renderPresetTools(host,state,apply,tools){
   });
   imported.append(file);presets.append(imported);
   presets.append(make('p','Portable imports require the matching source; modified hashes and duplicate IDs are rejected.'));
-  select.addEventListener('change',()=>{
+  const refreshSelection=({fromChange=false}={})=>{
     const selected=state.presets.find(item=>item.id===select.value);
     replace.disabled=rename.disabled=exported.disabled=remove.disabled=!selected;
-    if(selected)name.value=selected.name;
-  });
+    if(fromChange&&selected)name.value=selected.name;
+  };
+  select.addEventListener('change',()=>refreshSelection({fromChange:true}));
+  refreshSelection();
 }
 
 function levelText(value){

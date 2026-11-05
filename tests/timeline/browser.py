@@ -113,10 +113,16 @@ def main():
             # A server-validated redraw must not throw keyboard users back to
             # the document root or lose the focused editable rack control.
             # These are real DOM/async proposal transitions, not mock state.
+            # Preset form drafts must not be thrown away by the async redraw
+            # after an unrelated accepted rack edit on the same source.
+            page.locator('#rack-editor').get_by_label('Preset name').fill('Uncommitted draft')
+            page.locator('#rack-editor').get_by_label('Preset ID',exact=False).fill('user.uncommitted')
             wet_focus=page.locator('#rack-editor').get_by_label('Rack wet')
             wet_focus.fill('0.8');wet_focus.dispatch_event('change');ready()
             expect(page.locator('#rack-editor').get_by_label('Rack wet')).to_be_focused()
             expect(page.locator('#rack-editor').get_by_label('Rack wet')).to_have_value('0.8')
+            expect(page.locator('#rack-editor').get_by_label('Preset name')).to_have_value('Uncommitted draft')
+            expect(page.locator('#rack-editor').get_by_label('Preset ID',exact=False)).to_have_value('user.uncommitted')
             wet_focus=page.locator('#rack-editor').get_by_label('Rack wet')
             wet_focus.fill('1');wet_focus.dispatch_event('change');ready()
             expect(page.locator('#rack-editor').get_by_label('Rack wet')).to_be_focused()

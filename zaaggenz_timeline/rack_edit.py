@@ -29,6 +29,10 @@ def editor_state(document):
         "spectral_coefficients": deepcopy(COEFFICIENTS),
         "presets": [{"id": key, "name": val["name"]}
                     for key, val in sorted(project.rack_presets.items())],
+        # Presentation-only context of the immutable root project revision.
+        # Stable across normal rack revisions, different for a different
+        # source ancestry. Never used as a rack/sonic authorization token.
+        "working_context": project.to_document()["revisions"][0]["id"],
     }
 
 

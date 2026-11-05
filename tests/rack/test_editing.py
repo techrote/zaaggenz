@@ -18,6 +18,22 @@ class RackEditorTests(unittest.TestCase):
     def act(self, **kwargs):
         self.d = edit_rack(self.d, kwargs)
 
+    def test_preset_draft_context_bound_to_immutable_source_ancestry(self):
+        initial = editor_state(self.d)
+        root = self.d.to_dict()["project"]["revisions"][0]["id"]
+        self.assertEqual(initial["working_context"], root)
+        self.act(kind="enable")
+        self.assertEqual(editor_state(self.d)["working_context"], root)
+        self.act(kind="save_preset", id="user.context", name="Context")
+        self.assertEqual(editor_state(self.d)["working_context"], root)
+        self.act(kind="reset")
+        self.assertEqual(editor_state(self.d)["working_context"], root)
+        # The presentation identifier is never included in saved state.
+        self.assertNotIn("working_context", self.d.to_dict())
+        self.assertNotIn("working_context", self.d.to_dict()["project"])
+        other = default_document(48000)
+        self.assertNotEqual(editor_state(other)["working_context"], root)
+
     def test_opt_in_preserves_legacy_and_reset(self):
         self.assertFalse(editor_state(self.d)["present"])
         self.act(kind="enable")

@@ -239,3 +239,13 @@ audition remain outstanding for MBR-003; passing deterministic/browser CI is
 not a musical acceptance claim.
 Band solo/mute selection changes now invalidate any prior or in-flight monitoring request (including A→B→A selection reversals), cancel known jobs and restore the exact processed output if a monitor was playing. Exported PCM and the saved rack remain unchanged.
 
+
+
+### Rack preset form continuity (MBR-003 draft)
+
+In-progress preset name/ID and the selected saved preset survive validated
+rack-editor redraws within the same immutable project ancestry. Importing a
+different source ancestry clears the unsaved form selection instead of
+carrying it into another project. The ancestry key is presentation-only; it
+is neither a project format change nor a source/authorization token. Saved
+preset identity, export and audible rack processing are unchanged.
