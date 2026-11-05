@@ -187,11 +187,19 @@ def evaluate_local_convergence(
                  candidate.clock_sha256, candidate.random_control_sha256) ==
                 (source_sha256, sonic_sha256, clock_sha256, random_control_sha256),
                 'numerical candidate changed source/sonic/clock/random realization')
-        audio = np.asarray(candidate.audio)
-        require(audio.ndim in (1, 2) and
-                (audio.ndim == 1 or audio.shape[1] in (1, 2)) and
-                audio.dtype.kind == 'f' and audio.size <= budget.max_frames and
-                np.isfinite(audio).all(), 'invalid/oversized numerical candidate PCM')
+        # The renderer can return a caller-owned mutable NumPy buffer.
+        # Freeze exactly one private PCM snapshot before validating finiteness
+        # or invoking the converter (which runs an external cancel callback).
+        # Otherwise a callback can replace the checked samples with different
+        # finite PCM while preserving the declared source/sonic identities.
+        view = np.asarray(candidate.audio)
+        require(view.ndim in (1, 2) and
+                (view.ndim == 1 or view.shape[1] in (1, 2)) and
+                view.dtype.kind == 'f' and view.size <= budget.max_frames,
+                'invalid/oversized numerical candidate PCM')
+        audio = np.array(view, copy=True, order='C')
+        require(np.isfinite(audio).all(),
+                'invalid/oversized numerical candidate PCM')
         extent = Fraction(audio.shape[0], rate)
         if common_extent is None:
             common_extent = extent
