@@ -56,6 +56,19 @@ function number(parent,label,current,meta,action,apply){
   });
   wrapper.append(node);parent.append(wrapper);
 }
+// Specialist add forms are draft controls, not saved revisions. Unlike HTML
+// number inputs, blank drafts are optional by default; reject them with a
+// field-specific explanation rather than silently ignoring an Add click.
+function requiredDraftInteger(node,label,minimum,maximum){
+  node.setCustomValidity('');
+  const value=Number(node.value);
+  if(node.value===''||!Number.isSafeInteger(value)){
+    node.setCustomValidity(label+' requires a whole number.');
+  }else if(value<minimum||value>maximum){
+    node.setCustomValidity(label+' must be between '+minimum+' and '+maximum+'.');
+  }
+  return node.reportValidity()?value:null;
+}
 function choice(parent,label,current,values,action,apply){
   const wrapper=make('label',label);const node=make('select');
   for(const value of values)node.append(new Option(value,value));
@@ -257,6 +270,7 @@ export function renderRack(host,state,apply,tools={}){
           const degreeLabel=make('label','Additional target degree');
           const newDegree=make('input');newDegree.type='number';newDegree.step='1';
           newDegree.min='-4096';newDegree.max='4096';
+          newDegree.addEventListener('input',()=>newDegree.setCustomValidity(''));
           newDegree.dataset.rackDraft='voice-degree';
           newDegree.dataset.rackControlKey=controlKey({kind:'spectral_draft',
             id:stage.id,field:'voice-degree'});
@@ -274,9 +288,10 @@ export function renderRack(host,state,apply,tools={}){
           const addVoice=make('button','Add retune voice');addVoice.type='button';
           addVoice.disabled=request.voices.length>=32;
           addVoice.addEventListener('click',()=>{
-            if(!newDegree.reportValidity()||newDegree.value===''||!Number.isSafeInteger(Number(newDegree.value)))return;
+            const degree=requiredDraftInteger(newDegree,'Additional target degree',-4096,4096);
+            if(degree===null)return;
             apply({kind:'add_spectral_voice',band:band.id,id:stage.id,
-              degree:Number(newDegree.value),label:newName.value});
+              degree,label:newName.value});
           });
           adding.append(addVoice);
           const schedule=group(details,'rack-target-segments');
@@ -310,6 +325,7 @@ export function renderRack(host,state,apply,tools={}){
           const startLabel=make('label','New segment start sample');
           const startInput=make('input');startInput.type='number';
           startInput.min='1';startInput.max='691200000';startInput.step='1';
+          startInput.addEventListener('input',()=>startInput.setCustomValidity(''));
           startInput.dataset.rackDraft='segment-start';
           startInput.dataset.rackControlKey=controlKey({kind:'spectral_draft',
             id:stage.id,field:'segment-start'});
@@ -332,9 +348,8 @@ export function renderRack(host,state,apply,tools={}){
           const addSegment=make('button','Add retune segment');
           addSegment.type='button';addSegment.disabled=request.segments.length>=64;
           addSegment.addEventListener('click',()=>{
-            const start=Number(startInput.value);
-            if(!startInput.reportValidity()||startInput.value===''||
-               !Number.isSafeInteger(start)||start<=0)return;
+            const start=requiredDraftInteger(startInput,'New segment start sample',1,691200000);
+            if(start===null)return;
             apply({kind:'add_spectral_segment',band:band.id,id:stage.id,
               start_sample:start,label:segmentName.value,
               expected_segments:request.segments});
