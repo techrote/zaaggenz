@@ -569,6 +569,38 @@ class ZG000RegressionTests(unittest.TestCase):
         self.assertEqual("dispatched", selected[0]["decision"])
         self.assertEqual(1, len(api.posts))
 
+    def test_58_cancelled_latest_checks_prior_run_detail_not_just_stale_list(self):
+        # The workflow-list row can still say completed when the independent
+        # run-detail endpoint reports a queued/running previous child. A new
+        # dispatch would overlap that real child despite the latest cancellation.
+        for status in ("queued", "in_progress"):
+            with self.subTest(status=status):
+                api = FakeAPI()
+                previous = api.put(status="completed", conclusion="success", run_id=1000)
+                api.put(status="completed", conclusion="cancelled", run_id=1001)
+                def stale_list(method, path, payload):
+                    if method == "GET" and path.endswith("/actions/runs/1000"):
+                        # Replace the dict rather than mutate it: the earlier
+                        # inventory still holds its independently captured row.
+                        api.runs[1000] = {**previous, "status": status, "conclusion": None}
+                api.on_call = stale_list
+                with self.assertRaisesRegex(
+                        ReconcileError, "active in authoritative run detail"):
+                    make(api).dispatch()
+                self.assertEqual([], api.posts)
+
+    def test_59_cancelled_latest_does_not_replace_changed_previous_attempt(self):
+        api = FakeAPI()
+        previous = api.put(status="completed", conclusion="success", run_id=1000)
+        api.put(status="completed", conclusion="cancelled", run_id=1001)
+        def rerun_previous(method, path, payload):
+            if method == "GET" and path.endswith("/actions/runs/1000"):
+                api.runs[1000] = {**previous, "run_attempt": 2}
+        api.on_call = rerun_previous
+        with self.assertRaisesRegex(ReconcileError, "older child attempt changed"):
+            make(api).dispatch()
+        self.assertEqual([], api.posts)
+
     def test_57_final_manifest_requires_current_orchestrator_run_identity(self):
         # Two CI attempts can validate the same branch and source SHA. A
         # downloaded dispatch manifest from attempt A is not authoritative
