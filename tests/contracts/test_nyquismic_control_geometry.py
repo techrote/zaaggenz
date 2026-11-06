@@ -5,6 +5,7 @@ Proves a bounded event geometry subset; not evidence for sampler/rack integratio
 from dataclasses import replace
 from fractions import Fraction
 import unittest
+from unittest.mock import patch
 
 from zaaggenz_contracts import ContractError
 from zaaggenz_contracts.nyquismic import (
@@ -190,6 +191,32 @@ class ControlledStepGeometryTests(unittest.TestCase):
         with self.assertRaises(ContractError):
             compile_step_clock_events(request, '1/1',
                                       budget=ResourceBudget(max_events=4))
+
+    def test_jitter_lattice_cancellation_preempts_event_evaluation(self):
+        # Even a fully admitted lattice may contain thousands of exact
+        # rational cells. Cancellation must be observed during private cell
+        # construction, not only once all cell fractions have been allocated
+        # and event phase evaluation has started.
+        request = sonic(jitter=JitterSpec(
+            model='uniform_frequency_cells_v1', amount=.05,
+            cell_s='1/2048', seed='991', stream='cancel-grid'))
+        checks = [0]
+
+        def cancel_after_two_cell_checkpoints():
+            checks[0] += 1
+            return checks[0] == 3
+
+        # A previous one-shot set comprehension would call the phase
+        # evaluator before reaching the third cancellation checkpoint.
+        with patch('zaaggenz_contracts.nyquismic_controls.evaluate_instantaneous_rate',
+                   side_effect=AssertionError('phase evaluation started before cancellation')):
+            with self.assertRaises(ClockCancelled):
+                compile_step_clock_events(
+                    request, '1/1', cancelled=cancel_after_two_cell_checkpoints)
+        self.assertEqual(checks[0], 3)
+        # Aborting a compile never poisons deterministic independent replay.
+        self.assertEqual(compile_step_clock_events(request, '1/16'),
+                         compile_step_clock_events(request, '1/16'))
 
     def test_unimplemented_geometry_rejects_before_publication(self):
         for invalid in (
