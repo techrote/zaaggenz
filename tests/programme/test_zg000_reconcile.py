@@ -555,10 +555,11 @@ class ZG000RegressionTests(unittest.TestCase):
         rec = make(FakeAPI())
         manifest = rec.manifest
         source = dict(repo=REPO, pr=267, sha=A, ref=REF,
-                      run_id=41691032400)
+                      run_id=41691032400, run_attempt=1)
         validate_finalization_source(manifest, **source)
         for changed in (
             {**source, 'run_id': 41691032401},
+            {**source, 'run_attempt': 2},  # GitHub rerun uses same run ID.
             {**source, 'sha': B},
         ):
             with self.subTest(changed=changed), self.assertRaisesRegex(
@@ -568,6 +569,9 @@ class ZG000RegressionTests(unittest.TestCase):
             {**manifest, 'schema': 'zg000-dispatch-v0'},
             {**manifest, 'orchestrator_run_id': True},
             {**manifest, 'orchestrator_run_id': None},
+            {**manifest, 'orchestrator_run_attempt': True},
+            {**manifest, 'orchestrator_run_attempt': 0},
+            {k: v for k, v in manifest.items() if k != 'orchestrator_run_attempt'},
             {k: v for k, v in manifest.items() if k != 'orchestrator_run_id'},
         ):
             with self.subTest(forged=forged.get('orchestrator_run_id')):
