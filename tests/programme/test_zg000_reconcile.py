@@ -8,7 +8,8 @@ from urllib.parse import parse_qs
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
-from zg000_reconcile import Reconciler, ReconcileError, Superseded  # noqa: E402
+from zg000_reconcile import (Reconciler, ReconcileError, Superseded,
+                             validate_finalization_source)  # noqa: E402
 
 A, B, C = "a"*40, "b"*40, "c"*40
 REPO = "techrote/zaaggenz"
@@ -545,6 +546,33 @@ class ZG000RegressionTests(unittest.TestCase):
         with self.assertRaisesRegex(ReconcileError, "unaccepted or inactive workflow definition"):
             make(api).dispatch()
         self.assertEqual(0, len(api.posts))
+
+
+    def test_56_final_manifest_requires_current_orchestrator_run_identity(self):
+        # Two CI attempts can validate the same branch and source SHA. A
+        # downloaded dispatch manifest from attempt A is not authoritative
+        # for attempt B's watcher matrix, even if all child runs are green.
+        rec = make(FakeAPI())
+        manifest = rec.manifest
+        source = dict(repo=REPO, pr=267, sha=A, ref=REF,
+                      run_id=41691032400)
+        validate_finalization_source(manifest, **source)
+        for changed in (
+            {**source, 'run_id': 41691032401},
+            {**source, 'sha': B},
+        ):
+            with self.subTest(changed=changed), self.assertRaisesRegex(
+                    ReconcileError, 'another source or orchestration run'):
+                validate_finalization_source(manifest, **changed)
+        for forged in (
+            {**manifest, 'schema': 'zg000-dispatch-v0'},
+            {**manifest, 'orchestrator_run_id': True},
+            {**manifest, 'orchestrator_run_id': None},
+            {k: v for k, v in manifest.items() if k != 'orchestrator_run_id'},
+        ):
+            with self.subTest(forged=forged.get('orchestrator_run_id')):
+                with self.assertRaises(ReconcileError):
+                    validate_finalization_source(forged, **source)
 
 
 if __name__ == "__main__":
