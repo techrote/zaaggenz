@@ -725,8 +725,9 @@ class ZG000RegressionTests(unittest.TestCase):
             nonlocal r1_details
             if method == "GET" and path.endswith("/actions/runs/1000"):
                 r1_details += 1
-                # First call is dispatch reuse, second is first final sweep.
-                if r1_details >= 3:
+                # Mock is installed after dispatch; first call is the
+                # initial final audit, second is the final detail recheck.
+                if r1_details >= 2:
                     raise ReconcileError("run detail unavailable during final audit")
             return original(method, path, payload)
 
