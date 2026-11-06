@@ -128,7 +128,8 @@ class Reconciler:
         if workflow not in self.workflow_ids:
             data = self.api.request("GET", self.api_path(f"actions/workflows/{workflow}"))
             if (data.get("path") != f".github/workflows/{workflow}"
-                    or data.get("state") != "active" or not isinstance(data.get("id"), int)):
+                    or data.get("state") != "active" or type(data.get("id")) is not int
+                    or data["id"] < 1):
                 raise ReconcileError(f"unaccepted or inactive workflow definition: {workflow}")
             self.workflow_ids[workflow] = data["id"]
         return self.workflow_ids[workflow]
@@ -189,6 +190,8 @@ class Reconciler:
         if any(not isinstance(run, dict) or type(run.get("id")) is not int
                or run["id"] < 1 for run in runs):
             raise ReconcileError(f"{workflow}: invalid pre-dispatch run inventory")
+        if len({run["id"] for run in runs}) != len(runs):
+            raise ReconcileError(f"{workflow}: duplicate run IDs in pre-dispatch inventory")
         candidates = []
         for run in runs:
             if (run.get("head_sha") != self.sha or run.get("event") != "workflow_dispatch"
@@ -258,6 +261,8 @@ class Reconciler:
             if any(not isinstance(run, dict) or type(run.get("id")) is not int
                    or run["id"] < 1 for run in runs):
                 raise ReconcileError(f"{workflow}: invalid post-dispatch run inventory") from cause
+            if len({run["id"] for run in runs}) != len(runs):
+                raise ReconcileError(f"{workflow}: duplicate run IDs in post-dispatch inventory") from cause
             newly_visible = [run for run in runs if run["id"] not in before]
             if len(newly_visible) > 1:
                 raise ReconcileError(
@@ -396,6 +401,8 @@ class Reconciler:
         if any(not isinstance(run, dict) or type(run.get("id")) is not int
                or run["id"] < 1 for run in runs):
             raise ReconcileError(f"{workflow}: invalid final run inventory")
+        if len({run["id"] for run in runs}) != len(runs):
+            raise ReconcileError(f"{workflow}: duplicate run IDs in final inventory")
         candidates = []
         for run in runs:
             if (run.get("head_sha") != self.sha or run.get("event") != "workflow_dispatch"
