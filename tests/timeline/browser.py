@@ -175,6 +175,29 @@ def main():
             assert 'must be less than' in mid.evaluate('(e)=>e.validationMessage')
             assert saved('rack-crossover-order-rejected.zgtimeline.json')==crossover_before
             assert server.timeline.session.current_identity()==crossover_identity
+            # HTML number inputs are not required by default. An empty or
+            # out-of-bounds sonic value must explain which control is invalid
+            # and must never dispatch a detached rack proposal or mutate the
+            # canonical RuntimeSession. The browser is the real Chromium UI.
+            rack_wet=page.locator('#rack-editor').get_by_label('Rack wet',exact=False)
+            rack_wet.fill('');rack_wet.dispatch_event('change')
+            assert rack_wet.evaluate('(e)=>e.validity.customError')
+            assert 'Rack wet requires a finite numeric value' in rack_wet.evaluate('(e)=>e.validationMessage')
+            assert server.timeline.session.current_identity()==crossover_identity
+            assert saved('rack-blank-wet-rejected.zgtimeline.json')==crossover_before
+            rack_wet.fill('1.1');rack_wet.dispatch_event('change')
+            assert rack_wet.evaluate('(e)=>e.validity.customError')
+            assert 'Rack wet must be at most 1' in rack_wet.evaluate('(e)=>e.validationMessage')
+            assert server.timeline.session.current_identity()==crossover_identity
+            assert saved('rack-overflow-wet-rejected.zgtimeline.json')==crossover_before
+            rack_wet.fill('1');rack_wet.dispatch_event('change');ready()
+            # Restore the exact original wet setting before the crossover and
+            # subsequent exported-PCM assertions in this acceptance sequence.
+            rack_wet=page.locator('#rack-editor').get_by_label('Rack wet',exact=False)
+            rack_wet.fill(str(json.loads(crossover_before['project']['revisions'][-1]
+                  ['recipe_json'])['rack']['wet']))
+            rack_wet.dispatch_event('change');ready()
+            mid=page.locator('#rack-editor').get_by_label('Crossover 2',exact=False)
             mid.fill('650');mid.dispatch_event('change');ready()
             changed_crossovers=saved('rack-crossover-valid.zgtimeline.json')
             assert json.loads(changed_crossovers['project']['revisions'][-1]['recipe_json'])['rack']['crossovers']['frequencies_hz'][1]==650
