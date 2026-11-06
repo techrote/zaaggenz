@@ -376,6 +376,44 @@ class Reconciler:
         self.check_head()
         return run
 
+    def confirm_latest_selected(self, selected: dict) -> None:
+        """Recheck latest run/attempt at acceptance, not only at dispatch.
+
+        A same-head manual dispatch or rerun after selection supersedes the
+        previously watched run. Its outcome must not be hidden by an older
+        successful run. Inventory must be complete; unavailable evidence
+        blocks qualification without dispatching any additional child.
+        """
+        workflow = selected["workflow"]
+        query = urlencode({"event": "workflow_dispatch", "head_sha": self.sha, "per_page": 100})
+        data = self.api.request(
+            "GET", self.api_path(f"actions/workflows/{workflow}/runs?{query}"))
+        runs = data.get("workflow_runs")
+        total = data.get("total_count")
+        if (not isinstance(runs, list) or type(total) is not int
+                or total < 0 or total > 100 or len(runs) != total):
+            raise ReconcileError(f"{workflow}: incomplete final run inventory")
+        if any(not isinstance(run, dict) or type(run.get("id")) is not int
+               or run["id"] < 1 for run in runs):
+            raise ReconcileError(f"{workflow}: invalid final run inventory")
+        candidates = []
+        for run in runs:
+            if (run.get("head_sha") != self.sha or run.get("event") != "workflow_dispatch"
+                    or run.get("head_branch") != self.ref):
+                continue
+            self.verify({"workflow": workflow, "stable_id": selected["stable_id"]}, run)
+            candidates.append(run)
+        if not candidates:
+            raise ReconcileError(f"{workflow}: selected child absent from final inventory")
+        latest = max(candidates, key=lambda run: (run["id"], run["run_attempt"]))
+        if (latest["id"], latest["run_attempt"]) != (
+                selected["run_id"], selected["run_attempt"]):
+            raise ReconcileError(
+                f"{workflow}: newer exact-head run/attempt superseded selected watcher "
+                f"{selected['run_id']}/{selected['run_attempt']} with "
+                f"{latest['id']}/{latest['run_attempt']}")
+        self.check_head()
+
     def finalize(self, watcher_result: str) -> None:
         self.check_head()
         if watcher_result != "success":
@@ -390,6 +428,7 @@ class Reconciler:
         self.manifest["terminal_runs"] = []
         for row in selected:
             actual = self.verify_selected(row, completed=True)
+            self.confirm_latest_selected(row)
             self.manifest["terminal_runs"].append({
                 "workflow": row["workflow"], "run_id": actual["id"],
                 "run_attempt": actual["run_attempt"], "head_sha": actual["head_sha"],

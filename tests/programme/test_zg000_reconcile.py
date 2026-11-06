@@ -441,5 +441,66 @@ class ZG000RegressionTests(unittest.TestCase):
         self.assertFalse(api.posts)
 
 
+    def test_47_newer_failed_same_head_run_cannot_hide_behind_old_success(self):
+        api = FakeAPI()
+        previous = api.put(status="completed", conclusion="success")
+        rec = make(api)
+        selected = rec.dispatch()[0]
+        self.assertEqual(previous["id"], selected["run_id"])
+        self.assertFalse(api.posts)
+        api.put(status="completed", conclusion="failure")
+        with self.assertRaisesRegex(ReconcileError, "newer exact-head run/attempt"):
+            rec.finalize("success")
+        self.assertNotEqual("qualified", rec.manifest["state"])
+
+    def test_48_even_newer_green_requires_its_own_watch_and_identity(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        rec = make(api)
+        rec.dispatch()
+        api.put(status="completed", conclusion="success")
+        with self.assertRaisesRegex(ReconcileError, "newer exact-head run/attempt"):
+            rec.finalize("success")
+        self.assertFalse(api.posts)
+
+    def test_49_partial_final_inventory_cannot_certify_old_green(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        rec = make(api)
+        rec.dispatch()
+        api.list_limit = 0
+        with self.assertRaisesRegex(ReconcileError, "incomplete final run inventory"):
+            rec.finalize("success")
+        self.assertFalse(api.posts)
+
+    def test_50_other_branch_on_same_sha_is_not_selected_authority(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        rec = make(api)
+        rec.dispatch()
+        api.put(ref="other-branch", status="completed", conclusion="failure")
+        rec.finalize("success")
+        self.assertEqual("qualified", rec.manifest["state"])
+        self.assertFalse(api.posts)
+
+    def test_51_changed_attempt_in_final_inventory_is_not_old_success(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        rec = make(api)
+        selected = rec.dispatch()[0]
+        # Simulate list/detail disagreement only after the detail verifier:
+        # the separate final inventory must still refuse the new attempt.
+        seen = [0]
+        def change_after_run_detail(method, path, payload):
+            if method == "GET" and path.endswith(f"/actions/runs/{selected['run_id']}"):
+                seen[0] += 1
+                if seen[0] == 2:
+                    api.runs[selected["run_id"]]["run_attempt"] = 2
+        api.on_call = change_after_run_detail
+        with self.assertRaises(ReconcileError):
+            rec.finalize("success")
+        self.assertFalse(api.posts)
+
+
 if __name__ == "__main__":
     unittest.main()

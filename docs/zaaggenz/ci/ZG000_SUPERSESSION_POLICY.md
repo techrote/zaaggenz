@@ -37,6 +37,8 @@ GitHub `workflow_dispatch` still targets a potentially moving branch, not an imm
 - **pending:** required exact-head tests remain active.
 - **blocked:** API/dispatch identity, workflow definition, coverage or evidence could not be established.
 
+Final acceptance re-reads a complete, counted exact-head workflow inventory for each watched child and refuses to qualify an older selected run if any newer same-branch run or attempt exists, even when the older run is green. A new run must have its own watcher and accepted evidence; a truncated or malformed final inventory blocks. This prevents a same-head manual rerun or concurrent dispatch from hiding a later red behind previously selected success. GitHub run listings remain eventually consistent, so this is an additional final audit rather than a claim of globally atomic scheduler observation.
+
 Only `qualified` is acceptable reverse-dependency evidence; none of these statuses substitutes for required native/direct checks. Non-qualified states exit nonzero when the parent is not already cancelled.
 
 ## Audit and recovery
