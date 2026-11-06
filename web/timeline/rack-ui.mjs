@@ -323,13 +323,18 @@ export function renderRack(host,state,apply,tools={}){
           });
           const segmentAdd=group(schedule);
           const startLabel=make('label','New segment start sample');
+          const lastSegment=request.segments.at(-1);
+          // Change points must advance strictly in physical source samples.
+          // Reflect the actual saved predecessor, not a generic positive min;
+          // otherwise a duplicate/earlier start looks locally admissible.
+          const minimumStart=(lastSegment?.start_sample??0)+1;
+          const hasStartRoom=minimumStart<=691200000;
           const startInput=make('input');startInput.type='number';
-          startInput.min='1';startInput.max='691200000';startInput.step='1';
+          startInput.min=String(minimumStart);startInput.max='691200000';startInput.step='1';
           startInput.addEventListener('input',()=>startInput.setCustomValidity(''));
           startInput.dataset.rackDraft='segment-start';
           startInput.dataset.rackControlKey=controlKey({kind:'spectral_draft',
             id:stage.id,field:'segment-start'});
-          const lastSegment=request.segments.at(-1);
           startInput.value=draft?.segmentCount===request.segments.length
             ?(draft.segmentStart??''):String(Math.min(691200000,
               (lastSegment?.start_sample||0)+Math.max(1,Math.round(rack.sample_rate_hz/4))));
@@ -346,9 +351,13 @@ export function renderRack(host,state,apply,tools={}){
           segmentNameLabel.append(segmentName);
           segmentAdd.append(segmentNameLabel);
           const addSegment=make('button','Add retune segment');
-          addSegment.type='button';addSegment.disabled=request.segments.length>=64;
+          addSegment.type='button';
+          addSegment.disabled=request.segments.length>=64||!hasStartRoom;
+          if(!hasStartRoom)segmentAdd.append(make('p',
+            'No remaining source-sample position for a later retune segment.'));
           addSegment.addEventListener('click',()=>{
-            const start=requiredDraftInteger(startInput,'New segment start sample',1,691200000);
+            const start=requiredDraftInteger(startInput,'New segment start sample',
+              minimumStart,691200000);
             if(start===null)return;
             apply({kind:'add_spectral_segment',band:band.id,id:stage.id,
               start_sample:start,label:segmentName.value,
