@@ -488,15 +488,12 @@ class ZG000RegressionTests(unittest.TestCase):
         api.put(status="completed", conclusion="success")
         rec = make(api)
         selected = rec.dispatch()[0]
-        # Simulate list/detail disagreement only after the detail verifier:
-        # the separate final inventory must still refuse the new attempt.
-        seen = [0]
-        def change_after_run_detail(method, path, payload):
-            if method == "GET" and path.endswith(f"/actions/runs/{selected['run_id']}"):
-                seen[0] += 1
-                if seen[0] == 2:
-                    api.runs[selected["run_id"]]["run_attempt"] = 2
-        api.on_call = change_after_run_detail
+        # Verify-selected sees attempt 1; the final inventory sees a new
+        # attempt only afterwards. A stale watcher cannot qualify it.
+        def change_at_final_inventory(method, path, payload):
+            if method == "GET" and "/runs?" in path:
+                api.runs[selected["run_id"]]["run_attempt"] = 2
+        api.on_call = change_at_final_inventory
         with self.assertRaises(ReconcileError):
             rec.finalize("success")
         self.assertFalse(api.posts)
