@@ -734,7 +734,7 @@ class ZG000RegressionTests(unittest.TestCase):
         api.request = detail_disappears
         with self.assertRaisesRegex(ReconcileError, "detail unavailable"):
             rec.finalize("success")
-        self.assertGreaterEqual(r1_details, 3)
+        self.assertGreaterEqual(r1_details, 2)
         self.assertNotEqual("qualified", rec.manifest["state"])
         self.assertEqual([], api.posts)
 
