@@ -539,7 +539,13 @@ def main():
                 assert server.timeline.session.current_identity()==before_add_identity
                 expect(page.locator('#revision')).to_have_text(before_add_revision)
             add_degree.fill('11')
-            add_voice.click();ready()
+            # Two synchronous clicks originate from the SAME displayed voice
+            # snapshot. The first is applied through the serial edit queue;
+            # the second must fail stale-snapshot admission, not append a
+            # duplicate voice using a new primary target under old intent.
+            add_voice.evaluate('(button) => {button.click(); button.click();}')
+            ready()
+            assert spectral_stage.locator('.rack-target-voice').count()==2
             second=spectral_stage.get_by_role('group',name='Retune target voice 2')
             ratios=second.get_by_label('Voice 2 partial ratios (comma-separated)')
             ratios.fill('1, 1.5, 3');ratios.dispatch_event('change');ready()

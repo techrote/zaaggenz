@@ -215,8 +215,11 @@ label in the same specialist panel (up to the contract's 32 voices), re-labelled
 assigned independently validated tuning degrees and strictly increasing
 positive partial ratios (1–128), or removed while retaining at least one
 voice. A new voice initially copies the displayed primary voice's partial
-ratios. Saved source tuning and unrelated target state remain unchanged. Each edit
-validates the complete bounded request
+ratios. Its Add command includes the full currently saved voice-lattice
+snapshot: a repeated click, queued stale Add, or intervening same-count edit
+cannot append against newly changed primary partial ratios. The entire second
+command is rejected without changing the project; existing source tuning and
+unrelated target state remain unchanged. Each edit validates the complete bounded request
 and source ancestry; stale voice snapshots fail closed. Real numerical
 rendering and save/reopen use the same request, with no separate target engine.
 Timed **retune change-points** are now explicitly editable at positive

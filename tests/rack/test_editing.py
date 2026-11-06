@@ -358,7 +358,7 @@ class RackEditorTests(unittest.TestCase):
         original_source = compile_recipe(self.d).to_dict()["source"]
         primary = deepcopy(stage["params"]["voices"][0])
         self.act(kind="add_spectral_voice", band=band, id=sid,
-                 degree=11, label="Explicit fifth")
+                 degree=11, label="Explicit fifth", expected_voices=[primary])
         stages = editor_state(self.d)["value"]["bands"][1]["inserts"]
         params = stages[0]["params"]
         self.assertEqual([v["degree"] for v in params["voices"]], [0, 11])
@@ -380,11 +380,30 @@ class RackEditorTests(unittest.TestCase):
         reopened = type(self.d).from_json(json.dumps(self.d.to_dict()))
         self.assertEqual(editor_state(reopened)["value"], edited)
         before = self.d.to_dict()
+        current_voices = deepcopy(edited["bands"][1]["inserts"][0]["params"]["voices"])
+        # The original single-voice snapshot must not append to a new lattice.
+        # A stale *same-length* snapshot with changed ratios is also unsafe,
+        # because Add inherits the current primary voice's partial ratios.
+        for stale in ([primary],
+                      [{**current_voices[0], "partial_ratios": [1., 2., 4.]},
+                       current_voices[1]],
+                      {"not": "a saved voice list"}):
+            with self.subTest(stale=stale), self.assertRaisesRegex(
+                    ValueError, "retune voices changed; refresh before adding"):
+                edit_rack(self.d, {"kind":"add_spectral_voice","band":band,
+                                  "id":sid,"degree":13,"label":"stale",
+                                  "expected_voices":stale})
+            self.assertEqual(self.d.to_dict(), before)
         bad = [
-            {"kind":"add_spectral_voice","band":band,"id":sid,"degree":True,"label":"invalid"},
-            {"kind":"add_spectral_voice","band":band,"id":sid,"degree":1.5,"label":"invalid"},
-            {"kind":"add_spectral_voice","band":band,"id":sid,"degree":1,"label":"x"*65},
-            {"kind":"add_spectral_voice","band":band,"id":sid,"degree":1,"label":"x","extra":0},
+            {"kind":"add_spectral_voice","band":band,"id":sid,"degree":1,"label":"no snapshot"},
+            {"kind":"add_spectral_voice","band":band,"id":sid,"degree":True,"label":"invalid",
+             "expected_voices":current_voices},
+            {"kind":"add_spectral_voice","band":band,"id":sid,"degree":1.5,"label":"invalid",
+             "expected_voices":current_voices},
+            {"kind":"add_spectral_voice","band":band,"id":sid,"degree":1,"label":"x"*65,
+             "expected_voices":current_voices},
+            {"kind":"add_spectral_voice","band":band,"id":sid,"degree":1,"label":"x",
+             "expected_voices":current_voices,"extra":0},
             {"kind":"edit_spectral_voice","band":band,"id":sid,"voice_index":1,
              "expected_voice":primary,"field":"degree","value":1},
             {"kind":"edit_spectral_voice","band":band,"id":sid,"voice_index":True,

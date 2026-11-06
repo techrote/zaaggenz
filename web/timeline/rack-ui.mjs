@@ -291,7 +291,7 @@ export function renderRack(host,state,apply,tools={}){
             const degree=requiredDraftInteger(newDegree,'Additional target degree',-4096,4096);
             if(degree===null)return;
             apply({kind:'add_spectral_voice',band:band.id,id:stage.id,
-              degree,label:newName.value});
+              degree,label:newName.value,expected_voices:request.voices});
           });
           adding.append(addVoice);
           const schedule=group(details,'rack-target-segments');

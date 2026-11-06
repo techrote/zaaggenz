@@ -153,7 +153,8 @@ def _update(project, action):
         # These are explicitly requested authoring edits, never silent
         # re-generation of a saved tuning, voice lattice or target schedule.
         if kind == "add_spectral_voice":
-            exact(action, {"kind", "band", "id", "degree", "label"}, "add retune voice")
+            exact(action, {"kind", "band", "id", "degree", "label",
+                           "expected_voices"}, "add retune voice")
         elif kind == "edit_spectral_voice":
             exact(action, {"kind", "band", "id", "voice_index", "expected_voice",
                            "field", "value"}, "edit retune voice")
@@ -166,6 +167,14 @@ def _update(project, action):
             raise TimelineError("target voice editing requires a saved retune request")
         voices = stage["params"]["voices"]
         if kind == "add_spectral_voice":
+            # A double-click or queued Add may outlive the displayed voice
+            # lattice. The new voice inherits ratios from voice zero, so a
+            # same-count edit to that primary voice also invalidates Add.
+            # Bind the command to the full saved snapshot, as timed-segment
+            # addition already does; never append against a stale lattice.
+            if (type(action["expected_voices"]) is not list or
+                    action["expected_voices"] != voices):
+                raise TimelineError("retune voices changed; refresh before adding")
             if len(voices) >= 32:
                 raise TimelineError("retune target has the maximum 32 voices")
             # Displayed in Compose: inherit the primary voice's partial ratios,
