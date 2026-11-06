@@ -34,16 +34,24 @@ function number(parent,label,current,meta,action,apply){
   node.addEventListener('change',()=>{
     node.setCustomValidity('');
     const value=Number(node.value);
-    if(node.value!==''&&Number.isFinite(value)&&
-       meta.exclusiveMinimum!==undefined&&value<=meta.exclusiveMinimum){
-      node.setCustomValidity(label+' must be greater than '+
-        meta.exclusiveMinimum+(meta.unit?' '+meta.unit:'')+'.');
-    }else if(node.value!==''&&Number.isFinite(value)&&
-       meta.exclusiveMaximum!==undefined&&value>=meta.exclusiveMaximum){
-      node.setCustomValidity(label+' must be less than '+
-        meta.exclusiveMaximum+(meta.unit?' '+meta.unit:'')+'.');
+    const unit=meta.unit?' '+meta.unit:'';
+    // Empty number inputs are not required by HTML unless explicitly marked
+    // so; treating an empty control as a no-op leaves an invalid, apparently
+    // edited sonic field with no explanation. Never coerce empty to zero.
+    if(node.value===''||!Number.isFinite(value)){
+      node.setCustomValidity(label+' requires a finite numeric value'+unit+'.');
+    }else if(meta.type==='integer'&&!Number.isInteger(value)){
+      node.setCustomValidity(label+' requires a whole number'+unit+'.');
+    }else if(meta.exclusiveMinimum!==undefined&&value<=meta.exclusiveMinimum){
+      node.setCustomValidity(label+' must be greater than '+meta.exclusiveMinimum+unit+'.');
+    }else if(meta.exclusiveMaximum!==undefined&&value>=meta.exclusiveMaximum){
+      node.setCustomValidity(label+' must be less than '+meta.exclusiveMaximum+unit+'.');
+    }else if(meta.minimum!==undefined&&value<meta.minimum){
+      node.setCustomValidity(label+' must be at least '+meta.minimum+unit+'.');
+    }else if(meta.maximum!==undefined&&value>meta.maximum){
+      node.setCustomValidity(label+' must be at most '+meta.maximum+unit+'.');
     }
-    if(!node.reportValidity()||node.value===''||!Number.isFinite(value))return;
+    if(!node.reportValidity())return;
     apply({...action,value});
   });
   wrapper.append(node);parent.append(wrapper);
