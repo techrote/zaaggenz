@@ -120,7 +120,11 @@ Crossover numeric controls enforce the executable rack's actual ordered
 frequency contract before submitting an edit: 20 Hz ≤ low < mid < high <
 0.49 × project sample rate. Equal neighboring frequencies or a high crossover
 at the strict ceiling produce a field-level validation error, not silent
-clamping or a new revision. The backend remains the authoritative validator.
+clamping or a new revision. Empty numeric controls, nonfinite input and
+out-of-range parameters likewise report a labelled field-level error rather
+than silently ignoring an invalid edit; the backend remains the authoritative
+validator. Real Chromium acceptance verifies that these rejections do not
+alter the working revision or canonical RuntimeSession.
 
 Rack controls use stable action identities to retain the keyboard's active
 input/button after a successful asynchronous, server-validated rack redraw.
