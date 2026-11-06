@@ -254,6 +254,33 @@ class FrozenConvergenceTests(unittest.TestCase):
         self.assertTrue(all(x['empty_extent'] and not x['within_limits']
                             for x in result.diagnostics['successive_metrics']))
 
+    def test_one_delivery_frame_cannot_certify_three_independent_metrics(self):
+        # The 3-rate callback spans identical physical time, but each FIR
+        # result has only ONE delivery sample. A one-bin FFT contains no
+        # frequency discrimination, and a derivative is undefined; copying
+        # RMS into transient error must never satisfy the three-measure gate.
+        from zaaggenz_dsp.nyquismic_convergence import _metrics
+        one = _metrics(np.array([0.25]), np.array([0.25]))
+        self.assertTrue(one['insufficient_extent'])
+        self.assertFalse(one['null_signal'])
+        self.assertEqual(one['relative_rms'], 0.0)
+        self.assertFalse(_metrics(np.array([0.25, 0.25]),
+                                  np.array([0.25, 0.25]))['insufficient_extent'])
+
+        def one_delivery_frame(rate):
+            return NumericalCandidate(rate, np.full(rate // 48000, 0.25), **HASHES)
+
+        result = evaluate_local_convergence(
+            one_delivery_frame, **HASHES,
+            policy=FrozenConvergencePolicy(
+                relative_rms_limit=1.0, relative_spectrum_limit=1.0,
+                relative_transient_limit=1.0))
+        self.assertEqual(result.status, 'inconclusive')
+        self.assertIsNone(result.selected_audio)
+        self.assertEqual(result.diagnostics['passes'], 3)
+        self.assertTrue(all(row['insufficient_extent'] and not row['within_limits']
+                            for row in result.diagnostics['successive_metrics']))
+
     def test_identity_extent_and_rate_switches_fail_closed(self):
         for callback in (
             lambda r: NumericalCandidate(r + 1, np.zeros(r // 50), **HASHES),
