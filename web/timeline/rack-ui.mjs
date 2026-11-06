@@ -65,22 +65,19 @@ function flag(parent,label,current,action,apply){
 function set(scope,id,field){return {kind:'set',scope,id,field};}
 const mix={type:'number',minimum:0,maximum:1,unit:'0–1'};
 export function renderRack(host,state,apply,tools={}){
-  // Restore keyboard focus only when the user is still interacting inside
-  // this editor at redraw time. Never steal focus from external controls.
-  const focused=host.contains(document.activeElement)
-    ?document.activeElement.dataset.rackControlKey:null;
-  // Retain explicitly expanded specialist controls while the authoritative
-  // revision is re-rendered after each async edit. The stable instance ID,
-  // not an insert index, anchors this purely presentational preference.
-  const openSpectral=new Set(Array.from(
-    host.querySelectorAll('.rack-spectral[open][data-insert-id]'),
-    node=>node.dataset.insertId));
-  // Retain in-progress preset draft/selection across authoritative rack edits
-  // only within the same immutable project ancestry. A newly imported source
-  // must not silently inherit a draft preset ID or selection from another.
+  // Only an authoritative redraw within the SAME root-project ancestry may
+  // restore transient UI state. The stable control/insert IDs are reusable in
+  // another project: carrying their focus or expanded panels over would
+  // incorrectly bind an unrelated source's authoring context to this view.
   const oldPreset=host.querySelector('.rack-presets');
   const sameProject=Boolean(oldPreset&&state?.working_context&&
     oldPreset.dataset.workingContext===state.working_context);
+  const focused=sameProject&&host.contains(document.activeElement)
+    ?document.activeElement.dataset.rackControlKey:null;
+  const openSpectral=sameProject?new Set(Array.from(
+    host.querySelectorAll('.rack-spectral[open][data-insert-id]'),
+    node=>node.dataset.insertId)):new Set();
+  // Preset/authoring drafts also remain local to this immutable ancestry.
   const presetDraft=sameProject
     ?{name:oldPreset.querySelector('[data-preset-field="name"]')?.value,
       id:oldPreset.querySelector('[data-preset-field="id"]')?.value,
