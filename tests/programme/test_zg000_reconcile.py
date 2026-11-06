@@ -548,7 +548,28 @@ class ZG000RegressionTests(unittest.TestCase):
         self.assertEqual(0, len(api.posts))
 
 
-    def test_56_final_manifest_requires_current_orchestrator_run_identity(self):
+    def test_56_cancelled_latest_cannot_duplicate_older_active_child(self):
+        # A cancelled newer run does not imply an earlier queued/running child
+        # was cancelled. Do not dispatch a duplicate or certify the older run
+        # as current authority until an operator reconciles the history.
+        for state in ("queued", "in_progress"):
+            with self.subTest(state=state):
+                api = FakeAPI()
+                api.put(status=state, conclusion=None, run_id=1000)
+                api.put(status="completed", conclusion="cancelled", run_id=1001)
+                with self.assertRaisesRegex(ReconcileError, "older same-source child is still active"):
+                    make(api).dispatch()
+                self.assertEqual(0, len(api.posts))
+        # When no earlier execution is active, the documented replacement
+        # policy still permits exactly one new dispatch.
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success", run_id=1000)
+        api.put(status="completed", conclusion="cancelled", run_id=1001)
+        selected = make(api).dispatch()
+        self.assertEqual("dispatched", selected[0]["decision"])
+        self.assertEqual(1, len(api.posts))
+
+    def test_57_final_manifest_requires_current_orchestrator_run_identity(self):
         # Two CI attempts can validate the same branch and source SHA. A
         # downloaded dispatch manifest from attempt A is not authoritative
         # for attempt B's watcher matrix, even if all child runs are green.
