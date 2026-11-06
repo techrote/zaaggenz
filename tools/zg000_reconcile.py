@@ -78,7 +78,8 @@ class GitHubAPI:
 
 class Reconciler:
     def __init__(self, api: Any, repo: str, pr: int, sha: str, ref: str,
-                 rows: list[dict], run_id: int, sleep: Callable[[float], None] = time.sleep):
+                 rows: list[dict], run_id: int, sleep: Callable[[float], None] = time.sleep,
+                 run_attempt: int = 1):
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
             raise ValueError("invalid repository")
         if pr < 1 or not SHA.fullmatch(sha) or not ref or ref.startswith("refs/"):
@@ -93,6 +94,8 @@ class Reconciler:
         names = [x["workflow"] for x in rows]
         if len(set(names)) != len(names):
             raise ValueError("duplicate workflow in selection")
+        if type(run_id) is not int or run_id <= 0 or type(run_attempt) is not int or run_attempt <= 0:
+            raise ValueError("invalid orchestrator Actions run ID/attempt")
         self.api, self.repo, self.pr, self.sha, self.ref = api, repo, pr, sha, ref
         self.rows, self.run_id, self.sleep = rows, run_id, sleep
         self.workflow_ids: dict[str, int] = {}
@@ -103,7 +106,8 @@ class Reconciler:
         self.manifest: dict[str, Any] = {
             "schema": "zg000-dispatch-v1", "repo": repo, "pr": pr,
             "requested_sha": sha, "current_pr_sha": None, "source_ref": ref,
-            "orchestrator_run_id": run_id, "selected": rows,
+            "orchestrator_run_id": run_id,
+            "orchestrator_run_attempt": run_attempt, "selected": rows,
             "runs": [], "rejected": [], "decisions": [], "state": "pending",
             "reused": 0, "dispatched": 0, "reconciled": 0, "avoided_dispatches": 0,
             "policy": "no child cancellation; no ambiguous dispatch retry",
@@ -463,7 +467,7 @@ class Reconciler:
 
 
 def validate_finalization_source(manifest: dict, *, repo: str, pr: int,
-                                 sha: str, ref: str, run_id: int) -> None:
+                                 sha: str, ref: str, run_id: int, run_attempt: int = 1) -> None:
     """Bind a downloaded dispatch artifact to its *own* Actions run.
 
     Source SHA alone is insufficient: a previous orchestration attempt can
@@ -474,8 +478,12 @@ def validate_finalization_source(manifest: dict, *, repo: str, pr: int,
             (manifest.get("repo"), manifest.get("pr"),
              manifest.get("requested_sha"), manifest.get("source_ref")) !=
             (repo, pr, sha, ref) or
+            type(run_id) is not int or run_id <= 0 or
+            type(run_attempt) is not int or run_attempt <= 0 or
             type(manifest.get("orchestrator_run_id")) is not int or
-            manifest["orchestrator_run_id"] != run_id):
+            manifest["orchestrator_run_id"] != run_id or
+            type(manifest.get("orchestrator_run_attempt")) is not int or
+            manifest["orchestrator_run_attempt"] != run_attempt):
         raise ReconcileError(
             "refusing to finalize a dispatch manifest from another source or orchestration run")
 
@@ -488,6 +496,7 @@ def main() -> int:
     parser.add_argument("--sha", required=True)
     parser.add_argument("--ref", required=True)
     parser.add_argument("--run-id", type=int, default=int(os.getenv("GITHUB_RUN_ID", "0")))
+    parser.add_argument("--run-attempt", type=int, default=int(os.getenv("GITHUB_RUN_ATTEMPT", "1")))
     parser.add_argument("--manifest", type=Path, default=Path("zg000-dispatch-manifest.json"))
     parser.add_argument("--github-output", type=Path)
     parser.add_argument("--watcher-result", default="")
@@ -501,7 +510,7 @@ def main() -> int:
         try:
             validate_finalization_source(
                 manifest, repo=args.repo, pr=args.pr, sha=args.sha,
-                ref=args.ref, run_id=args.run_id)
+                ref=args.ref, run_id=args.run_id, run_attempt=args.run_attempt)
         except ReconcileError as exc:
             raise SystemExit(str(exc)) from exc
         rows = manifest["selected"]
@@ -509,7 +518,8 @@ def main() -> int:
         rows = json.loads(os.getenv("ZG000_MATRIX_JSON", "[]"))
     else:
         rows = [json.loads(args.row_json)] if args.row_json else []
-    engine = Reconciler(GitHubAPI(), args.repo, args.pr, args.sha, args.ref, rows, args.run_id)
+    engine = Reconciler(GitHubAPI(), args.repo, args.pr, args.sha, args.ref,
+                        rows, args.run_id, run_attempt=args.run_attempt)
     if manifest:
         engine.manifest = manifest
     try:
