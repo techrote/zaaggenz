@@ -39,7 +39,11 @@ A completely silent pair has exactly zero measured residuals, but exercises
 no clock or reconstruction discrimination: it is reported as
 `null_signal=true`, `within_limits=false` and is **inconclusive** even
 when all three numerical rates return identical silence. Empty extents are
-also inconclusive. No arbitrary minimum loudness threshold is imposed on
+also inconclusive. A comparison with **one delivery frame** is likewise
+`insufficient_extent=true` / `within_limits=false`: it has only a single-bin
+FFT and no first difference, so a copied RMS transient diagnostic cannot
+count as an independent third metric. The measurement values remain available
+for investigation, but such a short render cannot be certified as converged. No arbitrary minimum loudness threshold is imposed on
 quiet but nonzero signals. Each comparator is now scaled independently per **physical channel**,
 using the larger absolute PCM amplitude of the two compared rates within
 that channel. Each of the RMS, independent-channel magnitude-spectrum
