@@ -28,6 +28,8 @@ class FakeAPI:
         self.list_limit, self.omit_total_count = None, False
         self.invalid_inventory_row = False
         self.boolean_run_id = False
+        self.boolean_workflow_id = False
+        self.duplicate_inventory_row = False
 
     def put(self, workflow=R1["workflow"], sha=None, status="completed",
             conclusion="success", attempt=1, run_id=None, ref=None, event="workflow_dispatch"):
@@ -76,11 +78,16 @@ class FakeAPI:
             visible = runs[:self.list_limit] if self.list_limit is not None else runs
             if self.invalid_inventory_row and visible:
                 visible = [None, *visible[1:]]
+            if self.duplicate_inventory_row and len(visible) > 1:
+                # An apparently counted page repeats an old identity while
+                # hiding a newer row. Counts alone cannot establish coverage.
+                visible = [*visible[:-1], visible[0]]
             return ({"workflow_runs":visible} if self.omit_total_count else
                     {"workflow_runs":visible, "total_count":total})
         if "/actions/workflows/" in path:
             wf = path.split("/actions/workflows/")[1]
-            return {"id":42, "path":".github/workflows/"+wf,"state":"active"}
+            return {"id":True if self.boolean_workflow_id else 42,
+                    "path":".github/workflows/"+wf,"state":"active"}
         if "/actions/runs/" in path:
             if self.delayed:
                 self.delayed -= 1
@@ -497,6 +504,47 @@ class ZG000RegressionTests(unittest.TestCase):
         with self.assertRaises(ReconcileError):
             rec.finalize("success")
         self.assertFalse(api.posts)
+
+    def test_52_counted_pre_dispatch_inventory_must_have_distinct_run_ids(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        api.put(status="completed", conclusion="failure")
+        api.duplicate_inventory_row = True  # Hide the newer failed run.
+        with self.assertRaisesRegex(ReconcileError, "duplicate run IDs in pre-dispatch"):
+            make(api).dispatch()
+        self.assertEqual(0, len(api.posts))
+
+    def test_53_post_recovery_duplicate_ids_cannot_disguise_two_new_runs(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="cancelled")
+        api.post_error = "multiple"
+        def corrupt_post_inventory(method, path, payload):
+            if method == "POST":
+                api.duplicate_inventory_row = True
+        api.on_call = corrupt_post_inventory
+        with self.assertRaisesRegex(ReconcileError, "duplicate run IDs in post-dispatch"):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))  # Never POST twice.
+
+    def test_54_final_counted_inventory_cannot_repeat_old_green_in_place_of_new_red(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        rec = make(api)
+        rec.dispatch()
+        api.put(status="completed", conclusion="failure")
+        api.duplicate_inventory_row = True
+        with self.assertRaisesRegex(ReconcileError, "duplicate run IDs in final inventory"):
+            rec.finalize("success")
+        self.assertNotEqual("qualified", rec.manifest["state"])
+        self.assertEqual(0, len(api.posts))
+
+    def test_55_boolean_workflow_definition_id_is_not_valid_authority(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        api.boolean_workflow_id = True
+        with self.assertRaisesRegex(ReconcileError, "unaccepted or inactive workflow definition"):
+            make(api).dispatch()
+        self.assertEqual(0, len(api.posts))
 
 
 if __name__ == "__main__":
