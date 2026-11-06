@@ -527,8 +527,19 @@ def main():
             # true request validation and numerical DSP, not a separate
             # simulated monitor or unsaved local-only target.
             add_degree=spectral_stage.get_by_label('Additional target degree')
+            add_voice=spectral_stage.get_by_role('button',name='Add retune voice')
+            before_add_revision=page.locator('#revision').inner_text()
+            before_add_identity=server.timeline.session.current_identity()
+            for bad,reason in (('', 'requires a whole number'),
+                               ('4097', 'must be between -4096 and 4096')):
+                add_degree.fill(bad)
+                add_voice.click()
+                assert add_degree.evaluate('(e)=>e.validity.customError')
+                assert reason in add_degree.evaluate('(e)=>e.validationMessage')
+                assert server.timeline.session.current_identity()==before_add_identity
+                expect(page.locator('#revision')).to_have_text(before_add_revision)
             add_degree.fill('11')
-            spectral_stage.get_by_role('button',name='Add retune voice').click();ready()
+            add_voice.click();ready()
             second=spectral_stage.get_by_role('group',name='Retune target voice 2')
             ratios=second.get_by_label('Voice 2 partial ratios (comma-separated)')
             ratios.fill('1, 1.5, 3');ratios.dispatch_event('change');ready()
@@ -562,8 +573,19 @@ def main():
             # inherits the validated voices, then a numerical degree edit
             # changes only its scheduled lattice, not the source or export route.
             segment_start=spectral_stage.get_by_label('New segment start sample')
+            add_segment=spectral_stage.get_by_role('button',name='Add retune segment')
+            before_segment_revision=page.locator('#revision').inner_text()
+            before_segment_identity=server.timeline.session.current_identity()
+            for bad,reason in (('', 'requires a whole number'),
+                               ('0', 'must be between 1 and 691200000')):
+                segment_start.fill(bad)
+                add_segment.click()
+                assert segment_start.evaluate('(e)=>e.validity.customError')
+                assert reason in segment_start.evaluate('(e)=>e.validationMessage')
+                assert server.timeline.session.current_identity()==before_segment_identity
+                expect(page.locator('#revision')).to_have_text(before_segment_revision)
             segment_start.fill('1200')
-            spectral_stage.get_by_role('button',name='Add retune segment').click();ready()
+            add_segment.click();ready()
             # Consumed segment drafts are not re-used after a structural add;
             # the new default is derived from the new accepted target chain.
             expect(spectral_stage.get_by_label('New segment label')).to_have_value('Target change')
