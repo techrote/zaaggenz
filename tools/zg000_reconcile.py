@@ -462,6 +462,24 @@ class Reconciler:
         temporary.replace(path)
 
 
+def validate_finalization_source(manifest: dict, *, repo: str, pr: int,
+                                 sha: str, ref: str, run_id: int) -> None:
+    """Bind a downloaded dispatch artifact to its *own* Actions run.
+
+    Source SHA alone is insufficient: a previous orchestration attempt can
+    have the same PR head and branch, but a different watch/dispatch history.
+    Reusing its manifest must never qualify the current workflow attempt.
+    """
+    if (manifest.get("schema") != "zg000-dispatch-v1" or
+            (manifest.get("repo"), manifest.get("pr"),
+             manifest.get("requested_sha"), manifest.get("source_ref")) !=
+            (repo, pr, sha, ref) or
+            type(manifest.get("orchestrator_run_id")) is not int or
+            manifest["orchestrator_run_id"] != run_id):
+        raise ReconcileError(
+            "refusing to finalize a dispatch manifest from another source or orchestration run")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=("dispatch", "verify-run", "finalize"))
@@ -480,9 +498,12 @@ def main() -> int:
         raise SystemExit("missing authoritative dispatch manifest; cannot finalize")
     if args.mode == "finalize" and args.manifest.exists():
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-        if (manifest.get("repo"), manifest.get("pr"), manifest.get("requested_sha"), manifest.get("source_ref")) != (
-                args.repo, args.pr, args.sha, args.ref):
-            raise SystemExit("refusing to finalize a manifest for another source")
+        try:
+            validate_finalization_source(
+                manifest, repo=args.repo, pr=args.pr, sha=args.sha,
+                ref=args.ref, run_id=args.run_id)
+        except ReconcileError as exc:
+            raise SystemExit(str(exc)) from exc
         rows = manifest["selected"]
     elif args.mode == "dispatch":
         rows = json.loads(os.getenv("ZG000_MATRIX_JSON", "[]"))
