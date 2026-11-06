@@ -220,6 +220,17 @@ class Reconciler:
         if detail["status"] == "completed" and detail.get("conclusion") == "success":
             return "reuse_success", detail
         if detail["status"] == "completed" and detail.get("conclusion") == "cancelled":
+            # A cancelled *latest* execution is not evidence that every
+            # earlier execution has stopped. Starting a replacement while
+            # an older same-source child remains queued/running would create
+            # avoidable concurrent children. The superseded run is not
+            # qualified, and the older active run cannot stand in for it.
+            # Require operator reconciliation instead of a second POST.
+            if any(run["id"] != latest["id"] and run.get("status") in ACTIVE
+                   for run in candidates):
+                raise ReconcileError(
+                    f"{workflow}: latest exact-head run cancelled but an older "
+                    "same-source child is still active; dispatch blocked")
             return "missing_or_cancelled", None
         raise QualificationFailed(f"{workflow}: latest exact-head run {detail['id']} is "
                                   f"{detail['status']}/{detail.get('conclusion')}; explicit repair required")
