@@ -72,3 +72,195 @@ ZG-041 adds `tests/runtime/test_zg041_workspace.py` plus `tests/runtime/browser_
 `tests/runtime/test_web_release.py` adds adversarial and boundary coverage for content-derived identity, the four release-bearing sidecar bootstrap/static policies, exact and obsolete asset fingerprints, stale CSS, missing/wrong/exact browser mutation headers, fail-before-mutation behavior, an already-loaded old release after a backend identity change, non-browser API compatibility, and every retained standalone wrapper. `tests/runtime/test_web_release_protocol_identity.py` freezes #201's pre-fix server-only reproduction, verifies service/model/contract/session changes invalidate exactly the affected release domains, proves unrelated DSP/docs bytes do not churn releases, and makes missing or newly unclassified first-party protocol dependencies fail closed. `tests/runtime/test_web_release_cross_workspace.py` separately proves that the current Listening and Vocal releases can use their intentional Timeline-render dependencies while the current Inspector release is rejected before Timeline state mutation.
 
 `tests/runtime/browser.py` performs a real Chromium traversal of the recovered root plus the four release-bearing sidecar workspaces, renders one Compose artifact, freezes/binds that exact artifact across Research surfaces, verifies participant capability remains non-trusted, verifies Vocal proposal provenance, advances Compose, and observes Inspector source staleness and current timeline bootstrap on the same origin. It additionally leaves a Timeline page running while the backend release identity changes, verifies the old injected JS receives HTTP 409 on mutation, reloads on the same origin, and verifies the newly fingerprinted frontend can mutate normally.
+
+## MBR-003 experimental Compose rack controls
+
+The normal `/timeline` authoring screen now offers an **opt-in**, source-bound
+four-band rack editing slice. Enable the rack, add the existing gain,
+compression or bitcrush stage to one of the four spectral bands, edit its
+contract-defined numeric parameters, reorder stages with the keyboard-accessible
+Move up/Move down buttons, reset a built-in insert's numeric parameters to
+contract defaults while preserving its ID, wet/bypass and order, explicitly
+remove a supported built-in insert by stable ID, bypass stages/bands/the rack,
+and edit crossover frequencies,
+wet and confinement. Existing opaque/unsupported insert payloads cannot be
+deleted through the built-in authoring control. A rack proposal is validated and memory
+admitted by the existing Timeline backend; the authoritative RuntimeSession
+changes only when the normal project validation accepts the resulting revision.
+All changes invalidate playback so stale PCM cannot masquerade as the new sound.
+
+Use **Render full phrase**, play/download the real WAV, then **Save project**
+to retain the complete revision lineage. New, named user rack presets are
+stored in that project, and can be recalled from its own source ancestor.
+An existing user preset can be explicitly renamed (display only) or replaced
+with the currently edited rack (sonic state and source provenance included);
+ordinary **Save new preset** never silently overwrites an existing ID.
+**Delete selected preset** requires confirmation, removes only a saved user
+preset (not the active processing rack), and preserves all source revisions
+and factory presets. Dismissing the confirmation makes no change.
+Select a saved preset and use **Export selected preset** to download a portable
+`.zgrack.json` carrying exact rack/sonic digests and source binding.
+**Import rack preset file** works even on a project with no installed rack.
+Import validates the whole rack contract, both digests, retained no-rack source
+ancestry and non-overwriting preset identity. Import never changes the current
+processing rack or the source; explicit **Load** applies the imported rack.
+These commands use the same bounded revision-validation and undo/redo pipeline.
+**Remove rack (dry)** restores the original source processing route without
+changing source presets, locked_bloom or retained BODY/AUX/SUB ownership.
+
+This is a bounded MBR-003 development slice, **not full MBR-003 acceptance**:
+specialist spectral retuning/Chordness authoring, cross-band monitoring,
+full spectral target construction, complete control-surface usability/accessibility and physical Windows acceptance
+remain outstanding. Existing spectral and external insert payloads are shown
+as preserved but not falsely advertised as editable. External VST3 hosting
+remains outside Phase A and is not implied.
+
+
+Crossover numeric controls enforce the executable rack's actual ordered
+frequency contract before submitting an edit: 20 Hz ≤ low < mid < high <
+0.49 × project sample rate. Equal neighboring frequencies or a high crossover
+at the strict ceiling produce a field-level validation error, not silent
+clamping or a new revision. Empty numeric controls, nonfinite input and
+out-of-range parameters likewise report a labelled field-level error rather
+than silently ignoring an invalid edit; the backend remains the authoritative
+validator. The spectral **Add retune voice** degree and **Add retune segment**
+sample-offset draft fields also require finite safe integers within their
+documented bounds; blank, fractional and out-of-range inputs report which
+draft field needs correction without queuing or publishing a source edit. Real Chromium acceptance verifies that these rejections do not
+alter the working revision or canonical RuntimeSession.
+
+Rack controls use stable action identities to retain the keyboard's active
+input/button after a successful asynchronous, server-validated rack redraw.
+This includes specialist retune voice labels, partial-ratio text fields and
+timed-target labels, not only ordinary numeric controls. Invalid text retains
+its native field-level validation; valid edits use the same authoritative
+revision and save/reopen contracts.
+This is a focus-management aid only: the accepted Project/rack revision,
+processing order, source identity and export do not depend on browser focus.
+If the active control disappears or becomes disabled (e.g. removing a stage),
+no alternative action is invoked and focus is not redirected to another stage.
+
+### Measured completed rack diagnostics (MBR-003 partial)
+The expandable **Measured rack output** area displays actual per-band input,
+post-band-wet, and routed-output peak/RMS readings from the selected, completed
+render's immutable \`RenderArtifact.scopes.diagnostics.rack\`. It also lists
+actual stage execution status, processor-internal maximum compressor gain
+reduction where present, and spectral decision/abstention counts when supplied
+by the executable processor. Numerical readings are dBFS, with zero amplitude
+shown as negative infinity; no live or inferred metering is presented.
+
+This area clears on any source/rack edit, import, or render invalidation.
+Previously saved outputs are deliberately revision-bound; selecting one reopens
+its exact snapshot rather than applying stale measurements to the new edit.
+Region previews retain whole-phrase rack meter context, not cropped-region
+meter readings. Missing metrics are explicitly marked unavailable. No
+saved-state solo/mute, A/B dry render, or export-level compensation is
+implemented by the measured-meter panel itself; saved/exported PCM and rack contracts are unchanged.
+
+
+### Raw/dry monitoring-only A/B (MBR-003 partial)
+
+Once a processed rack full-phrase render is selected in Compose, **Prepare raw/dry A/B**
+requests a second bounded offline render of the same source and note arrangement,
+with only the rack removed from a detached working copy. The authoritative
+RuntimeSession and saved project never adopt this dry proposal. **Hear dry** and
+**Hear processed** switch the local playback source; the processed output's WAV
+Download remains unchanged. During dry monitoring the processed waveform and
+meter display are hidden to avoid mislabelling them as dry measurements.
+
+A/B preparation requires the exact current processed revision. Pending edits,
+revision changes, source imports, cancelled jobs and output selection invalidate
+its temporary URL/job, and server-side session generation checks reject stale
+dry artifacts. A/B starts uncompensated. **Peak-match A/B (attenuation only)**
+is an optional browser playback control enabled only after both completed
+post-master peak measurements are finite and nonzero. It attenuates the louder
+side to the quieter side's measured peak; it never amplifies, changes a saved
+recipe, replaces the processed download, or claims RMS/loudness equivalence.
+Switching dry/processed restores the corresponding gain; edits, changing
+outputs and stopping playback reset volume to unity and revoke the comparison.
+**Band solo/mute audition** is now an optional, separately queued numerical
+job, bound to the exact selected processed Compose revision. Its four bands
+use the rack's saved Butterworth crossover values on the **completed
+post-master full-phrase mix**. Solo hears that filtered band; mute hears
+the final processed mix minus that band. This is an honest post-master
+listening filter, **not** a reconstructed pre-rack band stem or an alteration
+to individual processor chains. The saved rack, working revision, original
+completed output, selected download, factory sources and full-render PCM are
+never changed. The temporary monitor is rejected on stale revisions and
+invalidated on edits/output changes. Its extra filter memory is included
+in the scheduler's admission budget. Monitor-only audio has no waveform
+or rack meters masquerading as the full processed output; A/B peak matching
+is disabled while band audition is selected. Changing band or mode discards
+the previous audition so the user must prepare a new bounded job.
+
+Hosted browser qualification does not constitute physical Windows/owner
+auditory acceptance.
+
+
+### MBR-003 internal spectral authoring (draft #270)
+
+Ordinary Compose can now add a built-in `zg.spectral` stage. The initial retune
+request uses the **saved source recipe's tuning** and one explicit primary
+target voice (degree 0, partial ratios 1/2/3). No source or factory preset is
+rewritten. Expand **Internal spectral retune** for amount, confidence, bounds,
+slew, ambiguity policy and the primary voice's tuning degree. Move its stable
+insert ID before or after compression/gain/bitcrush; the existing numerical
+executor processes the serialized order. Changing a control is a detached
+rack-edit proposal validated by the canonical Project/RackRecipe and adopted
+through the one RuntimeSession. Invalid coupled bounds are rejected rather than
+silently clamped.
+
+Multiple saved retune target voices can now be added by explicit degree and
+label in the same specialist panel (up to the contract's 32 voices), re-labelled,
+assigned independently validated tuning degrees and strictly increasing
+positive partial ratios (1–128), or removed while retaining at least one
+voice. A new voice initially copies the displayed primary voice's partial
+ratios. Its Add command includes the full currently saved voice-lattice
+snapshot: a repeated click, queued stale Add, or intervening same-count edit
+cannot append against newly changed primary partial ratios. The entire second
+command is rejected without changing the project; existing source tuning and
+unrelated target state remain unchanged. Each edit validates the complete bounded request
+and source ancestry; stale voice snapshots fail closed. Real numerical
+rendering and save/reopen use the same request, with no separate target engine.
+Timed **retune change-points** are now explicitly editable at positive
+absolute source-sample offsets from the start of the complete phrase (not
+beats, playback-wall-clock seconds or crop-relative samples). Add a segment
+after the last change-point, inheriting the preceding saved target voices,
+then change any scheduled voice's degree, the segment start sample or its
+display label, or remove that entire segment. This exposes actual executable
+sample-timed target changes through the original spectral DSP and normal
+revision/save/reopen/export path; it never constructs a second render engine.
+A full expected segment/schedule snapshot rejects stale index edits. The
+existing RackRecipe enforces strictly increasing starts, 64 segments maximum,
+1..32 voices per segment, candidate-lattice/memory bounds and source binding;
+invalid proposals do not adopt. The add-segment number input now displays
+and enforces a source-sample minimum of **one sample after the last saved
+change-point**, rejecting duplicate/backward timestamps locally with the
+required range and no source/session proposal. When no larger representable
+source-sample position exists, adding another segment is disabled with an
+explicit explanation. This does not relax full backend validation. Changing a segment label does not alter its
+sonic digest. New independent scheduled voice inventories and new Chordness
+comb templates remain out of scope.
+
+Imported source-bound `ChordnessRequest` stages expose their accepted mode,
+selection, gain, confidence, assignment and objective-weight scalars, and a
+bounded selection among existing saved comb templates. Switching modes never
+constructs arbitrary new comb teeth, and invalid manual selection fails closed.
+The UI deliberately does **not** reauthor opaque external stages, new comb
+inventories or target schedules. These remain preserved
+on save/reopen. Additional specialized target construction, monitoring-only
+pre-rack band-stem inspection, RMS/loudness-matched A/B, physical Windows and owner
+audition remain outstanding for MBR-003; passing deterministic/browser CI is
+not a musical acceptance claim.
+Band solo/mute selection changes now invalidate any prior or in-flight monitoring request (including A→B→A selection reversals), cancel known jobs and restore the exact processed output if a monitor was playing. Exported PCM and the saved rack remain unchanged.
+
+
+
+### Rack preset form continuity (MBR-003 draft)
+
+In-progress preset name/ID and the selected saved preset survive validated
+rack-editor redraws within the same immutable project ancestry. Importing a
+different source ancestry clears the unsaved form selection instead of
+carrying it into another project. The ancestry key is presentation-only; it
+is neither a project format change nor a source/authorization token. Saved
+preset identity, export and audible rack processing are unchanged.

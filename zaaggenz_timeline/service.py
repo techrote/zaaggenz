@@ -11,10 +11,12 @@ import numpy as np
 from scipy.io import wavfile
 from zaaggenz_contracts import digest
 from zaaggenz_contracts.music import beat_to_sample
+from zaaggenz_project import Project
 from zaaggenz_jobs import JobScheduler, SchedulerLimits, JobClass, RenderArtifact, JobError, JobCancelled
 from zaaggenz_melody import MelodicRenderSpec, make_render_executor
 from zaaggenz_melody.render import melodic_cache_key
 from .model import (TimelineDocument,apply_source_preset,source_preset_catalogue,compile_recipe,render_region,memory_estimate,text,describe,default_document)
+from .rack_edit import edit_rack, editor_state
 
 
 def scheduler_limits():
@@ -22,6 +24,35 @@ def scheduler_limits():
     return SchedulerLimits(interactive_workers=1, background_workers=1,
                            max_queued_jobs=8, max_background_queued_jobs=4,
                            max_history_jobs=16)
+
+
+def _post_master_band_monitor(full, band, mode, crossovers, cache_key, ctx):
+    """Filtered final-mix listening only; never change the rack or export."""
+    from zaaggenz_dsp.band_router import BAND_NAMES, FILTER_POLICY
+    from zaaggenz_dsp.multiband import split_bands
+    if len(full.audio_bytes) < 8 * 4:
+        raise JobError('band monitoring requires at least eight frames')
+    ctx.check_cancelled()
+    original = np.frombuffer(full.audio_bytes, dtype='<f4')
+    selected = split_bands(original, full.asset['sample_rate_hz'], crossovers)[BAND_NAMES.index(band)]
+    ctx.check_cancelled()
+    result = selected if mode == 'solo' else original.astype(np.float64) - selected
+    if not np.isfinite(result).all():
+        raise JobError('band monitor produced nonfinite audio')
+    pcm = np.asarray(result, dtype='<f4').tobytes()
+    asset = {**full.asset, 'content_sha256': hashlib.sha256(pcm).hexdigest()}
+    audio = np.frombuffer(pcm, dtype='<f4')
+    bins = max(1, min(360, len(audio)))
+    edges = np.linspace(0, len(audio), bins + 1, dtype=int)
+    waveform = [float(np.max(np.abs(audio[edges[i]:edges[i+1]]), initial=0)) for i in range(bins)]
+    scopes = {'waveform': waveform, 'events': full.scopes.get('events', []),
+              'diagnostics': {'master_peak': float(np.max(np.abs(audio), initial=0)),
+                'monitor': {'policy':'post-master filtering; non-authoritative listening only',
+                            'band':band, 'mode':mode, 'filter_method':FILTER_POLICY,
+                            'crossovers_hz':list(crossovers)}}}
+    ctx.check_cancelled()
+    return RenderArtifact(full.revision_id, full.recipe_sha256, 'synth',
+                          cache_key, pcm, asset, scopes)
 
 
 def region_cache_key(recipe, region):
@@ -176,7 +207,7 @@ class TimelineService:
         with self._jobs_lock:
             session = self._accept_locked(document)
         return {'document':document.to_dict(),**describe(document),'recipe_sha256':recipe.sha256,
-                'estimated_memory_bytes':estimate,'session':session}
+                'estimated_memory_bytes':estimate,'session':session, 'rack_editor':editor_state(document)}
 
     def validate(self, data):
         document = TimelineDocument(data)
@@ -185,9 +216,24 @@ class TimelineService:
         with self._jobs_lock:
             session = self._accept_locked(document)
         return {**describe(document), 'recipe_sha256': recipe.sha256,
-                'estimated_memory_bytes': estimate, 'session': session}
+                'estimated_memory_bytes': estimate, 'session': session,
+                'rack_editor': editor_state(document)}
 
-    def submit(self, data, region=None, name='Render', *, authoritative=True):
+    def propose_rack_edit(self, data, action):
+        """Return a validated, memory-admitted proposal without changing session.
+
+        The browser must adopt the resulting document through the ordinary
+        /validate route; a delayed rack response cannot publish stale state.
+        """
+        document = edit_rack(TimelineDocument(data), action)
+        recipe = compile_recipe(document)
+        estimate = self._admit_recipe(recipe)
+        return {'document': document.to_dict(), **describe(document),
+                'recipe_sha256': recipe.sha256,
+                'estimated_memory_bytes': estimate,
+                'rack_editor': editor_state(document)}
+
+    def submit(self, data, region=None, name='Render', *, authoritative=True, band_monitor=None):
         """Same exact executor for Compose preview, saved rerender and WAV export.
 
         A sidecar may explicitly request a non-authoritative proposal; that job
@@ -203,10 +249,40 @@ class TimelineService:
         region = render_region(recipe, region)
         estimate = self._admit_recipe(recipe)  # never discount selected context
         key = region_cache_key(recipe, region)
+        if band_monitor is not None:
+            from zaaggenz_dsp.band_router import BAND_NAMES, FILTER_POLICY
+            if (authoritative or type(band_monitor) is not tuple or len(band_monitor) != 2
+                    or type(band_monitor[0]) is not str or band_monitor[0] not in BAND_NAMES
+                    or type(band_monitor[1]) is not str or band_monitor[1] not in ('solo', 'mute')
+                    or region != render_region(recipe, None)):
+                raise JobError('band monitor requires a full non-authoritative render and valid band/mode')
+            rack = recipe.to_dict().get('rack')
+            if rack is None or rack['crossovers']['method'] != FILTER_POLICY:
+                raise JobError('band monitor requires a supported installed rack')
+            tm = recipe.to_dict()['time_map']
+            frames = beat_to_sample(tm, recipe.to_dict()['phrase']['end_beat']) - beat_to_sample(tm, '0/1')
+            # Account for all zero-phase filter/intermediate float64 buffers
+            # beyond the full processed render before job admission.
+            estimate += frames * 128
+            if estimate > self.scheduler.limits.max_job_memory_bytes:
+                raise JobError('post-master band monitor exceeds job memory bound')
+            key = digest({'domain':'zaaggenz.post-master-band-monitor-v1',
+                          'full_key':key, 'band':band_monitor[0], 'mode':band_monitor[1],
+                          'filter_method':FILTER_POLICY,
+                          'crossovers_hz':rack['crossovers']['frequencies_hz']})
         request_key = digest({'domain':'zaaggenz.timeline-owned-request-v1',
                               'owner':self._cache_namespace, 'revision':revision,
                               'recipe':recipe.sha256, 'cache_key':key, 'authoritative':authoritative})
-        canonical = region_executor(recipe, revision, region)
+        if band_monitor is None:
+            canonical = region_executor(recipe, revision, region)
+        else:
+            complete = make_render_executor(recipe, MelodicRenderSpec(), revision)
+            selected_band, monitor_mode = band_monitor
+            crossovers = tuple(recipe.to_dict()['rack']['crossovers']['frequencies_hz'])
+            def canonical(ctx):
+                original = complete(ctx)
+                return _post_master_band_monitor(original, selected_band, monitor_mode,
+                                                 crossovers, key, ctx)
         expected = (revision, recipe.sha256, key, 'synth')
         response = {'revision_id':revision, 'recipe_sha256':recipe.sha256,
                     'cache_key':key, 'region':region, 'name':name,
@@ -268,6 +344,49 @@ class TimelineService:
             binding['generation'] = session['generation']
             self._remember_job(job_id, binding)
             return {**response, 'job_id':job_id, 'adopted':False, 'session':session}
+
+    def submit_dry_monitor(self, data):
+        """Render a detached dry comparison without changing the working project.
+
+        A/B uses the existing bounded scheduler, per-session generation and
+        exact-artifact guards. Only the current validated processed revision
+        may request a source-bound comparison.
+        """
+        document = TimelineDocument(data)
+        project = Project.from_document(document.to_dict()['project'])
+        if project.rack is None:
+            raise JobError('raw/dry monitoring requires an installed rack')
+        with self._jobs_lock:
+            if document.revision_id != self.session.current_revision_id():
+                raise JobError('raw/dry monitoring requires the current Compose revision')
+            project.reset_rack()
+            proposal = document.to_dict()
+            proposal['project'] = project.to_document()
+            dry_document = TimelineDocument(proposal)
+            result = self.submit(dry_document.to_dict(), region=None,
+                                 name='Raw/dry A/B monitoring', authoritative=False)
+            return {**result, 'monitor_source_revision_id': document.revision_id,
+                    'monitor_policy': 'non-authoritative dry; no export slot'}
+
+    def submit_band_monitor(self, data, band, mode):
+        """Only a detached, exact-current full phrase may be band-monitored."""
+        from zaaggenz_dsp.band_router import BAND_NAMES
+        if type(band) is not str or band not in BAND_NAMES:
+            raise JobError('unknown monitoring band')
+        if type(mode) is not str or mode not in ('solo', 'mute'):
+            raise JobError('unknown band-monitor mode')
+        document = TimelineDocument(data)
+        if Project.from_document(document.to_dict()['project']).rack is None:
+            raise JobError('band monitoring requires an installed rack')
+        with self._jobs_lock:
+            if document.revision_id != self.session.current_revision_id():
+                raise JobError('band monitoring requires the current Compose revision')
+            result = self.submit(document.to_dict(), region=None,
+                name='Post-master '+band+' '+mode+' monitor',
+                authoritative=False, band_monitor=(band, mode))
+            return {**result, 'monitor_source_revision_id':document.revision_id,
+                    'monitor_policy':'non-authoritative post-master band; no export slot',
+                    'monitor_band':band, 'monitor_mode':mode}
 
     def status(self, job_id):
         with self._jobs_lock:
