@@ -123,7 +123,10 @@ at the strict ceiling produce a field-level validation error, not silent
 clamping or a new revision. Empty numeric controls, nonfinite input and
 out-of-range parameters likewise report a labelled field-level error rather
 than silently ignoring an invalid edit; the backend remains the authoritative
-validator. Real Chromium acceptance verifies that these rejections do not
+validator. The spectral **Add retune voice** degree and **Add retune segment**
+sample-offset draft fields also require finite safe integers within their
+documented bounds; blank, fractional and out-of-range inputs report which
+draft field needs correction without queuing or publishing a source edit. Real Chromium acceptance verifies that these rejections do not
 alter the working revision or canonical RuntimeSession.
 
 Rack controls use stable action identities to retain the keyboard's active
