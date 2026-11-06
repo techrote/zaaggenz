@@ -126,6 +126,35 @@ def main():
             wet_focus=page.locator('#rack-editor').get_by_label('Rack wet')
             wet_focus.fill('1');wet_focus.dispatch_event('change');ready()
             expect(page.locator('#rack-editor').get_by_label('Rack wet')).to_be_focused()
+            # A new root project may reuse a visible control's stable key.
+            # Redrawing it must not steal keyboard focus or carry an unsaved
+            # preset draft across source ancestry. Exercise the shipped
+            # module in real Chromium without mutating the server session.
+            focus_context = page.evaluate("""async () => {
+                const entry = document.querySelector('script[type="module"]');
+                const release = new URL(entry.src).search;
+                const {renderRack} = await import('/timeline/rack-ui.mjs' + release);
+                const host = document.createElement('div');
+                document.body.append(host);
+                try {
+                    const a = {present:false, presets:[], working_context:'root-A'};
+                    renderRack(host, a, () => {});
+                    const field = host.querySelector('[data-preset-field="name"]');
+                    field.value = 'unsaved name from A';
+                    field.focus();
+                    renderRack(host, a, () => {});
+                    const same = host.querySelector('[data-preset-field="name"]');
+                    const kept = document.activeElement === same &&
+                        same.value === 'unsaved name from A';
+                    renderRack(host, {...a, working_context:'root-B'}, () => {});
+                    const other = host.querySelector('[data-preset-field="name"]');
+                    return {kept, leakedDraft:other.value === 'unsaved name from A',
+                            stoleFocus:document.activeElement === other};
+                } finally {host.remove();}
+            }""")
+            assert focus_context == {
+                'kept': True, 'leakedDraft': False, 'stoleFocus': False,
+            }, focus_context
             # Crossover UI admission mirrors the exact DSP contract: strictly
             # increasing neighbors and a strict 0.49*Fs high ceiling. Rejected
             # controls cannot publish a new revision or silently clamp values.
