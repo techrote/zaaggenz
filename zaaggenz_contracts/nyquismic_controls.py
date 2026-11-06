@@ -298,7 +298,14 @@ def compile_step_clock_events(
         # Refuse oversized stochastic lattices before creating a large set.
         require(cells <= min(MAX_EVENTS, budget.max_events),
                 'step clock jitter-cell admission budget exceeded')
-        cuts.update(origin + i * width for i in range(1, cells))
+        # A valid, bounded lattice can still contain thousands of cells.
+        # A one-shot set comprehension prevents cancellation until every
+        # fraction has been allocated. Check periodically while constructing
+        # the private cuts; cancellation must publish no partial event list.
+        for i in range(1, cells):
+            if i % 256 == 0 and cancelled is not None and cancelled():
+                raise ClockCancelled('controlled clock cancelled during jitter-cell construction')
+            cuts.add(origin + i * width)
     if quantized_linear:
         # The unquantized additive-Hz curve is affine between every existing
         # breakpoint. Nearest-ladder changes occur at exact midpoints of
