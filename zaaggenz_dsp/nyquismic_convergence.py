@@ -87,6 +87,10 @@ def _metrics(a: np.ndarray, b: np.ndarray) -> dict:
     if a.shape[0] == 0:
         return {'relative_rms': 0.0, 'relative_spectrum': 0.0,
                 'relative_transient': 0.0, 'empty_extent': True}
+    # A single delivery-frame comparison has no temporal derivative, so its
+    # "transient" metric would merely repeat RMS and its one-bin FFT cannot
+    # discriminate folded frequencies. Retain diagnostics, not qualification.
+    insufficient_extent = a.shape[0] < 2
     # Perfect silence trivially agrees at every numerical rate, even when
     # no actual clock/reconstruction behavior has been exercised. Preserve
     # that equality as a measured null result, not a convergence certificate.
@@ -144,7 +148,8 @@ def _metrics(a: np.ndarray, b: np.ndarray) -> dict:
             'relative_spectrum': relative_spectrum,
             'relative_transient': relative_transient,
             'zero_reference_metrics': tuple(undefined),
-            'null_signal': bool(null_signal)}
+            'null_signal': bool(null_signal),
+            'insufficient_extent': bool(insufficient_extent)}
 
 
 def evaluate_local_convergence(
@@ -233,6 +238,7 @@ def evaluate_local_convergence(
             raise ClockCancelled('convergence cancelled before comparison')
         metrics = _metrics(a, b)
         good = (not metrics.get('empty_extent', False) and
+                not metrics.get('insufficient_extent', False) and
                 not metrics.get('null_signal', False) and
                 not metrics.get('zero_reference_metrics') and
                 metrics['relative_rms'] <= policy.relative_rms_limit and
