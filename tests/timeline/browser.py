@@ -594,6 +594,7 @@ def main():
             # first start. The UI now exposes the actual predecessor-dependent
             # bound and rejects duplicate/backward starts before a proposal.
             first_segment_source=saved('rack-first-segment-source.zgtimeline.json')
+            first_segment_revision=page.locator('#revision').inner_text()
             first_segment_identity=server.timeline.session.current_identity()
             following_start=spectral_stage.get_by_label('New segment start sample')
             assert following_start.get_attribute('min')=='1201'
@@ -604,7 +605,7 @@ def main():
                 assert 'must be between 1201 and 691200000' in following_start.evaluate(
                     '(e)=>e.validationMessage')
                 assert server.timeline.session.current_identity()==first_segment_identity
-                expect(page.locator('#revision')).to_have_text(first_segment_identity)
+                expect(page.locator('#revision')).to_have_text(first_segment_revision)
             assert saved('rack-duplicate-segment-rejected.zgtimeline.json')==first_segment_source
             following_start.fill('1800')  # restore an admissible, unsubmitted draft
             segment=spectral_stage.get_by_role('group',name='Retune target segment 1')
