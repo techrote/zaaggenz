@@ -254,6 +254,33 @@ class FrozenConvergenceTests(unittest.TestCase):
         self.assertTrue(all(x['empty_extent'] and not x['within_limits']
                             for x in result.diagnostics['successive_metrics']))
 
+    def test_nonzero_dc_only_channel_has_no_independent_transient_evidence(self):
+        # Matching DC waveforms have nonzero energy and 128 samples, but
+        # first differences contain NO information. The magnitude spectrum
+        # contains only DC; a zero derivative is not a third independent
+        # numerical check. A quiet constant stereo channel must not be
+        # excused merely because the other channel has real transients.
+        from zaaggenz_dsp.nyquismic_convergence import _metrics
+        for amplitude in (1.0, 1e-250):
+            with self.subTest(amplitude=amplitude):
+                constant = np.full(128, amplitude, dtype=np.float64)
+                measured = _metrics(constant, constant.copy())
+                self.assertEqual(measured['no_transient_evidence_channels'], (0,))
+                self.assertFalse(measured['null_signal'])
+                self.assertFalse(measured['insufficient_extent'])
+                self.assertEqual(measured['relative_rms'], 0)
+                self.assertEqual(measured['relative_spectrum'], 0)
+                self.assertEqual(measured['relative_transient'], 0)
+                t = np.arange(128, dtype=np.float64)
+                active = np.sin(2 * np.pi * 7 * t / 128)
+                stereo = np.column_stack((active, constant))
+                self.assertEqual(
+                    _metrics(stereo, stereo.copy())['no_transient_evidence_channels'],
+                    (1,))
+                self.assertEqual(
+                    _metrics(active, active.copy())['no_transient_evidence_channels'],
+                    ())
+
     def test_one_delivery_frame_cannot_certify_three_independent_metrics(self):
         # The 3-rate callback spans identical physical time, but each FIR
         # result has only ONE delivery sample. A one-bin FFT contains no
