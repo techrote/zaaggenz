@@ -136,10 +136,21 @@ def _metrics(a: np.ndarray, b: np.ndarray) -> dict:
     if len(a) > 1:
         transient_a = np.diff(aa, axis=0)
         transient_b = np.diff(bb, axis=0)
+        # Constant channels carry no derivative information at either rate.
+        # Their zero transient residual is NOT independent validation of
+        # numerical agreement: RMS and a DC-only FFT are the same scalar
+        # assertion in different representations. Never certify such a
+        # channel on three nominal metrics when only one is informative.
+        no_transient_evidence = tuple(
+            channel for channel in range(aa.shape[1])
+            if not np.any(transient_a[:, channel]) and
+               not np.any(transient_b[:, channel])
+        )
         relative_transient = relative(
             np.linalg.norm(transient_a - transient_b, axis=0),
             np.linalg.norm(transient_b, axis=0), 'transient')
     else:
+        no_transient_evidence = tuple(range(aa.shape[1]))
         relative_transient = relative_rms
     require(all(math.isfinite(x) for x in
                 (relative_rms, relative_spectrum, relative_transient)),
@@ -149,7 +160,8 @@ def _metrics(a: np.ndarray, b: np.ndarray) -> dict:
             'relative_transient': relative_transient,
             'zero_reference_metrics': tuple(undefined),
             'null_signal': bool(null_signal),
-            'insufficient_extent': bool(insufficient_extent)}
+            'insufficient_extent': bool(insufficient_extent),
+            'no_transient_evidence_channels': no_transient_evidence}
 
 
 def evaluate_local_convergence(
@@ -240,6 +252,7 @@ def evaluate_local_convergence(
         good = (not metrics.get('empty_extent', False) and
                 not metrics.get('insufficient_extent', False) and
                 not metrics.get('null_signal', False) and
+                not metrics.get('no_transient_evidence_channels') and
                 not metrics.get('zero_reference_metrics') and
                 metrics['relative_rms'] <= policy.relative_rms_limit and
                 metrics['relative_spectrum'] <= policy.relative_spectrum_limit and
