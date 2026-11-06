@@ -21,6 +21,7 @@ from zaaggenz_contracts import Contract, digest
 from zaaggenz_contracts.nyquismic import (
     MAX_DENOMINATOR, MAX_FRAMES, MAX_TIME_S, MAX_EVENTS, VERSION,
     SAMPLER_AUDIO_METHOD, SAMPLER_NUMERICAL_FILTER,
+    STATIC_FIR_PREFILTER_POLICIES, GUARDED_CLEAN_PREFILTER,
     SonicSpec, EvaluationPolicy, ResourceBudget, RenderIdentity,
     UnsupportedNyquismic, _Record, require, record, integer, hash_value,
     qtext, bind_render_identity,
@@ -32,6 +33,7 @@ from zaaggenz_contracts.nyquismic_clock import (
 CHECKPOINT_VERSION = 'nyq.sampler-checkpoint.v1'
 EXECUTION_DOMAIN = 'zaaggenz.nyquismic.sampler-execution.v1'
 _BLOCK = 256
+_SOURCE_FIR_BLOCK = 8192  # pre-capture FIR: cancellation between bounded source windows
 _NO_RACK = digest({'domain': EXECUTION_DOMAIN, 'rack': None})
 _NO_GRAPH = digest({'domain': EXECUTION_DOMAIN, 'graph': None})
 
@@ -153,6 +155,81 @@ def sampler_evaluation(rate: int, budget: ResourceBudget = ResourceBudget()) -> 
     """A fixed numerical grid; deliberately no final antialias conversion."""
     return EvaluationPolicy(evaluation_rate_hz=rate, audio_method=SAMPLER_AUDIO_METHOD,
                             numerical_filter=SAMPLER_NUMERICAL_FILTER, budget=budget)
+
+
+
+def _fir33_kernel(source_rate_hz: int, virtual_hz: Fraction, policy: str = 'fir33_hann_static_0p45_v1') -> tuple[np.ndarray, Fraction]:
+    """A versioned symmetric 33-tap FIR with an explicit cutoff and dry mix.
+
+    A mix of one preserves the accepted 0p45 policy bit for bit.  A partial
+    mix is implemented in the kernel itself (delta at the middle tap), which
+    keeps unity DC, zero phase and one coefficient/identity authority.
+    """
+    require(policy != GUARDED_CLEAN_PREFILTER, 'guarded comparator requires a Kaiser kernel')
+    cutoff_ratio, strength = STATIC_FIR_PREFILTER_POLICIES[policy]
+    cutoff_hz = cutoff_ratio * virtual_hz
+    require(Fraction(0) < cutoff_hz < Fraction(source_rate_hz, 2),
+            'static Nyquismic FIR cutoff must lie below source Nyquist')
+    fraction = float(cutoff_hz / source_rate_hz)
+    indices = np.arange(33, dtype=np.float64) - 16
+    kernel = (2 * fraction) * np.sinc(2 * fraction * indices) * np.hanning(33)
+    norm = float(np.sum(kernel))
+    require(np.isfinite(norm) and norm > 0, 'static Nyquismic FIR normalization invalid')
+    kernel /= norm
+    if strength != 1:
+        kernel *= float(strength)
+        kernel[16] += float(1 - strength)
+    return kernel, cutoff_hz
+
+
+def _fir_guarded_comparison(source_rate_hz: int, virtual_hz: Fraction) -> tuple[np.ndarray, Fraction]:
+    """Finite 129-tap Kaiser low-pass for a narrowly admitted static comparison.
+
+    This is an opt-in source prefilter, not a universal alias-free theorem.
+    Restrict the clock so that a real stopband can be measured before capture.
+    """
+    require(Fraction(source_rate_hz, 8) <= virtual_hz <= Fraction(source_rate_hz, 2),
+            'guarded FIR requires virtual rate between 1/8 and 1/2 source Hz')
+    cutoff_hz = Fraction(2, 5) * virtual_hz
+    x = np.arange(129, dtype=np.float64) - 64
+    fraction = float(cutoff_hz / source_rate_hz)
+    kernel = (2 * fraction) * np.sinc(2 * fraction * x) * np.kaiser(129, 10.0)
+    dc = float(np.sum(kernel))
+    require(np.isfinite(dc) and dc > 0, 'guarded Kaiser normalization invalid')
+    kernel /= dc
+    return kernel, cutoff_hz
+
+
+def _static_fir_kernel(source_rate_hz: int, virtual_hz: Fraction,
+                       policy: str) -> tuple[np.ndarray, Fraction]:
+    if policy == GUARDED_CLEAN_PREFILTER:
+        return _fir_guarded_comparison(source_rate_hz, virtual_hz)
+    return _fir33_kernel(source_rate_hz, virtual_hz, policy)
+
+
+def _prefilter_static_source(pcm: np.ndarray, kernel: np.ndarray, boundary: str,
+                             cancelled=None) -> np.ndarray:
+    """Offline zero-phase symmetric FIR, with bounded exact source context."""
+    _cancel(cancelled)
+    require(type(kernel) is np.ndarray and kernel.ndim == 1 and len(kernel) in (33, 129)
+            and np.isfinite(kernel).all(), 'unsupported/nonfinite static FIR coefficient array')
+    half = (len(kernel) - 1) // 2
+    if not len(pcm):
+        return np.zeros(pcm.shape, dtype=np.float64)
+    padding = ((half, half), (0, 0))
+    padded = np.pad(np.asarray(pcm, dtype=np.float64), padding,
+                    mode='edge' if boundary == 'edge_hold' else 'constant')
+    result = np.empty(pcm.shape, dtype=np.float64)
+    for channel in range(pcm.shape[1]):
+        for start in range(0, len(pcm), _SOURCE_FIR_BLOCK):
+            _cancel(cancelled)
+            stop = min(start + _SOURCE_FIR_BLOCK, len(pcm))
+            # Full source-context convolution; 33-tap output is unchanged.
+            window = padded[start:stop + 2 * half, channel]
+            result[start:stop, channel] = np.convolve(window, kernel, mode='valid')
+    require(np.isfinite(result).all(), 'static Nyquismic FIR produced nonfinite samples')
+    _cancel(cancelled)
+    return result
 
 
 def _sample_at(pcm: np.ndarray, position: Fraction | Decimal, capture: str, boundary: str) -> np.ndarray:
@@ -314,6 +391,27 @@ class SamplerPlan:
         # This admits the FULL render, even when the caller will later ask for a
         # small region, and validates unsupported clocks and latent bypasses.
         clock = admit_foundation(spec, qtext(end), evaluation.budget)[0]
+        if spec.reconstruction == 'sinc8_hann_uniform_v1':
+            require(not spec.clock.points_hz and not spec.clock.resets and
+                    not spec.clock.routes and spec.clock.quantizer.policy == 'none' and
+                    spec.clock.jitter.model == 'none',
+                    'sinc8 Hann reconstruction requires a static uniform event lattice')
+            require(evaluation.budget.max_filter_taps >= 17,
+                    'sinc8 Hann reconstruction exceeds admitted kernel support')
+        if spec.reconstruction == 'shepard8_hann_local_time_v1':
+            # Up to eight actual captured events on either side of an interval.
+            # This non-bandlimited kernel uses physical-time local scales and
+            # is deliberately separate from the uniform cardinal-sinc policy.
+            require(evaluation.budget.max_filter_taps >= 17,
+                    'local-time Shepard Hann reconstruction exceeds admitted kernel support')
+        if spec.prefilter in STATIC_FIR_PREFILTER_POLICIES:
+            require(not spec.clock.points_hz, 'static FIR prefilter rejects modulated virtual rate')
+            require(spec.clock.rate.hz < source.sample_rate_hz,
+                    'static FIR prefilter requires virtual rate below source rate')
+            taps = 129 if spec.prefilter == GUARDED_CLEAN_PREFILTER else 33
+            require(evaluation.budget.max_filter_taps >= taps,
+                    'static FIR exceeds admitted tap budget')
+            _static_fir_kernel(source.sample_rate_hz, spec.clock.rate.hz, spec.prefilter)
         active = not spec.is_boundary_identity
         require(active or rate == source.sample_rate_hz, 'exact bypass requires matched source/numerical grids; no hidden resampling')
         if context_sha256 is None:
@@ -333,6 +431,10 @@ class SamplerPlan:
         timestamp_rounding = 0.0
         captured = np.empty((len(events), spec.channels), dtype=np.float64)
         pcm = source.pcm.reshape(asset['frame_count'], spec.channels)
+        capture_pcm = pcm
+        if active and spec.prefilter in STATIC_FIR_PREFILTER_POLICIES:
+            kernel, _ = _static_fir_kernel(source.sample_rate_hz, spec.clock.rate.hz, spec.prefilter)
+            capture_pcm = _prefilter_static_source(pcm, kernel, spec.input_boundary, cancelled)
         for i in range(len(events)):
             if i % _BLOCK == 0:
                 _notify(progress, i / max(len(events), 1), cancelled)
@@ -348,7 +450,7 @@ class SamplerPlan:
             coordinates.append(relative)
             first_frames.append(_first_frame(clock, i, coordinate, origin, rate, frame_count))
             with localcontext(Context(prec=80)):
-                captured[i] = _sample_at(pcm, relative * source.sample_rate_hz, spec.capture, spec.input_boundary)
+                captured[i] = _sample_at(capture_pcm, relative * source.sample_rate_hz, spec.capture, spec.input_boundary)
         require(np.isfinite(captured).all(), 'capture produced nonfinite audio')
         _notify(progress, 1.0, cancelled)
         values = dict(source=source, spec=spec, evaluation=evaluation, identity=identity,
@@ -442,7 +544,104 @@ class SamplerPlan:
                         alpha0 = _ratio(_difference(Fraction(anchor, self.sample_rate_hz), self._coordinates[owner]), duration)
                         step = _ratio(Fraction(1, self.sample_rate_hz), duration)
                         alpha = alpha0 + (frames[mask] - anchor) * step
-                        block[mask] = left + alpha[:, None] * (self.captures[owner + 1] - left)
+                        right = self.captures[owner + 1]
+                        if self.spec.reconstruction == 'sinc8_hann_uniform_v1':
+                            # Static uniform grid only (admitted at prepare).
+                            # Evaluate physical-time cardinal-sinc with a
+                            # symmetric Hann window, support |x| < 8 events.
+                            # Renormalize the truncated edge kernel for
+                            # declared constant-signal DC response; this
+                            # does not perform global peak normalization.
+                            positions = np.flatnonzero(mask)
+                            for j, relative in zip(positions, alpha):
+                                if relative == 0:
+                                    block[j] = left  # exact event capture
+                                    continue
+                                lo = max(0, owner - 7)
+                                hi = min(len(self.events), owner + 9)
+                                offsets = np.arange(lo, hi, dtype=np.float64) - owner
+                                x = relative - offsets
+                                support = np.abs(x) < 8
+                                weights = np.zeros(len(offsets), dtype=np.float64)
+                                weights[support] = (np.sinc(x[support]) *
+                                    (0.5 + 0.5 * np.cos(np.pi * x[support] / 8)))
+                                dc = float(np.sum(weights))
+                                require(math.isfinite(dc) and abs(dc) > 1e-12,
+                                        'uniform Hann sinc local DC normalization invalid')
+                                block[j] = np.sum(self.captures[lo:hi] *
+                                                  weights[:, None], axis=0) / dc
+                        elif self.spec.reconstruction == 'shepard8_hann_local_time_v1':
+                            # Bounded, explicitly non-bandlimited irregular-event
+                            # Shepard reconstruction: each kernel's scale is
+                            # the mean of its adjacent physical event intervals.
+                            # Positive inverse-square weights, tapered smoothly
+                            # to zero at +/-8 local spacings, preserve DC and
+                            # approach exact captures continuously. The event
+                            # index window also prevents unbounded work when
+                            # a local interval becomes unusually wide.
+                            positions = np.flatnonzero(mask)
+                            for j, frame in zip(positions, frames[mask]):
+                                t = Fraction(int(frame), self.sample_rate_hz)
+                                if _difference(t, self._coordinates[owner]) == 0:
+                                    block[j] = left
+                                    continue
+                                lo = max(0, owner - 8)
+                                hi = min(len(self.events), owner + 9)
+                                weights = np.zeros(hi - lo, dtype=np.float64)
+                                for k in range(lo, hi):
+                                    if k == 0:
+                                        scale = _difference(self._coordinates[1], self._coordinates[0])
+                                    elif k == len(self.events) - 1:
+                                        scale = _difference(self._coordinates[-1], self._coordinates[-2])
+                                    else:
+                                        scale = _difference(self._coordinates[k + 1], self._coordinates[k - 1]) / 2
+                                    x = _ratio(_difference(t, self._coordinates[k]), scale)
+                                    if x == 0:
+                                        # Exact source/event capture, no interpolation
+                                        # or binary64 distance-singularity substitution.
+                                        weights.fill(0)
+                                        weights[k - lo] = 1
+                                        break
+                                    if abs(x) < 8:
+                                        weights[k - lo] = (0.5 + 0.5 * math.cos(math.pi * x / 8)) / (x * x)
+                                dc = float(np.sum(weights))
+                                require(math.isfinite(dc) and dc > 0,
+                                        'local-time Shepard reconstruction has no positive finite kernel mass')
+                                block[j] = np.sum(self.captures[lo:hi] * weights[:, None], axis=0) / dc
+                        elif self.spec.reconstruction == 'nearest_time_v1':
+                            # Decide ties using exact/Decimal80 event coordinates;
+                            # a binary64 midpoint comparison can choose the
+                            # wrong event near a sub-sample rational boundary.
+                            before_midpoint = np.fromiter(
+                                (2 * _difference(Fraction(int(frame), self.sample_rate_hz),
+                                                 self._coordinates[owner]) <= duration
+                                 for frame in frames[mask]),
+                                dtype=bool, count=int(np.count_nonzero(mask)))
+                            block[mask] = np.where(before_midpoint[:, None], left, right)
+                        elif self.spec.reconstruction == 'cubic_time_v1':
+                            # Nonuniform cubic Hermite: slopes use physical event
+                            # spacing, not source/evaluation sample indices.
+                            span = float(duration)
+                            if owner > 0:
+                                previous_span = float(_difference(self._coordinates[owner + 1],
+                                                                 self._coordinates[owner - 1]))
+                                slope_left = (right - self.captures[owner - 1]) / previous_span
+                            else:
+                                slope_left = (right - left) / span
+                            if owner + 2 < len(self.events):
+                                next_span = float(_difference(self._coordinates[owner + 2],
+                                                             self._coordinates[owner]))
+                                slope_right = (self.captures[owner + 2] - left) / next_span
+                            else:
+                                slope_right = (right - left) / span
+                            u = alpha[:, None]
+                            u2, u3 = u * u, u * u * u
+                            block[mask] = ((2*u3 - 3*u2 + 1)*left
+                                           + (u3 - 2*u2 + u)*span*slope_left
+                                           + (-2*u3 + 3*u2)*right
+                                           + (u3 - u2)*span*slope_right)
+                        else:
+                            block[mask] = left + alpha[:, None] * (right - left)
                 if self.spec.wet != 1:
                     dry = self._dry(a, b)
                     block = (1.0 - self.spec.wet) * dry + self.spec.wet * block
@@ -474,6 +673,28 @@ class SamplerPlan:
             'origin_s': self.spec.clock.origin_s, 'initial_phase_cycles': self.spec.clock.phase_cycles,
             'resets': [r.to_dict() for r in self.spec.clock.resets],
             'capture': self.spec.capture, 'reconstruction': self.spec.reconstruction,
+            'reconstruction_support_events': (8 if self.spec.reconstruction in
+                                              ('sinc8_hann_uniform_v1', 'shepard8_hann_local_time_v1')
+                                              else 2 if self.spec.reconstruction == 'cubic_time_v1'
+                                              else 1 if self.spec.reconstruction != 'hold_v1' else 0),
+            'reconstruction_window': ('hann_symmetric_radius_8_v1'
+                                      if self.spec.reconstruction == 'sinc8_hann_uniform_v1'
+                                      else 'hann_symmetric_radius_8_local_shepard_inverse_square_v1'
+                                      if self.spec.reconstruction == 'shepard8_hann_local_time_v1' else None),
+            'prefilter': self.spec.prefilter,
+            'prefilter_support_source_frames': (64 if self.spec.prefilter == GUARDED_CLEAN_PREFILTER
+                                                 else 16 if self.spec.prefilter != 'off_v1' else 0),
+            'prefilter_window': ('kaiser_beta10_129_v1' if self.spec.prefilter == GUARDED_CLEAN_PREFILTER
+                                 else 'hann_33_v1' if self.spec.prefilter != 'off_v1' else None),
+            'prefilter_cutoff_hz': (float(STATIC_FIR_PREFILTER_POLICIES[self.spec.prefilter][0] *
+                                          self.spec.clock.rate.hz)
+                                    if self.spec.prefilter != 'off_v1' else None),
+            'prefilter_strength': (float(STATIC_FIR_PREFILTER_POLICIES[self.spec.prefilter][1])
+                                   if self.spec.prefilter != 'off_v1' else None),
+            'prefilter_coefficients_sha256': (
+                hashlib.sha256(_static_fir_kernel(self.source.sample_rate_hz,
+                                            self.spec.clock.rate.hz, self.spec.prefilter)[0].astype('<f8').tobytes()).hexdigest()
+                if self.spec.prefilter != 'off_v1' else None),
             'input_boundary': self.spec.input_boundary, 'stereo_link': self.spec.stereo_link,
             'channel_identities': ['mono'] if self.spec.channels == 1 else ['left', 'right'],
             'context': 'complete admitted render including next-capture lookahead; no region budget discount',
