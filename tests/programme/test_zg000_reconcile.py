@@ -632,5 +632,42 @@ class ZG000RegressionTests(unittest.TestCase):
                     validate_finalization_source(forged, **source)
 
 
+    def test_60_late_red_on_first_child_during_second_child_audit_blocks_finalization(self):
+        # A single per-child verification sweep used to certify R1 first,
+        # then R2, even if R1 was superseded while R2 was being checked.
+        # The second full inventory sweep must catch that same-SHA red run.
+        api = FakeAPI()
+        api.put(workflow=R1["workflow"], run_id=1000)
+        api.put(workflow=R2["workflow"], run_id=1001)
+        rec = make(api, rows=[R1, R2])
+        rec.dispatch()
+        seen_second_inventory = False
+        def insert_late_red(method, path, payload):
+            nonlocal seen_second_inventory
+            if (method == "GET" and
+                    f"/actions/workflows/{R2['workflow']}/runs?" in path and
+                    not seen_second_inventory):
+                seen_second_inventory = True
+                api.put(workflow=R1["workflow"], run_id=1002,
+                        status="completed", conclusion="failure")
+        api.on_call = insert_late_red
+        with self.assertRaisesRegex(ReconcileError, "newer exact-head run/attempt"):
+            rec.finalize("success")
+        self.assertTrue(seen_second_inventory)
+        self.assertNotEqual("qualified", rec.manifest["state"])
+        self.assertEqual([], api.posts)
+
+    def test_61_two_child_stable_success_remains_qualified_without_dispatch(self):
+        api = FakeAPI()
+        api.put(workflow=R1["workflow"], run_id=1000)
+        api.put(workflow=R2["workflow"], run_id=1001)
+        rec = make(api, rows=[R1, R2])
+        rec.dispatch()
+        rec.finalize("success")
+        self.assertEqual("qualified", rec.manifest["state"])
+        self.assertEqual(2, len(rec.manifest["terminal_runs"]))
+        self.assertEqual([], api.posts)
+
+
 if __name__ == "__main__":
     unittest.main()
