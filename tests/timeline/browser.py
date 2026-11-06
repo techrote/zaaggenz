@@ -590,6 +590,23 @@ def main():
             # the new default is derived from the new accepted target chain.
             expect(spectral_stage.get_by_label('New segment label')).to_have_value('Target change')
             assert spectral_stage.get_by_label('New segment start sample').input_value() != '1200'
+            # A second scheduled change must be strictly later than the saved
+            # first start. The UI now exposes the actual predecessor-dependent
+            # bound and rejects duplicate/backward starts before a proposal.
+            first_segment_source=saved('rack-first-segment-source.zgtimeline.json')
+            first_segment_identity=server.timeline.session.current_identity()
+            following_start=spectral_stage.get_by_label('New segment start sample')
+            assert following_start.get_attribute('min')=='1201'
+            for invalid_start in ('1200','1199'):
+                following_start.fill(invalid_start)
+                spectral_stage.get_by_role('button',name='Add retune segment').click()
+                assert following_start.evaluate('(e)=>e.validity.customError')
+                assert 'must be between 1201 and 691200000' in following_start.evaluate(
+                    '(e)=>e.validationMessage')
+                assert server.timeline.session.current_identity()==first_segment_identity
+                expect(page.locator('#revision')).to_have_text(first_segment_identity)
+            assert saved('rack-duplicate-segment-rejected.zgtimeline.json')==first_segment_source
+            following_start.fill('1800')  # restore an admissible, unsubmitted draft
             segment=spectral_stage.get_by_role('group',name='Retune target segment 1')
             segment.get_by_label('Segment 1 voice 1 degree').fill('9')
             segment.get_by_label('Segment 1 voice 1 degree').dispatch_event('change');ready()
