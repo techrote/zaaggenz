@@ -472,6 +472,14 @@ class Reconciler:
                 "workflow_id": actual["workflow_id"], "event": actual["event"],
                 "status": actual["status"], "conclusion": actual["conclusion"],
             })
+        # Cross-workflow finalization is not an atomic snapshot: a newer
+        # attempt of an early workflow can appear while a later workflow's
+        # detail and inventory are still being checked. Sweep the full matrix
+        # again after all terminal checks, so a late same-head supersession
+        # cannot be hidden by the first workflow's earlier green result.
+        # GitHub's eventual consistency still precludes a global atomic claim.
+        for row in selected:
+            self.confirm_latest_selected(row)
         self.check_head()
         self.manifest["state"] = "qualified"
 
