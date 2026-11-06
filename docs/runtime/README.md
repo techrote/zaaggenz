@@ -230,7 +230,12 @@ revision/save/reopen/export path; it never constructs a second render engine.
 A full expected segment/schedule snapshot rejects stale index edits. The
 existing RackRecipe enforces strictly increasing starts, 64 segments maximum,
 1..32 voices per segment, candidate-lattice/memory bounds and source binding;
-invalid proposals do not adopt. Changing a segment label does not alter its
+invalid proposals do not adopt. The add-segment number input now displays
+and enforces a source-sample minimum of **one sample after the last saved
+change-point**, rejecting duplicate/backward timestamps locally with the
+required range and no source/session proposal. When no larger representable
+source-sample position exists, adding another segment is disabled with an
+explicit explanation. This does not relax full backend validation. Changing a segment label does not alter its
 sonic digest. New independent scheduled voice inventories and new Chordness
 comb templates remain out of scope.
 
