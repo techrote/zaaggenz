@@ -43,7 +43,17 @@ also inconclusive. A comparison with **one delivery frame** is likewise
 `insufficient_extent=true` / `within_limits=false`: it has only a single-bin
 FFT and no first difference, so a copied RMS transient diagnostic cannot
 count as an independent third metric. The measurement values remain available
-for investigation, but such a short render cannot be certified as converged. No arbitrary minimum loudness threshold is imposed on
+for investigation, but such a short render cannot be certified as converged.
+Likewise, an exactly constant, nonzero delivery channel has no independent
+transient measurement: its first-difference norm is zero at both rates,
+and its magnitude spectrum has only a DC bin. The evaluator now reports
+`no_transient_evidence_channels` and refuses whole-result qualification
+if any channel has no transient information at either rate; it preserves
+all zero residual diagnostics. This conservative limit is not a rejection
+of DC as a valid audio signal or an analytic DC-gain measurement. It is a
+refusal to treat redundant comparison numbers as three independent local
+convergence witnesses.
+No arbitrary minimum loudness threshold is imposed on
 quiet but nonzero signals. Each comparator is now scaled independently per **physical channel**,
 using the larger absolute PCM amplitude of the two compared rates within
 that channel. Each of the RMS, independent-channel magnitude-spectrum
