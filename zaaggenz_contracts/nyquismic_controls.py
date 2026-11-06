@@ -672,14 +672,21 @@ class TriggeredEnvelopeSource(_Record):
             for stamp in (onset, min(onset + attack, offset),
                           min(onset + attack + decay, offset),
                           offset, offset + release):
-                if stamp > origin:
+                # ModulationRoute.initial applies from absolute time zero,
+                # not from this source's nonzero origin. Keep an explicit
+                # zero-level onset knot even when onset == source.origin_s;
+                # otherwise the linear lane leaks a pre-onset ramp.
+                if stamp > 0:
                     points.add(stamp)
             require(len(points) <= MAX_POINTS,
                     'envelope compiled route exceeds point budget')
-        route_points = tuple(
-            Point(qtext(t), qtext(self.value_at(qtext(t))))
-            for t in sorted(points)
-        )
+        route_points = []
+        for index, t in enumerate(sorted(points)):
+            if index % 32 == 0 and cancelled is not None and cancelled():
+                raise ClockCancelled('envelope compilation cancelled during route publication')
+            route_points.append(Point(qtext(t), qtext(self.value_at(qtext(t)))))
+        if cancelled is not None and cancelled():
+            raise ClockCancelled('envelope compilation cancelled before route publication')
         return ModulationRoute(id=route_id, mapping=mapping, depth=depth,
-                               initial='0/1', points=route_points,
+                               initial='0/1', points=tuple(route_points),
                                interpolation='linear')

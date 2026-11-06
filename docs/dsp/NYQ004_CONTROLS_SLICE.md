@@ -274,3 +274,19 @@ python -m unittest discover -s tests/contracts -p 'test_nyquismic_triggered_enve
 No full instrument, save/reopen UI, WAV/FLAC or human listening acceptance is
 claimed. Input-audio/upstream controls and production audio clock integration
 are still required to close #253.
+
+### Delayed envelope onset and publication safety
+
+The linear `ModulationRoute` applies its initial value from absolute time zero,
+regardless of a `TriggeredEnvelopeSource.origin_s` greater than zero. The
+compiler therefore preserves a zero-valued point at the **actual first gate
+onset**, including when onset equals the source origin. Without that knot,
+linear interpolation from zero at time zero to the first later attack/release
+point would create audible pre-onset rate control from a source that did not
+exist yet. The point consumes the same finite lane budget as other knots;
+no hidden instant-step extension of the frozen schema is asserted.
+
+Cancellation is checked while constructing the bounded point lane and again
+immediately before publication (including the empty-gate case). Cancellation
+never returns a partially compiled route. This remains standalone control
+authoring, not a registered Nyquismic sampler or Compose export capability.

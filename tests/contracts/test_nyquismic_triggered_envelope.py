@@ -75,15 +75,62 @@ class TriggeredEnvelopeTests(unittest.TestCase):
         self.assertEqual(source.value_at('1/2'), Fraction(1, 8))
         self.assertEqual(source.value_at('5/8'), Fraction(0))
         route = source.compile_route('5/8', route_id='early')
+        # The saved source starts at 1/4. A standard route begins at
+        # absolute time zero: without the explicit zero knot at 1/4 its
+        # linear interpolation leaked modulation before the source existed.
         self.assertEqual([p.time_s for p in route.points],
-                         ['3/8', '5/8'])
+                         ['1/4', '3/8', '5/8'])
         self.assertEqual([p.value for p in route.points],
-                         ['1/4', '0/1'])
+                         ['0/1', '1/4', '0/1'])
         self.assertEqual(source.value_at('1/2'), Fraction(
             evaluate_instantaneous_rate(
                 SonicSpec(clock=ClockSpec(rate=VirtualRate('1/1'),
                                           routes=(replace(route, depth=1.),))),
                 '1/2').route_values[0]))
+
+    def test_delayed_origin_never_leaks_pre_onset_control(self):
+        source = TriggeredEnvelopeSource(
+            origin_s='1/4', attack_s='1/2', decay_s='1/4',
+            sustain='1/3', release_s='1/4',
+            gates=(EnvelopeGate('1/4', '3/8'),),
+        )
+        route = source.compile_route('5/8', route_id='delayed', depth=4.)
+        spec = SonicSpec(clock=ClockSpec(rate=VirtualRate('100/1'),
+                                        routes=(route,)))
+        for at, expected in (
+                ('0/1', Fraction(100)), ('1/8', Fraction(100)),
+                ('1/4', Fraction(100)), ('5/16', Fraction(201, 2)),
+                ('3/8', Fraction(101)), ('1/2', Fraction(201, 2)),
+                ('5/8', Fraction(100))):
+            with self.subTest(at=at):
+                self.assertEqual(
+                    Fraction(evaluate_instantaneous_rate(spec, at).realized_hz),
+                    expected)
+        self.assertEqual(route.to_json(),
+                         source.compile_route('5/8', route_id='delayed', depth=4.).to_json())
+
+    def test_cancellation_during_or_just_before_point_publication_is_atomic(self):
+        source = self.envelope()
+        calls = [0]
+        def during_first_point():
+            calls[0] += 1
+            return calls[0] == 2  # after gate discovery, before first point
+        with self.assertRaises(ClockCancelled):
+            source.compile_route('1/1', route_id='cancel-point',
+                                 cancelled=during_first_point)
+        self.assertEqual(calls[0], 2)
+
+        # Empty gates also have a final publication checkpoint.
+        empty = TriggeredEnvelopeSource()
+        calls = [0]
+        def after_empty_scan():
+            calls[0] += 1
+            return calls[0] == 2
+        with self.assertRaises(ClockCancelled):
+            empty.compile_route('1/1', route_id='empty', cancelled=after_empty_scan)
+        self.assertEqual(calls[0], 2)
+        self.assertEqual(source.compile_route('1/1', route_id='cancel-point'),
+                         source.compile_route('1/1', route_id='cancel-point'))
 
     def test_multiple_gates_retrigger_only_after_complete_release(self):
         source = TriggeredEnvelopeSource(
