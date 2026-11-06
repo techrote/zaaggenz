@@ -479,6 +479,12 @@ class Reconciler:
         # cannot be hidden by the first workflow's earlier green result.
         # GitHub's eventual consistency still precludes a global atomic claim.
         for row in selected:
+            # The inventory endpoint can lag a same-ID GitHub rerun or a
+            # late terminal-to-active transition. Re-read each selected run's
+            # authoritative details during this final sweep, not only its
+            # eventually consistent list row. Neither response is globally
+            # atomic, but a known later attempt/failure must never certify.
+            self.verify_selected(row, completed=True)
             self.confirm_latest_selected(row)
         self.check_head()
         self.manifest["state"] = "qualified"

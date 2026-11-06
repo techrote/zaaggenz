@@ -669,5 +669,74 @@ class ZG000RegressionTests(unittest.TestCase):
         self.assertEqual([], api.posts)
 
 
+    def test_62_final_sweep_rechecks_details_when_run_list_lags_attempt_or_failure(self):
+        # After the first verification of R1, R2's inventory reveals a
+        # scheduling race. GitHub's R1 *listing* stays stale at attempt 1 /
+        # success, but the authoritative run endpoint sees the rerun or red
+        # result. A list-only second pass would incorrectly qualify R1.
+        for attempt, status, conclusion in ((2, "in_progress", None),
+                                            (1, "completed", "failure")):
+            with self.subTest(attempt=attempt, conclusion=conclusion):
+                api = FakeAPI()
+                api.put(workflow=R1["workflow"], run_id=1000)
+                api.put(workflow=R2["workflow"], run_id=1001)
+                rec = make(api, rows=[R1, R2])
+                rec.dispatch()
+                original = api.request
+                changed = False
+
+                def eventual_consistency(method, path, payload=None):
+                    nonlocal changed
+                    if (method == "GET" and
+                            f"/actions/workflows/{R2['workflow']}/runs?" in path and
+                            not changed):
+                        changed = True
+                        api.runs[1000].update(run_attempt=attempt,
+                                              status=status, conclusion=conclusion)
+                    response = original(method, path, payload)
+                    if (method == "GET" and changed and
+                            f"/actions/workflows/{R1['workflow']}/runs?" in path):
+                        # A counted, apparently valid yet eventually stale
+                        # workflow listing reports the original green attempt.
+                        response = {**response, "workflow_runs": [
+                            {**run, "run_attempt": 1, "status": "completed",
+                             "conclusion": "success"}
+                            if run["id"] == 1000 else run
+                            for run in response["workflow_runs"]]}
+                    return response
+
+                api.request = eventual_consistency
+                with self.assertRaises(ReconcileError):
+                    rec.finalize("success")
+                self.assertTrue(changed)
+                self.assertNotEqual("qualified", rec.manifest["state"])
+                self.assertEqual([], api.posts)
+
+    def test_63_final_sweep_blocks_unavailable_authoritative_details(self):
+        api = FakeAPI()
+        api.put(workflow=R1["workflow"], run_id=1000)
+        api.put(workflow=R2["workflow"], run_id=1001)
+        rec = make(api, rows=[R1, R2])
+        rec.dispatch()
+        original = api.request
+        r1_details = 0
+
+        def detail_disappears(method, path, payload=None):
+            nonlocal r1_details
+            if method == "GET" and path.endswith("/actions/runs/1000"):
+                r1_details += 1
+                # First call is dispatch reuse, second is first final sweep.
+                if r1_details >= 3:
+                    raise ReconcileError("run detail unavailable during final audit")
+            return original(method, path, payload)
+
+        api.request = detail_disappears
+        with self.assertRaisesRegex(ReconcileError, "detail unavailable"):
+            rec.finalize("success")
+        self.assertGreaterEqual(r1_details, 3)
+        self.assertNotEqual("qualified", rec.manifest["state"])
+        self.assertEqual([], api.posts)
+
+
 if __name__ == "__main__":
     unittest.main()
