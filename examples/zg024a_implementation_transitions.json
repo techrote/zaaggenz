@@ -584,6 +584,16 @@
         "zaaggenz_contracts/nyquismic_controls.py"
       ],
       "reason": "NYQ-004 / draft PR #267 fixes exact final rate-ladder selection near true rational Hz midpoints without changing the upstream Decimal80 control model, sampler/graph/rack/export execution, presets, sources, calibrated objectives, or tolerances. Only the opt-in zaaggenz_contracts/nyquismic_controls.py source changes in the implementation manifest. Pre-registration exact-head ZG-024a run https://github.com/techrote/zaaggenz/actions/runs/42119453281 on commit 9d56408a98dbdbd0c6f143ebc4430928d9088510 independently reproduced f55b4a97f46a63523d719e7518f691ee285db671166c264379e8e84f390454c6 on hosted Ubuntu and Windows, six fixtures/36 candidates on each, with only the unregistered source identity and the seven previously reviewed issue #87 transient-v4 validation projections. No other portable comparison difference was reported. Candidate transition only; NOT independent admission. Shared ledger with NYQ-003/#266 requires guarded reconciliation before either merge; final-head direct/reverse cross-platform CI and owner-only gates remain required."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "76af54ec334d23f3bb65d33ac500b314931ef34156d3ac875746d4f48481fd3b",
+      "issue": 253,
+      "stable_id": "ZG-016",
+      "changed_paths": [
+        "zaaggenz_contracts/nyquismic_controls.py"
+      ],
+      "reason": "NYQ-004 / draft PR #267: fix in opt-in TriggeredEnvelopeSource linear control authoring preserving a zero-level knot at the first positive gate onset, preventing rate modulation from leaking before a delayed source origin. Adds cancellation checks during point construction and immediately before publication; no accepted sampler clock, numerical calibration, comparator, rank, tolerance, factory preset, rack, graph, export or source rights change. Only zaaggenz_contracts/nyquismic_controls.py changes within ZG-024a's implementation manifest. Before candidate registration, exact-head run https://github.com/techrote/zaaggenz/actions/runs/42134227832 at commit 5bdda8e7ad382aa36b1b418dc8deac8a2ef5d866 independently reproduced implementation SHA 76af54ec334d23f3bb65d33ac500b314931ef34156d3ac875746d4f48481fd3b on Ubuntu and Windows, six fixtures/36 candidates each, and precisely the same seven historical #87 transient-v4 state/gate projection differences; no additional portable comparison differences. Candidate only, NOT independent review or acceptance. Shared NYQ-003/#266 ledgers require guarded integration reconciliation, successful fresh final-head direct/reverse CI and owner-only gates before merge."
     }
   ]
 }

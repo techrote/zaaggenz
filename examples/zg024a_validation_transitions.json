@@ -944,6 +944,65 @@
         }
       ],
       "reason": "NYQ-004 / draft PR #267 carries forward exactly the seven historically reviewed issue #87 transient-v4 validation path/from/to projections for the opt-in final Hz-ladder midpoint discrimination correction. Pre-registration exact-head https://github.com/techrote/zaaggenz/actions/runs/42119453281 at 9d56408a98dbdbd0c6f143ebc4430928d9088510 independently reported matching implementation SHA f55b4a97f46a63523d719e7518f691ee285db671166c264379e8e84f390454c6 on hosted Ubuntu and Windows, six fixtures/36 candidates each, only this unknown identity and these identical seven historical projections. No new validation exception or changed comparator, tolerance, calibration, source/preset rights, ranking, objective or score. Candidate only: shared NYQ-003/#266 ledgers require guarded reconciliation, independent review and successful exact-final-head direct/reverse CI before any merge."
+    },
+    {
+      "from_implementation_sha256": "ff938e70ba2598d5f6f6f0bc305e01b580c373a8e5daca849e8d3f9392bee3a4",
+      "to_implementation_sha256": "76af54ec334d23f3bb65d33ac500b314931ef34156d3ac875746d4f48481fd3b",
+      "issue": 253,
+      "stable_id": "ZG-024",
+      "changes": [
+        {
+          "from": "accepted",
+          "path": "/fixtures/0/candidates/8/holdout/validation/0/state",
+          "to": "rejected"
+        },
+        {
+          "from": [],
+          "path": "/fixtures/0/candidates/8/holdout/validation/0/triggered_gates",
+          "to": [
+            "transient_loss"
+          ]
+        },
+        {
+          "from": [
+            "level_mismatch",
+            "energy_collapse",
+            "transient_loss",
+            "normalisation_suspect"
+          ],
+          "path": "/fixtures/4/candidates/0/holdout/validation/0/triggered_gates",
+          "to": [
+            "level_mismatch",
+            "energy_collapse",
+            "normalisation_suspect"
+          ]
+        },
+        {
+          "from": "accepted",
+          "path": "/fixtures/4/candidates/0/whole_signal/validation/0/state",
+          "to": "rejected"
+        },
+        {
+          "from": [],
+          "path": "/fixtures/4/candidates/0/whole_signal/validation/0/triggered_gates",
+          "to": [
+            "transient_loss"
+          ]
+        },
+        {
+          "from": "rejected",
+          "path": "/fixtures/4/candidates/1/whole_signal/validation/0/state",
+          "to": "accepted"
+        },
+        {
+          "from": [
+            "transient_loss"
+          ],
+          "path": "/fixtures/4/candidates/1/whole_signal/validation/0/triggered_gates",
+          "to": []
+        }
+      ],
+      "reason": "NYQ-004 / draft PR #267: fix in opt-in TriggeredEnvelopeSource linear control authoring preserving a zero-level knot at the first positive gate onset, preventing rate modulation from leaking before a delayed source origin. Adds cancellation checks during point construction and immediately before publication; no accepted sampler clock, numerical calibration, comparator, rank, tolerance, factory preset, rack, graph, export or source rights change. Only zaaggenz_contracts/nyquismic_controls.py changes within ZG-024a's implementation manifest. Before candidate registration, exact-head run https://github.com/techrote/zaaggenz/actions/runs/42134227832 at commit 5bdda8e7ad382aa36b1b418dc8deac8a2ef5d866 independently reproduced implementation SHA 76af54ec334d23f3bb65d33ac500b314931ef34156d3ac875746d4f48481fd3b on Ubuntu and Windows, six fixtures/36 candidates each, and precisely the same seven historical #87 transient-v4 state/gate projection differences; no additional portable comparison differences. Candidate only, NOT independent review or acceptance. Shared NYQ-003/#266 ledgers require guarded integration reconciliation, successful fresh final-head direct/reverse CI and owner-only gates before merge."
     }
   ],
   "version": "1.0.0"
