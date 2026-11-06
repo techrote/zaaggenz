@@ -226,11 +226,26 @@ class Reconciler:
             # avoidable concurrent children. The superseded run is not
             # qualified, and the older active run cannot stand in for it.
             # Require operator reconciliation instead of a second POST.
-            if any(run["id"] != latest["id"] and run.get("status") in ACTIVE
-                   for run in candidates):
-                raise ReconcileError(
-                    f"{workflow}: latest exact-head run cancelled but an older "
-                    "same-source child is still active; dispatch blocked")
+            for previous in candidates:
+                if previous["id"] == latest["id"]:
+                    continue
+                # The listing is eventually consistent: a previous child may
+                # still be executing even when its cached list row says
+                # completed. Inspect the authoritative run detail for EVERY
+                # prior same-source child before permitting replacement.
+                if previous["status"] in ACTIVE:
+                    raise ReconcileError(
+                        f"{workflow}: latest exact-head run cancelled but an older "
+                        "same-source child is still active; dispatch blocked")
+                actual_previous = self.get_run(previous["id"])
+                self.verify(row, actual_previous)
+                if actual_previous["run_attempt"] != previous["run_attempt"]:
+                    raise ReconcileError(
+                        f"{workflow}: older child attempt changed during cancelled-run reconciliation")
+                if actual_previous["status"] in ACTIVE:
+                    raise ReconcileError(
+                        f"{workflow}: latest exact-head run cancelled but an older "
+                        "same-source child is still active in authoritative run detail; dispatch blocked")
             return "missing_or_cancelled", None
         raise QualificationFailed(f"{workflow}: latest exact-head run {detail['id']} is "
                                   f"{detail['status']}/{detail.get('conclusion')}; explicit repair required")
