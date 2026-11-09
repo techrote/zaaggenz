@@ -69,6 +69,19 @@ function requiredDraftInteger(node,label,minimum,maximum){
   }
   return node.reportValidity()?value:null;
 }
+function requiredCombTeeth(node,maxHz){
+  node.setCustomValidity('');
+  const parts=node.value.split(',').map(value=>value.trim());
+  const teeth=parts.map(value=>Number(value));
+  const valid=parts.length>=1&&parts.length<=128&&
+    parts.every(value=>value!=='')&&
+    teeth.every((value,index)=>Number.isFinite(value)&&value>0&&
+      value<=maxHz&&(index===0||value>teeth[index-1]));
+  if(!valid)node.setCustomValidity(
+    'Manual comb requires 1–128 strictly increasing positive finite frequencies '+
+    'in Hz, no greater than Nyquist ('+maxHz+' Hz).');
+  return node.reportValidity()?teeth:null;
+}
 function choice(parent,label,current,values,action,apply){
   const wrapper=make('label',label);const node=make('select');
   for(const value of values)node.append(new Option(value,value));
@@ -107,6 +120,17 @@ export function renderRack(host,state,apply,tools={}){
   // Specialist add forms are not yet authoritative processing state. Retain
   // typed values across unrelated validated rack edits, but never carry them
   // into another source/project or onto a different stable insert identity.
+  const openChordness=sameProject?new Set(Array.from(
+    host.querySelectorAll('.rack-chordness-create[open][data-band-id]'),
+    node=>node.dataset.bandId)):new Set();
+  const chordDrafts=new Map();
+  if(sameProject)for(const panel of host.querySelectorAll(
+    '.rack-chordness-create[data-band-id]')){
+    chordDrafts.set(panel.dataset.bandId,{
+      teeth:panel.querySelector('[data-chord-draft="teeth"]')?.value,
+      label:panel.querySelector('[data-chord-draft="label"]')?.value,
+    });
+  }
   const spectralDrafts=new Map();
   if(sameProject)for(const panel of host.querySelectorAll('.rack-spectral[data-insert-id]')){
     const get=key=>panel.querySelector('[data-rack-draft="'+key+'"]')?.value;
@@ -161,6 +185,38 @@ export function renderRack(host,state,apply,tools={}){
     for(const typeId of Object.keys(state.parameters)){
       if(band.inserts.some(i=>i.type_id===typeId))continue;
       button(additions,'Add '+typeId.slice(3),{kind:'add',band:band.id,type_id:typeId},apply);
+    }
+    if(!band.inserts.some(stage=>stage.type_id==='zg.spectral')){
+      const chord=make('details');chord.className='rack-chordness-create';
+      chord.dataset.bandId=band.id;chord.open=openChordness.has(band.id);
+      additions.append(chord);
+      chord.append(make('summary','Create manual Chordness stage'));
+      chord.append(make('p','Enter real positive target comb frequencies in Hz. '+
+        'The new stage starts in Off mode; explicitly choose reweight, retune or hybrid '+
+        'to change the sound. Source tuning is never rewritten.'));
+      const draft=chordDrafts.get(band.id);
+      const teethLabel=make('label','Manual comb teeth (Hz, comma-separated)');
+      const teeth=make('input');teeth.type='text';
+      teeth.placeholder='110, 220, 330';
+      teeth.dataset.chordDraft='teeth';
+      teeth.dataset.rackControlKey=controlKey({kind:'chord_draft',id:band.id,field:'teeth'});
+      teeth.value=draft?.teeth??'';
+      teeth.addEventListener('input',()=>teeth.setCustomValidity(''));
+      teethLabel.append(teeth);chord.append(teethLabel);
+      const nameLabel=make('label','Manual comb label');
+      const name=make('input');name.maxLength=128;name.value=draft?.label??'Manual comb';
+      name.dataset.chordDraft='label';
+      name.dataset.rackControlKey=controlKey({kind:'chord_draft',id:band.id,field:'label'});
+      nameLabel.append(name);chord.append(nameLabel);
+      const create=make('button','Add manual Chordness (off)');
+      create.type='button';
+      create.dataset.rackControlKey=controlKey({kind:'add_chordness',band:band.id});
+      create.addEventListener('click',()=>{
+        const values=requiredCombTeeth(teeth,rack.sample_rate_hz/2);
+        if(values===null)return;
+        apply({kind:'add_chordness',band:band.id,teeth_hz:values,label:name.value});
+      });
+      chord.append(create);
     }
     if(!band.inserts.length)panel.append(make('p','No active stages. This band is unchanged.'));
     band.inserts.forEach((stage,index)=>{
