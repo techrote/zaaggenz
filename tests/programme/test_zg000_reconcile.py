@@ -808,7 +808,7 @@ class ZG000RegressionTests(unittest.TestCase):
         api = FakeAPI()
         api.put_parent(run_id=41691032000, sha=A)
         api.parent_hide_older_until = 1
-        with self.assertRaisesRegex(ReconcileError, "prior same-head orchestration"):
+        with self.assertRaisesRegex(ReconcileError, "changing orchestration-parent inventory"):
             make(api).dispatch()
         self.assertEqual(2, api.parent_poll)
         self.assertEqual([], api.posts)
