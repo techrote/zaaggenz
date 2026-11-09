@@ -242,6 +242,52 @@ def _bounded_linear_root(rate: Fraction, slope: Fraction, target: Fraction
     return (t_low + t_high) / 2, radius
 
 
+# This smaller, explicitly versioned execution subset is useful before general
+# exponential phase integration exists.  Its physical rate is rational at
+# every instant; fractional-octave or time-ramped log controls are *not*
+# rounded to integer octaves.
+STEP_LOG2_METHOD = 'nyq.exact-integer-octave-step-clock.v1'
+
+
+def _exact_integer_octave_step_rate(
+    spec: SonicSpec, at: Fraction, *, channel: int,
+) -> Fraction:
+    """Evaluate ordered step controls as exact rational Hz.
+
+    In the admitted subset every logarithmic exponent depth*control is an
+    integer throughout an open segment. Multiplication by 2**integer then
+    preserves rational physical phase; decimal exponential approximations
+    from the general *inspector* must not become clock geometry.
+    """
+    clock = spec.clock
+    origin = Fraction(clock.origin_s)
+    rate = _curve(clock.rate.hz, clock.points_hz,
+                  clock.interpolation, origin, at)
+    for route in clock.routes:
+        control = _curve(Fraction(route.initial), route.points,
+                         route.interpolation, origin, at)
+        exponent = Fraction.from_float(route.depth) * control
+        if route.mapping == 'add_hz':
+            rate += exponent
+        else:
+            require(exponent.denominator == 1,
+                    'integer-octave clock requires exact integral log2 exponent; '
+                    'fractional exponential phase is unsupported')
+            rate *= Fraction(2) ** exponent.numerator
+        require(MIN_RATE_HZ <= rate <= MAX_RATE_HZ,
+                'exact stepped route has an invalid intermediate rate')
+    if clock.quantizer.policy == 'nearest_hz':
+        rate = nearest_ladder_hz(rate, clock.quantizer.levels_hz)
+    if clock.jitter.model == 'uniform_frequency_cells_v1':
+        cell = (at - origin) // Fraction(clock.jitter.cell_s)
+        rate *= (Fraction(1) +
+                 Fraction.from_float(clock.jitter.amount) *
+                 clock_cell_value(spec, cell_index=cell, channel=channel))
+    require(MIN_RATE_HZ <= rate <= MAX_RATE_HZ,
+            'exact integer-octave clock outside physical rate bounds')
+    return rate
+
+
 def compile_step_clock_events(
     spec: SonicSpec, end_s: str, *, channel: int = 0,
     budget=None, cancelled=None,
@@ -252,8 +298,11 @@ def compile_step_clock_events(
     exactly in rational phase and return platform-independent, explicitly
     bounded rational timestamp approximations for irrational roots.
     Counter-addressed jitter is permitted when piecewise-constant per cell.
-    Quantized ramps, logarithmic routes, derived controls and beat-sync are
-    deliberately rejected until their discontinuities/phase are specified.
+    Quantized affine-Hz ramps and exact *integer-octave* step log2 routes
+    are admitted with rational phase. Fractional-exponent or time-varying
+    logarithmic routes are deliberately rejected: their exponential phase
+    integral needs a separate certified root method. Derived controls and
+    beat-sync require precompiled, source-bound physical-time routes.
     
     This is a standalone numerical clock *proof*, not a SamplerPlan adapter.
     It publishes no audio, checkpoints, project migrations or rack capability.
@@ -276,9 +325,11 @@ def compile_step_clock_events(
         r.interpolation == 'linear' and bool(r.points) for r in clock.routes)
     quantized_linear = linear and clock.quantizer.policy == 'nearest_hz'
 
-    for route in clock.routes:
-        if route.mapping != 'add_hz':
-            raise UnsupportedNyquismic('controlled clock logarithmic route integration not implemented')
+    has_log2 = any(route.mapping == 'log2_ratio' for route in clock.routes)
+    if has_log2 and linear:
+        raise UnsupportedNyquismic(
+            'controlled clock exponential ramp integration not implemented; '
+            'integer-octave log2 currently requires step-only automation/routes')
     if cancelled is not None and cancelled():
         raise ClockCancelled('controlled clock cancelled; no partial event publication')
 
@@ -354,14 +405,22 @@ def compile_step_clock_events(
         # evaluator deliberately selects the LOWER value, but the open
         # interval to its right owns the HIGHER rate. A midpoint sample
         # selects that right-hand interval value for continuous phase.
-        rate_at = midpoint if quantized_linear else a
-        rate = Fraction(evaluate_instantaneous_rate(
-            spec, qtext(rate_at), channel=channel).realized_hz)
+        if has_log2:
+            # Strict step-only, integer-exponent execution. Physical phase
+            # cannot borrow Decimal80 inspector samples: even a small
+            # exponential approximation changes event ownership.
+            rate = _exact_integer_octave_step_rate(
+                spec, midpoint, channel=channel)
+            middle_rate = rate
+        else:
+            rate_at = midpoint if quantized_linear else a
+            rate = Fraction(evaluate_instantaneous_rate(
+                spec, qtext(rate_at), channel=channel).realized_hz)
+            # All affine and discontinuity boundaries have already been cut.
+            middle_rate = (Fraction(evaluate_instantaneous_rate(
+                spec, qtext(midpoint), channel=channel).realized_hz)
+                           if linear and not quantized_linear else rate)
         require(rate > 0, 'controlled clock rate must be positive')
-        # All affine and discontinuity boundaries have already been cut.
-        middle_rate = (Fraction(evaluate_instantaneous_rate(
-            spec, qtext(midpoint), channel=channel).realized_hz)
-                       if linear and not quantized_linear else rate)
         endpoint_rate = 2 * middle_rate - rate
         require(endpoint_rate > 0, 'controlled clock endpoint rate must be positive')
         slope = (endpoint_rate - rate) / (b - a)
