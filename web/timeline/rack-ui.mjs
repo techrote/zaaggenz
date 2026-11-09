@@ -84,6 +84,9 @@ function requiredCombTeeth(node,maxHz){
 }
 function choice(parent,label,current,values,action,apply){
   const wrapper=make('label',label);const node=make('select');
+  // The select's explicit accessible name is independent of its nested
+  // option labels, even after a validated editor redraw.
+  node.setAttribute('aria-label',label);
   for(const value of values)node.append(new Option(value,value));
   node.value=current;node.dataset.rackControlKey=controlKey(action);
   node.addEventListener('change',()=>apply({...action,value:node.value}));
