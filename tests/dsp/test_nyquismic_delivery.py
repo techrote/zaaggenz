@@ -3,6 +3,7 @@
 This does not qualify the real export path, production convergence gate,
 Nyquismic graph integration or a universal 'cleaner sounds better' claim.
 """
+import hashlib
 import unittest
 from unittest.mock import patch
 
@@ -141,6 +142,66 @@ class DeliveryConversionTests(unittest.TestCase):
         self.assertEqual(actual.diagnostics['source_frames'], 960)
         self.assertEqual(actual.diagnostics['kernel_sha256'],
                          expected.diagnostics['kernel_sha256'])
+        self.assertEqual(actual.diagnostics['source_pcm_sha256'],
+                         expected.diagnostics['source_pcm_sha256'])
+        self.assertEqual(actual.diagnostics['output_pcm_sha256'],
+                         expected.diagnostics['output_pcm_sha256'])
+
+    def test_delivered_physical_alias_survives_without_implicit_virtual_cleaning(self):
+        # A real 6 kHz source sampled on an 8 kHz physical event lattice
+        # produces a 2 kHz alias. Delivery anti-aliasing must remove
+        # numerical-grid foldover, not undo the ALREADY CAPTURED dirty alias.
+        # A separate explicitly selected source prefilter may attenuate it.
+        from dataclasses import replace
+        from zaaggenz_contracts.nyquismic import (
+            ClockSpec, SonicSpec, VirtualRate, GUARDED_CLEAN_PREFILTER,
+        )
+        from zaaggenz_dsp.nyquismic import (
+            FrozenInput, SamplerPlan, sampler_evaluation,
+        )
+        source = FrozenInput.from_pcm(
+            np.sin(2 * np.pi * 6000 * np.arange(12000) / 48000).astype('<f4'),
+            48000,
+        )
+        dirty = SonicSpec(clock=ClockSpec(rate=VirtualRate('8000/1')),
+                          reconstruction='hold_v1', prefilter='off_v1')
+        guarded = replace(dirty, prefilter=GUARDED_CLEAN_PREFILTER)
+
+        def amplitude_at_2000_hz(audio):
+            # 0.05..0.2 seconds is a coherent 7,200-frame comparison window,
+            # excluding physical start/end and FIR edge transients.
+            interior = audio[2400:9600]
+            return float(2 * abs(np.fft.rfft(interior)[300]) / len(interior))
+
+        amplitudes = []
+        for evaluation_rate in (192000, 384000):
+            captures = []
+            outputs = []
+            for sonic in (dirty, guarded):
+                plan = SamplerPlan.prepare(
+                    source, sonic, sampler_evaluation(evaluation_rate),
+                    frame_count=evaluation_rate // 4,
+                )
+                numerical = plan.render().audio
+                final = convert_numerical_to_delivery(
+                    numerical, evaluation_rate, 48000)
+                self.assertEqual(final.audio.shape, (12000,))
+                self.assertEqual(final.diagnostics['source_pcm_sha256'],
+                                 hashlib.sha256(np.asarray(
+                                     numerical, dtype='<f8').tobytes()).hexdigest())
+                self.assertEqual(final.diagnostics['output_pcm_sha256'],
+                                 hashlib.sha256(np.asarray(
+                                     final.audio, dtype='<f8').tobytes()).hexdigest())
+                self.assertFalse(final.audio.flags.writeable)
+                captures.append(plan._coordinates)
+                outputs.append(final.audio)
+            self.assertEqual(captures[0], captures[1])
+            aliased = amplitude_at_2000_hz(outputs[0])
+            cleaned = amplitude_at_2000_hz(outputs[1])
+            self.assertGreater(aliased, .75)
+            self.assertLess(cleaned, .03)
+            amplitudes.append(aliased)
+        self.assertLess(abs(amplitudes[0] - amplitudes[1]), .02)
 
     def test_cancellation_can_abort_before_and_after_atomic_calculation(self):
         source = np.arange(512, dtype=np.float64)

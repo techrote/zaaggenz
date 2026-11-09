@@ -324,3 +324,26 @@ spectral/transient acceptance threshold, production export support, or
 musical superiority is established by this helper. Those remain required
 to close #252. This comparison component cannot undo aliases formed at
 the virtual capture stage.
+
+### Physical alias through actual sampler and local delivery conversion
+
+The optional delivery component now reports canonical `unclamped-f64le-interleaved-v1`
+SHA-256 identities for **the privately admitted numerical input PCM** and
+**the resulting delivery PCM**, in addition to the existing kernel/policy
+identity. These are audio-byte custody diagnostics, not validation that an
+external renderer supplied the right source/clock or a proof of musical merit.
+They do not change the sonic contract, PCM samples, default output or export
+authority.
+
+The end-to-end DSP regression builds one immutable 48 kHz, 6 kHz tone,
+executes actual 8 kHz virtual-clock captures with 192 and 384 kHz numerical
+evaluation, then performs 48 kHz local FIR delivery. It checks the expected
+2 kHz intentionally captured alias survives both numerical evaluation rates.
+An explicitly opted-in 129-tap guarded **source** prefilter suppresses that
+alias; the resulting physical event coordinates must remain identical.
+Measured interior alias amplitudes and source/output PCM hashes are checked
+from the actual delivered signals. This exercises a distinct acceptance
+question from the existing isolated converter's evaluation-grid rejection.
+It still does **not** certify ordinary Compose, production export, a general
+alias-free clean policy for arbitrary nonuniform clocks, or human listening.
+

@@ -138,6 +138,14 @@ def convert_numerical_to_delivery(
             'clipping': policy.clipping,
             'source_frames': frames,
             'output_frames': output_frames,
+            # Hash the PRIVATE admitted numerical PCM and the actual delivered
+            # PCM in a canonical f64le interleaved domain. Kernel identity alone
+            # cannot establish which audible bytes a candidate processed.
+            'pcm_identity_domain': 'unclamped-f64le-interleaved-v1',
+            'source_pcm_sha256': hashlib.sha256(
+                np.asarray(samples, dtype='<f8').tobytes(order='C')).hexdigest(),
+            'output_pcm_sha256': hashlib.sha256(
+                np.asarray(result, dtype='<f8').tobytes(order='C')).hexdigest(),
             'time_origin_s': '0/1',
             'output_extent_s': f'{Fraction(output_frames, delivery_rate_hz).numerator}/{Fraction(output_frames, delivery_rate_hz).denominator}',
         },
