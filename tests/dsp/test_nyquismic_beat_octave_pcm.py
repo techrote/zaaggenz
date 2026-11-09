@@ -38,7 +38,8 @@ def musical_source():
 def clock_spec(route):
     return SonicSpec(
         instance_id='tempo-octave-physical',
-        clock=ClockSpec(rate=VirtualRate('200/1'), routes=(route,)),
+        clock=ClockSpec(rate=VirtualRate('200/1'),
+                        routes=() if route is None else (route,)),
     )
 
 
