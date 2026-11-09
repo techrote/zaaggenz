@@ -423,3 +423,40 @@ Real stereo, empty signal, hash custody, cancellation and strict failure tests:
 The converter remains one-shot with cancellation before/after the SciPy FIR;
 this is local DSP evidence, not a production/export admission or a new
 default sound.
+
+
+## Opt-in four-source-frame Catmull-Rom capture (NYQ-003)
+
+`SonicSpec.capture='cubic_catmull_rom_v1'` is an additional, serialized
+**source-domain capture interpolator**, independent of the separately selected
+virtual-event reconstruction (`hold_v1`, linear, nearest, cubic or sinc).
+It changes only how the immutable 48 kHz (or explicitly declared source-rate)
+PCM is evaluated at exact physical virtual-event times. The default remains
+`linear_v1`; `nearest_left_tie_v1` remains unchanged.
+
+For source-frame position `n+u`, `0 <= u < 1`, let `p=s[n-1]`,
+`a=s[n]`, `b=s[n+1]`, `q=s[n+2]`. The opt-in interpolator is the
+four-tap Catmull-Rom Hermite polynomial with slopes `(b-p)/2` and
+`(q-a)/2`, evaluated in float64. At `u=1/2` its independent oracle is
+`(-p+9*a+9*b-q)/16`. `zero_pad` and `edge_hold` use the existing
+source boundary policy for **each** tap, even at the terminal endpoint.
+Integer captures reproduce original PCM exactly; there is no amplitude
+clamp, hidden low-pass, event-clock modification or change in output extent.
+The cubic can overshoot (for example, [0,1,1,0] produces 1.125), which is
+intentional source-interpolation color, not a numerically cleaned signal.
+
+This option is **not** a bandlimited/source-perfect interpolator. It has two
+source-frame neighbors outside the center interval; nonzero pre/post
+overshoot is possible, and aliasing formed on the virtual sampling lattice
+cannot be undone by subsequent reconstruction. The capture method and
+source-frame support appear in sampler diagnostics and the saved sonic
+SHA. Bypass/zero-wet remain raw-source identity on matched source grids.
+
+Original-source fractional event/PCM regressions, including independent
+midpoint/boundary oracles, stereo, chunk/checkpoint, 192/384 kHz delivered
+2.1 kHz intentional alias, silence and unsupported-mode refusal:
+
+`python -m unittest discover -s tests/dsp -p 'test_nyquismic_source_cubic_capture.py' -v`
+
+This remains local DSP on Draft #266; not graph/rack/export acceptance,
+general convergence certification or owner listening.

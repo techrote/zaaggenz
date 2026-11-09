@@ -462,7 +462,8 @@ class SonicSpec(_Record):
                         'speed points must follow clock origin')
             else:
                 require(self.playback is None, 'sampler does not contain an implicit playback warp')
-        choice(self.capture, 'capture interpolation', ('linear_v1', 'nearest_left_tie_v1'))
+        choice(self.capture, 'capture interpolation', ('linear_v1', 'nearest_left_tie_v1',
+                                                       'cubic_catmull_rom_v1'))
         choice(self.prefilter, 'prefilter', ('off_v1', *STATIC_FIR_PREFILTER_POLICIES))
         choice(self.reconstruction, 'reconstruction', ('hold_v1', 'linear_time_v1',
                                                       'nearest_time_v1', 'cubic_time_v1',

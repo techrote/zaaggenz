@@ -253,6 +253,20 @@ def _sample_at(pcm: np.ndarray, position: Fraction | Decimal, capture: str, boun
             return pcm[min(max(index, 0), len(pcm) - 1)].astype(np.float64)
         return pcm[index].astype(np.float64) if 0 <= index < len(pcm) else np.zeros(pcm.shape[1], dtype=np.float64)
     a, b = value(left), value(left + 1)
+    if capture == 'cubic_catmull_rom_v1':
+        # Four *source*-frame Catmull-Rom samples, not the separate
+        # virtual-event reconstruction cubic. Uniform source-frame spacing
+        # makes the central secants (b - p)/2 and (q - a)/2 physical-time
+        # slopes after the common source-period factor cancels.
+        # Evaluate an exact integer source position without a needless
+        # polynomial combination, retaining its float32 -> float64 value.
+        if fraction == 0:
+            return a
+        p, q = value(left - 1), value(left + 2)
+        u = float(fraction)
+        u2, u3 = u * u, u * u * u
+        return ((2*u3 - 3*u2 + 1)*a + (u3 - 2*u2 + u)*(b - p)/2
+                + (-2*u3 + 3*u2)*b + (u3 - u2)*(q - a)/2)
     return a + float(fraction) * (b - a)
 
 
@@ -726,7 +740,10 @@ class SamplerPlan:
             'clock_oracle_tolerance': '2e-12 seconds + 8 ulps; counts and membership exact',
             'origin_s': self.spec.clock.origin_s, 'initial_phase_cycles': self.spec.clock.phase_cycles,
             'resets': [r.to_dict() for r in self.spec.clock.resets],
-            'capture': self.spec.capture, 'reconstruction': self.spec.reconstruction,
+            'capture': self.spec.capture,
+            'capture_support_source_frames': ([-1, 0, 1, 2] if self.spec.capture == 'cubic_catmull_rom_v1'
+                                              else [0, 1] if self.spec.capture == 'linear_v1' else [0]),
+            'reconstruction': self.spec.reconstruction,
             'reconstruction_support_events': (8 if self.spec.reconstruction in
                                               ('sinc8_hann_uniform_v1', 'shepard8_hann_local_time_v1',
                                                'sinc8_hann_local_time_v1')
