@@ -2,7 +2,10 @@
 from __future__ import annotations
 import argparse
 import hashlib
+import io
 import json
+import numpy as np
+from scipy.io import wavfile
 from fractions import Fraction
 import os
 from pathlib import Path
@@ -484,6 +487,8 @@ def main():
             page.locator('#open').set_input_files(short_path)
             expect(page.locator('#revision')).to_have_text(short_doc.revision_id)
             ready()
+            one_bar_dry_job=rendered('rack-one-bar-dry-reference')
+            one_bar_dry_pcm=server.timeline.scheduler.result(one_bar_dry_job).audio_bytes
             # Real spectral request authoring uses the accepted source tuning,
             # executes the existing band-selective DSP and saves its exact
             # nested target/selection contract. No new audio backend or mock.
@@ -554,6 +559,21 @@ def main():
             cap=chord_panel.get_by_label('max selected templates',exact=False)
             cap.fill('2');cap.press('Tab');ready()
             chord_panel.get_by_label('Select template Second comb (user.manual.2)').check();ready()
+            # Freeze a highmid-band target, rather than relying on a comb
+            # wholly below this band's 520 Hz crossover. This is still an
+            # ordinary source-bound UI edit, not a fabricated server request.
+            high_teeth=chord_panel.get_by_label(
+                'Template user.manual.2 teeth (Hz, comma-separated)')
+            high_teeth.fill('900, 1800, 2700')
+            high_teeth.press('Tab');ready()
+            chord_panel.get_by_label(
+                'Select template Musical upper comb (user.manual)').uncheck();ready()
+            for label,value in (('min confidence · ratio','0'),
+                                ('max gain db · dB','18'),
+                                ('max gain slew db per second · dB/s','120')):
+                field=chord_panel.get_by_label(label)
+                field.fill(value);field.dispatch_event('change');ready()
+            chord_panel.get_by_label('preserve ambiguous').uncheck();ready()
             chord_panel.get_by_role('combobox',name='mode',exact=True).select_option('reweight');ready()
             activated=saved('rack-chordness-active.zgtimeline.json')
             activated_rack=json.loads(activated['project']['revisions'][-1]['recipe_json'])['rack']
@@ -564,9 +584,131 @@ def main():
             chord_report=server.timeline.status(chord_job)['artifact']['scopes']['diagnostics']['rack']
             assert any(stage['type_id']=='zg.spectral' and stage['executed']
                        for row in chord_report['bands'] for stage in row['stages'])
+            chord_processor=next(stage['processor'] for stage in chord_report['bands'][2]['stages']
+                                 if stage['type_id']=='zg.spectral')
+            assert chord_processor['diagnostics']['changed_frames']>0, (
+                'The highmid Chordness fixture is an inactive/abstained spectral transform: '
+                +repr(chord_processor['diagnostics']))
+            assert chord_audio!=one_bar_dry_pcm, (
+                'Active Chordness must change numerical Compose PCM, not only metadata')
             page.locator('#open').set_input_files(args.out/'rack-chordness-active.zgtimeline.json');ready()
             chord_reloaded=rendered('rack-chordness-reopened')
             assert server.timeline.scheduler.result(chord_reloaded).audio_bytes==chord_audio
+            # MBR-003 independent-review closure: an actual user-authored
+            # noncommuting spectral/compressor chain in the normal Compose UI.
+            # The immediately preceding numerical spectral render must already
+            # show changed component frames and PCM against a matched dry source.
+            # Add the compressor through the browser, not through a preloaded
+            # RackRecipe, and use one stable stage identity for both orders.
+            highmid=page.locator('#rack-editor .rack-band').nth(2)
+            highmid.get_by_role('button',name='Add compression').click();ready()
+            added=saved('rack-order-with-compressor.zgtimeline.json')
+            added_stages=json.loads(added['project']['revisions'][-1]['recipe_json'])[
+                'rack']['bands'][2]['inserts']
+            assert [stage['type_id'] for stage in added_stages]==[
+                'zg.spectral','zg.compression'], added_stages
+            compressor_id=added_stages[1]['id']
+            compression_panel=highmid.locator('.rack-stage').filter(
+                has=page.locator('.rack-stage-id',has_text=compressor_id))
+            expect(compression_panel).to_have_count(1)
+            for label,value in (('threshold db · dBFS','-40'),
+                                ('ratio · ratio','8'),
+                                ('attack ms · ms','0.1'),
+                                ('release ms · ms','35')):
+                field=compression_panel.get_by_label(label)
+                field.fill(value);field.dispatch_event('change');ready()
+            order_a_doc=saved('rack-order-spectral-then-compression.zgtimeline.json')
+            order_a=json.loads(order_a_doc['project']['revisions'][-1]['recipe_json'])[
+                'rack']['bands'][2]['inserts']
+            assert [stage['id'] for stage in order_a]==[chord_stage['id'],compressor_id]
+            order_a_job=rendered('rack-order-spectral-then-compression')
+            order_a_audio=server.timeline.scheduler.result(order_a_job).audio_bytes
+            order_a_report=server.timeline.status(order_a_job)['artifact'][
+                'scopes']['diagnostics']['rack']
+            assert order_a_report['normalization']=='none'
+            assert order_a_report['bands'][2]['order']==[chord_stage['id'],compressor_id]
+            # The move button must operate the compressor's *existing ID*.
+            # An old completed result is revoked on the intervening edit.
+            compression_panel.get_by_role('button',name='Move up').click()
+            expect(page.locator('#play')).to_be_disabled()
+            ready()
+            order_b_doc=saved('rack-order-compression-then-spectral.zgtimeline.json')
+            order_b=json.loads(order_b_doc['project']['revisions'][-1]['recipe_json'])[
+                'rack']['bands'][2]['inserts']
+            assert [stage['id'] for stage in order_b]==[compressor_id,chord_stage['id']]
+            assert {stage['id']:stage for stage in order_a}=={
+                stage['id']:stage for stage in order_b}, (
+                'The UI reorder changed stable identities, stage parameters or bypass policy')
+            order_b_job=rendered('rack-order-compression-then-spectral')
+            order_b_audio=server.timeline.scheduler.result(order_b_job).audio_bytes
+            order_b_report=server.timeline.status(order_b_job)['artifact'][
+                'scopes']['diagnostics']['rack']
+            assert order_b_report['normalization']=='none'
+            assert order_b_report['bands'][2]['order']==[compressor_id,chord_stage['id']]
+            # An actually active transform, not a no-op spectral request or a
+            # makeup-only compressor, is required in *both* orders.
+            measured_order=[]
+            for report in (order_a_report,order_b_report):
+                rows=report['bands'][2]['stages']
+                assert all(row['executed'] for row in rows),rows
+                spectrum=next(row['processor']['diagnostics']
+                              for row in rows if row['type_id']=='zg.spectral')
+                dynamics=next(row['processor']['diagnostics']
+                              for row in rows if row['type_id']=='zg.compression')
+                assert spectrum['changed_frames']>0, (
+                    'No numerical spectral action in a claimed noncommuting order: '
+                    +repr(spectrum))
+                assert dynamics['max_gain_reduction_db']>0, (
+                    'No actual gain reduction in a claimed noncommuting order: '
+                    +repr(dynamics))
+                measured_order.append({
+                    'spectral_changed_frames':spectrum['changed_frames'],
+                    'compressor_max_gain_reduction_db':dynamics['max_gain_reduction_db']})
+            rate_a,samples_a=wavfile.read(io.BytesIO(order_a_audio))
+            rate_b,samples_b=wavfile.read(io.BytesIO(order_b_audio))
+            assert rate_a==rate_b==args.sample_rate
+            assert samples_a.dtype==samples_b.dtype and samples_a.shape==samples_b.shape
+            scale=(float(np.iinfo(samples_a.dtype).max)
+                   if samples_a.dtype.kind in 'iu' else 1.)
+            diff=(samples_a.astype(np.float64)-samples_b.astype(np.float64))/scale
+            difference_rms=float(np.sqrt(np.mean(diff*diff)))
+            assert difference_rms>1e-5, (
+                'Spectral/compressor order must change PCM measurably on this '
+                'prequalified source: RMS difference='+repr(difference_rms))
+            (args.out/'rack-order-numerical-evidence.json').write_text(json.dumps({
+                'source':'one-bar ordinary Compose saved project',
+                'sample_rate_hz':args.sample_rate,
+                'stage_ids':[chord_stage['id'],compressor_id],
+                'stage_order_a':[stage['id'] for stage in order_a],
+                'stage_order_b':[stage['id'] for stage in order_b],
+                'stage_activity':measured_order,
+                'pcm_difference_rms_full_scale':difference_rms,
+                'normalization':'none',
+                'wav_sha256_a':hashlib.sha256(order_a_audio).hexdigest(),
+                'wav_sha256_b':hashlib.sha256(order_b_audio).hexdigest(),
+            },sort_keys=True,indent=2)+'\n',encoding='utf-8')
+            # Reopen both exact authored revisions and demand byte-identical
+            # processed WAVs, not a cached monitor result. Bypassing the
+            # complete chain must reproduce the one-bar no-rack PCM exactly.
+            page.locator('#open').set_input_files(
+                args.out/'rack-order-spectral-then-compression.zgtimeline.json');ready()
+            reopened_a=rendered('rack-order-spectral-then-compression-reopened')
+            assert server.timeline.scheduler.result(reopened_a).audio_bytes==order_a_audio
+            page.locator('#open').set_input_files(
+                args.out/'rack-order-compression-then-spectral.zgtimeline.json');ready()
+            reopened_b=rendered('rack-order-compression-then-spectral-reopened')
+            assert server.timeline.scheduler.result(reopened_b).audio_bytes==order_b_audio
+            page.get_by_label('Bypass rack').check();ready()
+            bypassed_job=rendered('rack-order-full-bypass')
+            assert server.timeline.scheduler.result(bypassed_job).audio_bytes==one_bar_dry_pcm, (
+                'Full rack bypass is not byte-identical to the matched dry Compose source')
+            page.get_by_label('Bypass rack').uncheck();ready()
+            # Return to one Chordness insert, so the original subsequent
+            # spectral-retune and legacy timeline regressions are unchanged.
+            highmid=page.locator('#rack-editor .rack-band').nth(2)
+            compression_panel=highmid.locator('.rack-stage').filter(
+                has=page.locator('.rack-stage-id',has_text=compressor_id))
+            compression_panel.get_by_role('button',name='Remove insert').click();ready()
             highmid=page.locator('#rack-editor .rack-band').nth(2)
             highmid.get_by_role('button',name='Remove insert').click();ready()
             assert not json.loads(saved('rack-chordness-removed.zgtimeline.json')[
