@@ -12,7 +12,8 @@ sys.path.insert(0,str(ROOT/'app'))
 sys.path.insert(0,str(ROOT/'tools'))
 from zg242_spectral_portability_trace import (
     capture_document,compare_trace,pcm_identity,delta_metrics,
-    _support_extent,TRACE_VERSION,decode_float32_wav)
+    _support_extent,TRACE_VERSION,decode_float32_wav,
+    _numerical_tensor,_first_tensor_delta,compare_subledger,_tracker_taps)
 
 
 class PortabilityTraceTests(unittest.TestCase):
@@ -69,6 +70,52 @@ class PortabilityTraceTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'mismatched'):
             compare_trace(t,{**t,'rack_sonic_sha256':'foreign'})
         self.assertEqual(_support_extent({'decisions':[]}),None)
+
+
+    def test_binary_subledger_hex_and_source_binding(self):
+        a=np.zeros((2,1,3),dtype=np.float64);b=a.copy()
+        b[0,0,1]=np.nextafter(0.,1.)
+        d=_first_tensor_delta(_numerical_tensor(a),_numerical_tensor(b))
+        self.assertEqual(d['frame'],0)
+        self.assertEqual(d['index'],[0,1])
+        self.assertEqual(d['ubuntu_hex'],'0x0.0p+0')
+        self.assertEqual(d['windows_hex'],float(b[0,0,1]).hex())
+        self.assertIsNone(_first_tensor_delta(_numerical_tensor(a),_numerical_tensor(a)))
+        with self.assertRaisesRegex(ValueError,'non-finite'):
+            _numerical_tensor(np.array([[np.nan]]))
+        x=np.zeros((1,1,3),dtype=np.complex128)
+        y=x.copy();y[0,0,1]=1j*np.nextafter(0.,1.)
+        stft={'input':{'shape':[2],'f64le_sha256':'same'},'spec':{},
+              'sample_rate_hz':48000,'anchors':[0],'supports':[[-1,1]],
+              'valid_fraction':['0x1.0p+0'],'weighted':_numerical_tensor(a[:1,:,:2]),
+              'rfft':_numerical_tensor(x)}
+        u={'analysis_input':stft['input'],'subledger':{'stft':stft,'candidates':[],'assignments':[]}}
+        w={'analysis_input':stft['input'],'subledger':{'stft':{**stft,'rfft':_numerical_tensor(y)},
+             'candidates':[],'assignments':[]}}
+        result=compare_subledger(u,w)
+        self.assertEqual(result['first_boundary'],'stft-native-rfft-output')
+        self.assertEqual(result['first_numeric_difference']['index'],[0,1])
+        self.assertEqual(result['first_numeric_difference']['component'],'imag')
+        self.assertEqual(compare_subledger(u,{**w,'analysis_input':
+            {'shape':[2],'f64le_sha256':'foreign'}})['first_boundary'],
+            'different-f64-analysis-input')
+
+    def test_live_tracker_taps_restore_native_functions(self):
+        from contextlib import ExitStack
+        from zaaggenz_components import tracker as tr
+        source=np.sin(2*np.pi*440*np.arange(2400)/12000).astype(np.float32)*.05
+        uninstrumented=tr.analyse_components(source,12000)
+        fft=np.fft.rfft;stft=tr.stft
+        active=[{'stft':None,'candidates':[],'assignments':[],'transient':None}]
+        with ExitStack() as stack:
+            _tracker_taps(stack,active)
+            instrumented=tr.analyse_components(source,12000)
+        self.assertIs(np.fft.rfft,fft)
+        self.assertIs(tr.stft,stft)
+        self.assertEqual(uninstrumented.bundle.to_dict(),instrumented.bundle.to_dict())
+        self.assertEqual(uninstrumented.diagnostics,instrumented.diagnostics)
+        self.assertTrue(active[0]['stft']['rfft']['frame_sha256'])
+        self.assertIsNotNone(active[0]['transient'])
 
     def test_real_saved_rack_is_unchanged_by_read_only_trace(self):
         from zaaggenz_timeline.model import TimelineDocument,compile_recipe

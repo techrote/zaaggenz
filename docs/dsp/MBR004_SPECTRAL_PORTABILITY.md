@@ -73,3 +73,30 @@ With just the *explicit frozen dry-input substitution*, the **same local code** 
 Integration and the DSP owner should preregister a **source-specific, executable criterion** that (1) requires authenticated identical source/rack, explicit numerical environment and exact no-rack/bypass/reopen identity, (2) locates the *first* divergent input, filter, tracker frame, threshold/abstention, target choice, transformed partial, routed delta or final PCM, (3) separately evaluates allowable near-threshold decisions and audible consequences, and (4) quantifies tolerance tied to the actual algorithm, *not* the observed PCM to make a failing test pass. Earlier MBR-002 inverse projection numeric budgets are **not** whole-rack PCM policy. No silent normalization or changed defaults.
 
 **Gate B HOLD:** source-exact original-head Ubuntu/Windows stage-ledger execution, reviewer source validation and DSP-owner policy adoption are pending. **Gate A EXTERNAL PENDING:** ordinary installed-wheel Windows 11 Compose startup, edit, restart/reopen and export receipts are absent; existing issue #242 operator procedure is the entry point. #243 native VST remains blocked. Integration alone admits #242, merges, or changes programme gates. This PR changes only new diagnostic tools/tests/docs; no shared implementation source or CI.
+
+
+## Actual numerical tracker subledger (same commands, no counterfactual)
+
+The normal \`capture\` command now records the real component-tracker STFT
+Hann-weighted input, original \`np.fft.rfft\` result, actual
+\`scipy.signal.find_peaks\` thresholds and local bins, parabolic peak
+neighbours, admitted confidence/frequency, returned weighted-fit candidates,
+Hungarian cost/accepted pairs and transient mask. Full per-frame float64
+digests are retained, with raw first-four-frame float64 snapshots bounded.
+All taps restore native methods and preserve actual DSP outputs.
+
+The existing \`compare\` command emits \`tracker_subledger\`: first changed
+pre-FFT/FFT/peak-fit operation, first differing frame and retained float64
+values in hexadecimal, then first changed candidate/admission/assignment by
+frame/anchor/frequency **not generated track ID**. If a later changed frame
+is outside the four snapshots, report frame digest only; never invent a bin
+value. Only identical analysis-input float64 SHA permits host tracker
+attribution. The Integration-owned matrix already triggers on changes to
+the diagnostic file, so no new workflow or dispatch is required.
+
+Original Windows replay remains exact; Ubuntu normal replay remains
+**new-execution only**, not authenticated original internal provenance.
+This ledger is a source-local diagnostic, not an adopted portability
+tolerance, DSP defect verdict, or substitute for physical Gate A. Whole-rack
+\`sosfiltfilt\` tails are noncompact. DSP owner and Integration must
+preregister an audible/algorithmic numerical criterion before Gate B.

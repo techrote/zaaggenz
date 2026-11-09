@@ -7,6 +7,7 @@ Does not change a sonic policy or assert a waveform tolerance.
 """
 from __future__ import annotations
 import argparse
+import base64
 from contextlib import ExitStack
 import hashlib
 import json
@@ -95,6 +96,210 @@ def _canonical(value):
     return value
 
 
+
+# Actual read-only tracker operations, with bounded first-frame numerical bytes.
+MAX_SUBLEDGER_FRAMES=512
+MAX_SNAPSHOT_FRAMES=4
+
+def _numerical_tensor(a):
+    a=np.asarray(a)
+    if a.ndim<1 or len(a)>MAX_SUBLEDGER_FRAMES or a.nbytes>64*1024*1024:
+        raise ValueError('bounded tracker array exceeded')
+    if a.dtype.kind=='c':
+        f=np.ascontiguousarray(a,dtype='<c16').view('<f8')
+        kind='complex128-re-im'
+    elif a.dtype.kind=='f':
+        f=np.ascontiguousarray(a,dtype='<f8')
+        kind='float64'
+    else:raise ValueError('tracker numerical array required')
+    if not np.isfinite(f).all():raise ValueError('non-finite tracker buffer')
+    return {'kind':kind,'shape':list(a.shape),'sha256':digest_bytes(f.tobytes()),
+            'frame_sha256':[digest_bytes(np.ascontiguousarray(f[i]).tobytes()) for i in range(len(f))],
+            'frame_f64le_b64':[base64.b64encode(np.ascontiguousarray(f[i]).tobytes()).decode()
+                               for i in range(min(len(f),MAX_SNAPSHOT_FRAMES))]}
+
+def _first_tensor_delta(a,b):
+    if a['kind']!=b['kind'] or a['shape']!=b['shape']:
+        return {'kind':'type-or-shape','left':[a['kind'],a['shape']],
+                'right':[b['kind'],b['shape']]}
+    if a['sha256']==b['sha256']:return None
+    if len(a['frame_sha256'])!=len(b['frame_sha256']):return {'kind':'frame-count'}
+    frame=next((i for i,(x,y) in enumerate(zip(a['frame_sha256'],b['frame_sha256']))
+                if x!=y),None)
+    if frame is None:raise ValueError('inconsistent tracker tensor digest')
+    d={'kind':'bitwise-f64','frame':frame}
+    if frame>=len(a['frame_f64le_b64']) or frame>=len(b['frame_f64le_b64']):
+        return {**d,'detail':'earliest frame hashed; first four raw frames retained'}
+    x=np.frombuffer(base64.b64decode(a['frame_f64le_b64'][frame],validate=True),dtype='<f8')
+    y=np.frombuffer(base64.b64decode(b['frame_f64le_b64'][frame],validate=True),dtype='<f8')
+    if x.shape!=y.shape:raise ValueError('tracker snapshot length mismatch')
+    indexes=np.flatnonzero(x.view('<u8')!=y.view('<u8'))
+    if not len(indexes):raise ValueError('frame hash disagrees with snapshot')
+    idx=int(indexes[0]);is_complex=a['kind'].startswith('complex')
+    coord=np.unravel_index(idx//(2 if is_complex else 1),a['shape'][1:])
+    return {**d,'index':[int(k) for k in coord],
+            'component':('real' if idx%2==0 else 'imag') if is_complex else 'value',
+            'ubuntu_hex':float(x[idx]).hex(),'windows_hex':float(y[idx]).hex(),
+            'ubuntu':float(x[idx]),'windows':float(y[idx]),'delta':float(x[idx]-y[idx])}
+
+def _tracker_taps(stack,active):
+    from zaaggenz_components import tracker as tr
+    original_stft=tr.stft
+    original_peaks=tr.signal.find_peaks
+    original_parabola=tr._parabolic_frequency
+    original_fit=tr._fit_candidates
+    original_assignment=tr.optimize.linear_sum_assignment
+    original_transient=tr._transient_mask
+    pending={'peak':None,'parabolas':[]}
+
+    def stft(*a,**kw):
+        if active[0] is None:return original_stft(*a,**kw)
+        fft=np.fft.rfft;row={}
+        def tap(weighted,*args,**kwargs):
+            row['weighted']=_numerical_tensor(weighted)
+            result=fft(weighted,*args,**kwargs)
+            row['rfft']=_numerical_tensor(result)
+            return result
+        with patch.object(np.fft,'rfft',tap):
+            result=original_stft(*a,**kw)
+        if 'rfft' not in row:raise ValueError('native rfft was not observed')
+        active[0]['stft']={'input':pcm_identity(a[0]),'spec':result.spec.metadata(),
+          'sample_rate_hz':result.sample_rate_hz,
+          'anchors':result.anchors.tolist(),'supports':result.supports.tolist(),
+          'valid_fraction':[float(x).hex() for x in result.valid_fraction],**row}
+        return result
+
+    def peaks(magnitude,*a,**kw):
+        ids,props=original_peaks(magnitude,*a,**kw)
+        if active[0] is not None:
+            pending['peak']={'magnitude':_numerical_tensor(np.asarray(magnitude)[None,:]),
+                'prominence':_canonical(kw.get('prominence')),
+                'height':_canonical(kw.get('height')),
+                'distance':_canonical(kw.get('distance')),
+                'local_bins':[int(k) for k in ids]}
+        return ids,props
+
+    def parabola(mag,k,sr,nfft):
+        result=original_parabola(mag,k,sr,nfft)
+        if active[0] is not None:
+            pending['parabolas'].append({'bin':int(k),
+                'magnitudes_hex':[float(v).hex() for v in mag[max(0,k-1):k+2]],
+                'hz_hex':float(result).hex()})
+        return result
+
+    def fit(a,sr,r,i,frequencies,confidences,ambiguity):
+        result=original_fit(a,sr,r,i,frequencies,confidences,ambiguity)
+        if active[0] is not None:
+            active[0]['candidates'].append({'frame':int(i),'anchor':int(r.anchors[i]),
+                'support':[int(v) for v in r.supports[i]],
+                'peaks':pending['peak'],'parabolas':pending['parabolas'],
+                'selected_frequency_hex':_canonical(frequencies),
+                'pre_fit_confidence_hex':_canonical(confidences),
+                'ambiguous':[bool(v) for v in ambiguity],'fitted':_canonical(result)})
+        pending['peak']=None;pending['parabolas']=[]
+        return result
+
+    def assign(cost,*a,**kw):
+        rr,cc=original_assignment(cost,*a,**kw)
+        if active[0] is not None:
+            caller=sys._getframe(1)
+            if caller.f_code.co_name!='_track':
+                raise ValueError('unexpected tracker assignment caller')
+            local=caller.f_locals;spec=local['spec']
+            pairs=[(int(i),int(j)) for i,j in zip(rr,cc)]
+            active[0]['assignments'].append({'frame':int(local['frame']),
+                'predicted_hz_hex':_canonical(local['preds']),
+                'candidate_hz_hex':_canonical([x['frequency_hz'] for x in local['cands']]),
+                'cost_cents_hex':_canonical(np.asarray(cost).tolist()),
+                'max_jump_cents_hex':float(spec.max_jump_cents).hex(),
+                'selected_pairs':[[i,j] for i,j in pairs],
+                'admitted_pairs':[[i,j] for i,j in pairs if cost[i,j]<=spec.max_jump_cents]})
+        return rr,cc
+
+    def transient(*a,**kw):
+        result=original_transient(*a,**kw)
+        if active[0] is not None:
+            mask,onsets,detector=result
+            active[0]['transient']={'mask':pcm_identity(mask),
+                                    'onsets':int(onsets),'detector':detector}
+        return result
+
+    stack.enter_context(patch.object(tr,'stft',stft))
+    stack.enter_context(patch.object(tr.signal,'find_peaks',peaks))
+    stack.enter_context(patch.object(tr,'_parabolic_frequency',parabola))
+    stack.enter_context(patch.object(tr,'_fit_candidates',fit))
+    stack.enter_context(patch.object(tr.optimize,'linear_sum_assignment',assign))
+    stack.enter_context(patch.object(tr,'_transient_mask',transient))
+
+def compare_subledger(u,w):
+    if (u['analysis_input']['shape']!=w['analysis_input']['shape'] or
+        u['analysis_input']['f64le_sha256']!=w['analysis_input']['f64le_sha256']):
+        return {'input_matched':False,'first_boundary':'different-f64-analysis-input'}
+    a,b=u.get('subledger'),w.get('subledger')
+    if not a or not b or not a.get('stft') or not b.get('stft'):
+        return {'input_matched':True,'first_boundary':'missing-actual-tracker-capture'}
+    x,y=a['stft'],b['stft']
+    out={'input_matched':True,'first_boundary':None,
+         'first_candidate_difference':None,'first_discrete_boundary':None,
+         'first_assignment_difference':None}
+    for field in ('input','spec','sample_rate_hz','anchors','supports','valid_fraction'):
+        if x[field]!=y[field]:out['first_boundary']='stft-'+field;break
+    if out['first_boundary'] is None:
+        for field in ('weighted','rfft'):
+            d=_first_tensor_delta(x[field],y[field])
+            if d is not None:
+                out['first_boundary']='stft-'+('weighted-Hann-input' if field=='weighted' else 'native-rfft-output')
+                out['first_numeric_difference']=d
+                break
+    left={z['frame']:z for z in a['candidates']}
+    right={z['frame']:z for z in b['candidates']}
+    for frame in sorted(set(left)|set(right)):
+        p,q=left.get(frame),right.get(frame)
+        if p is None or q is None:
+            out['first_discrete_boundary']={'frame':frame,'kind':'candidate-frame-admission'}
+            break
+        for field in ('peaks','parabolas','selected_frequency_hex','pre_fit_confidence_hex',
+                      'ambiguous','fitted'):
+            if p[field]!=q[field]:
+                if out['first_candidate_difference'] is None:
+                    d={'frame':frame,'anchor':p['anchor'],'field':field,
+                       'ubuntu':str(p[field])[:800],'windows':str(q[field])[:800]}
+                    if field=='peaks' and p[field] and q[field]:
+                        d['first_magnitude_delta']=_first_tensor_delta(p[field]['magnitude'],q[field]['magnitude'])
+                    out['first_candidate_difference']=d
+                if out['first_discrete_boundary'] is None:
+                    pa,pb=p['peaks'],q['peaks']
+                    if (pa is None)!=(pb is None) or (pa and pb and pa['local_bins']!=pb['local_bins']):
+                        out['first_discrete_boundary']={'frame':frame,'kind':'scipy-peak-selection',
+                            'ubuntu':None if pa is None else pa['local_bins'],
+                            'windows':None if pb is None else pb['local_bins']}
+                    elif len(p['selected_frequency_hex'])!=len(q['selected_frequency_hex']):
+                        out['first_discrete_boundary']={'frame':frame,'kind':'frequency-confidence-admission',
+                            'ubuntu':p['selected_frequency_hex'],'windows':q['selected_frequency_hex']}
+                    elif p['ambiguous']!=q['ambiguous']:
+                        out['first_discrete_boundary']={'frame':frame,'kind':'peak-ambiguity'}
+                    elif len(p['fitted'])!=len(q['fitted']):
+                        out['first_discrete_boundary']={'frame':frame,'kind':'weighted-fit-admission'}
+                break
+    aa={z['frame']:z for z in a['assignments']}
+    bb={z['frame']:z for z in b['assignments']}
+    for frame in sorted(set(aa)|set(bb)):
+        p,q=aa.get(frame),bb.get(frame)
+        if p!=q:
+            out['first_assignment_difference']={'frame':frame,'ubuntu':p,'windows':q}
+            if out['first_discrete_boundary'] is None and (p is None or q is None or
+                p['selected_pairs']!=q['selected_pairs'] or p['admitted_pairs']!=q['admitted_pairs']):
+                out['first_discrete_boundary']={'frame':frame,'kind':'assignment-or-jump-admission',
+                  'ubuntu':None if p is None else p['admitted_pairs'],
+                  'windows':None if q is None else q['admitted_pairs']}
+            break
+    if out['first_boundary'] is None and out['first_candidate_difference'] is not None:
+        out['first_boundary']='post-fft-peak-fit'
+    if out['first_boundary'] is None and out['first_assignment_difference'] is not None:
+        out['first_boundary']='assignment-cost'
+    return out
+
+
 def _frame_ledger(analysis):
     tracks=analysis.bundle.to_dict()['tracks']
     if sum(len(t['frames']) for t in tracks)>MAX_DECISIONS:
@@ -153,7 +358,8 @@ def capture_document(document, *, expected_pcm=None, provenance=None, frozen_pre
            'environment':{'python':platform.python_version(),'platform':platform.platform(),
                           'numpy':np.__version__,'scipy':scipy.__version__,
                           'wav_decoder':'strict-riff-ieee754-f32le-v1'}}
-    curr={'band':None,'analysis':None,'spectral':None}
+    curr={'band':None,'analysis':None,'spectral':None,'subledger':None}
+    active=[None]
     origin_analyse=bs.analyse_components
     origin_retune=bs.retune_components
     origin_chord=bs.apply_chordness
@@ -162,7 +368,12 @@ def capture_document(document, *, expected_pcm=None, provenance=None, frozen_pre
     origin_execute=rx.execute_rack
 
     def analyse(*args,**kwargs):
-        result=origin_analyse(*args,**kwargs)
+        probe={'version':'zg242-actual-tracker-subledger-v1','input':pcm_identity(args[0]),
+               'stft':None,'candidates':[],'assignments':[],'transient':None}
+        active[0]=probe
+        try:result=origin_analyse(*args,**kwargs)
+        finally:active[0]=None
+        curr['subledger']=probe
         curr['analysis']=result
         return result
 
@@ -173,6 +384,7 @@ def capture_document(document, *, expected_pcm=None, provenance=None, frozen_pre
              'analysis_input':pcm_identity(analysis.source),
              'analysis_diagnostics':analysis.diagnostics,
              'tracked':_frame_ledger(analysis),
+              'subledger':curr['subledger'],
              'decisions':_decisions(analysis,result),
              'diagnostics':result.diagnostics,
              'result_audio':pcm_identity(result.audio)}
@@ -249,6 +461,7 @@ def capture_document(document, *, expected_pcm=None, provenance=None, frozen_pre
         return result,diagnostics
 
     with ExitStack() as stack:
+        _tracker_taps(stack,active)
         stack.enter_context(patch.object(bs,'analyse_components',analyse))
         stack.enter_context(patch.object(bs,'retune_components',
             lambda *a,**k:spectral_call(origin_retune,*a,**k)))
@@ -297,7 +510,8 @@ def compare_trace(a,b):
              'decision_mismatches':len(disagreements),
              'first_decision_mismatches':[{'key':list(k),'left':decu.get(k),'right':decw.get(k)}
                                           for k in disagreements[:8]],
-             'changed_support_extent':[left['changed_support_extent'],right['changed_support_extent']]}
+             'changed_support_extent':[left['changed_support_extent'],right['changed_support_extent']],
+              'tracker_subledger':compare_subledger(left,right)}
         report['spectral'].append(row)
     for index in range(max(len(a['stages']),len(b['stages']))):
         left=a['stages'][index] if index<len(a['stages']) else None
