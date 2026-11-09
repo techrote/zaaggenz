@@ -374,7 +374,8 @@ class SamplerPlan:
     @classmethod
     def prepare(cls, source: FrozenInput, spec: SonicSpec, evaluation: EvaluationPolicy | None = None,
                 *, frame_count: int | None = None, cancelled=None, progress=None,
-                source_revision_sha256: str | None = None, context_sha256: str | None = None):
+                source_revision_sha256: str | None = None, context_sha256: str | None = None,
+                delivery_rate_hz: int | None = None):
         _check_hooks(cancelled, progress)
         _cancel(cancelled)
         require(cls is SamplerPlan, 'sampler plan subclasses are not an execution capability')
@@ -395,6 +396,11 @@ class SamplerPlan:
         require(asset['channels'] == spec.channels, 'source/sampler channel mismatch')
         require(asset['frame_count'] * spec.channels <= evaluation.budget.max_frames, 'source frame/channel admission budget exceeded')
         rate = evaluation.evaluation_rate_hz
+        # The final delivery clock may be declared independently. Absence
+        # retains the exact original NYQ-002 source-bound render identity.
+        if delivery_rate_hz is None:
+            delivery_rate_hz = source.sample_rate_hz
+        integer(delivery_rate_hz, 'planned delivery rate Hz', 8000, 192000)
         if frame_count is None:
             frame_count = math.ceil(Fraction(asset['frame_count'] * rate, asset['sample_rate_hz']))
         integer(frame_count, 'output frame count', 0, evaluation.budget.max_frames // spec.channels)
@@ -444,7 +450,7 @@ class SamplerPlan:
         identity = bind_render_identity(spec, evaluation, input_asset=source.asset,
                     source_revision_sha256=source_revision_sha256,
                     rack_revision_sha256=_NO_RACK, graph_revision_sha256=_NO_GRAPH,
-                    context_sha256=context_sha256, delivery_rate_hz=source.sample_rate_hz,
+                    context_sha256=context_sha256, delivery_rate_hz=delivery_rate_hz,
                     start_s=qtext(origin), end_s=qtext(end))
         _notify(progress, 0.0, cancelled)
         events = clock.events(cancelled=cancelled) if active else ()

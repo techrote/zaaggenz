@@ -498,3 +498,37 @@ and irregular-clock refusals, and measures a real 6 kHz source deliberately
 folded to 2 kHz by an 8 kHz virtual clock through both 192/384 kHz numerical
 evaluation and the existing 48 kHz final conversion. No clock, source, capture,
 conversion, defaults or shared transition ledgers are changed.
+
+## Local source-independent final delivery clock (9 November 2026)
+
+The optional `render_sampler_to_delivery` path now accepts a saved
+`delivery_rate_hz` differing from immutable source rate (8–192 kHz).
+The exact source duration must contain an **integral** number of numerical
+and delivery frames: neither output clock nor the virtual sample clock is
+inferred from the other. Numerical and final channel/frame budgets plus
+the declared FIR tap budget are checked before virtual-event capture.
+
+`SamplerPlan.prepare(..., delivery_rate_hz=...)` binds the actual final
+rate to `RenderIdentity`. When omitted, the identity remains source-bound
+and byte-for-byte compatible with previous NYQ-002 plans. The original
+source-matched diagnostic method remains `nyq.local-physical-sampler-to-delivery.v1`;
+a cross-rate request identifies the new bounded capability as
+`nyq.local-physical-sampler-to-crossrate-delivery.v1`.
+A bypassed effect remains exact at the matched-grid **sampler boundary**;
+the explicitly requested downstream FIR can still change the final PCM.
+
+Regression:
+`python -m unittest discover -s tests/dsp -p 'test_nyquismic_crossrate_delivery.py' -v`
+
+A 96 kHz source with a dirty 8 kHz virtual capture clock is delivered at
+48 kHz from two different numerical grids; the 6 -> 2 kHz folding remains
+at the same physical frequency. Three-rate convergence checks use the same
+event ledger at each rate. A separate actual sampler two-tone fixture retains
+28/33 kHz high-frequency source content long enough for an explicit
+**post-sampling** quadratic operation to produce a 5 kHz difference
+component before final anti-alias conversion; premature conversion weakens
+that component. This test does not register or certify a nonlinear product
+stage. Nonintegral output tails and unqualified FIR ratios refuse.
+
+This remains local numerical PCM/engineering evidence, not Compose, a
+graph-registered Nyquismic effect, a WAV exporter or human listening.

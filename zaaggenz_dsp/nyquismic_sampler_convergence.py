@@ -26,16 +26,14 @@ def evaluate_sampler_model_convergence(
 ) -> LocalConvergenceResult:
     """Legacy call surface; executes the canonical physical-event comparator.
 
-    The present sampler binds its delivery clock to the immutable source clock.
-    An independently requested delivery rate is NOT silently substituted; it
-    needs a future versioned capability and its own validation.
+    The canonical physical-event bridge admits a separately declared delivery
+    clock when all complete extents are integral and the explicitly bounded FIR
+    ratio is supported. The virtual-event clock is never rederived from it.
     """
     record(source, FrozenInput, 'convergence immutable source')
-    require(type(delivery_rate_hz) is int and
-            delivery_rate_hz == source.sample_rate_hz,
-            'sampler convergence delivery rate must match immutable source rate')
     result = evaluate_sampler_convergence(
-        source, sonic, policy=policy, budget=budget, cancelled=cancelled,
+        source, sonic, delivery_rate_hz=delivery_rate_hz,
+        policy=policy, budget=budget, cancelled=cancelled,
     )
     return LocalConvergenceResult(
         status=result.status, policy=result.policy,

@@ -110,7 +110,7 @@ class RealSamplerConvergenceTests(unittest.TestCase):
         spec = SonicSpec(clock=ClockSpec(rate=VirtualRate('8000/1')))
         with patch('zaaggenz_dsp.nyquismic.SamplerPlan.prepare',
                    side_effect=AssertionError('must not prepare sampler')):
-            with self.assertRaisesRegex(ContractError, 'delivery rate must match'):
+            with self.assertRaisesRegex(ContractError, 'unsupported delivery FIR taps'):
                 evaluate_sampler_model_convergence(
                     source, spec, delivery_rate_hz=44100)
             with self.assertRaisesRegex(ContractError, 'pass budget exceeded'):

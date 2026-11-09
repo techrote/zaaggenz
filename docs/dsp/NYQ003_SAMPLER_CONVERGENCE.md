@@ -15,9 +15,9 @@ The previous `evaluate_sampler_model_convergence` call surface is retained
 as a compatibility adapter (`nyq.same-model-sampler-convergence-bridge.v1`),
 but now **delegates to that same implementation**: it no longer independently
 hashes events, executes a separate source identity, or silently bypasses
-reference-pass budgets. Its optional `delivery_rate_hz` must exactly equal
-the immutable source rate until independently qualified output-rate flexibility
-exists. Results expose `compatibility_entrypoint` and otherwise use canonical
+reference-pass budgets. Its optional `delivery_rate_hz` is explicit: it may differ from the immutable source rate, but
+the full physical extent must fit integral delivered frames and the admitted
+bounded FIR conversion. The old 48 kHz default remains unchanged. Results expose `compatibility_entrypoint` and otherwise use canonical
 event/PCM evidence fields.
 Every frozen rate executes the identical immutable source bytes, SonicSpec,
 clock origin, capture and reconstruction setting through the actual SamplerPlan.

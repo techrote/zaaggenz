@@ -168,9 +168,9 @@ def render_sampler_to_delivery(source, sonic, *, numerical_rate_hz: int,
                                cancelled=None) -> SamplerDeliveryResult:
     """Atomically compose physical-time capture/reconstruction and final FIR.
 
-    The current sampler identity binds delivery to the input source rate.
-    Other delivery rates or fractional numerical extents must refuse rather
-    than publish samples under an incompatible identity or truncated timeline.
+    Independently declare immutable source and final delivery clocks.
+    Whole physical extents must fit both numerical and delivery grids exactly;
+    unsupported FIR ratios fail before expensive event capture.
     """
     from zaaggenz_contracts.nyquismic import SonicSpec
     from .nyquismic import FrozenInput, SamplerPlan, sampler_evaluation
@@ -185,24 +185,34 @@ def render_sampler_to_delivery(source, sonic, *, numerical_rate_hz: int,
     if delivery_rate_hz is None:
         delivery_rate_hz = source.sample_rate_hz
     integer(delivery_rate_hz, 'delivery rate Hz', 8000, 192000)
-    require(delivery_rate_hz == source.sample_rate_hz,
-            'sampler identity binds delivery to original source rate')
     integer(numerical_rate_hz, 'numerical evaluation rate Hz', 8000, MAX_EVALUATION_HZ)
     require(numerical_rate_hz >= delivery_rate_hz,
             'sampler delivery requires numerical rate >= delivery rate')
     asset = source.asset.to_dict()
-    extent = Fraction(asset['frame_count'] * numerical_rate_hz, source.sample_rate_hz)
+    source_extent = Fraction(asset['frame_count'], source.sample_rate_hz)
+    expected_delivery_frames = source_extent * delivery_rate_hz
+    require(expected_delivery_frames.denominator == 1,
+            'sampler delivery requires integral final physical extent')
+    require(expected_delivery_frames.numerator * asset['channels'] <= budget.max_frames,
+            'sampler final extent over admitted frame budget')
+    # Preflight every declared converter before rendering virtual captures.
+    common = gcd(numerical_rate_hz, delivery_rate_hz)
+    up, down = delivery_rate_hz // common, numerical_rate_hz // common
+    require(up == down or 24 * max(up, down) + 1 <= budget.max_filter_taps,
+            'sampler final delivery FIR ratio exceeds admitted tap budget')
+    extent = source_extent * numerical_rate_hz
     require(extent.denominator == 1, 'sampler delivery requires aligned physical extent')
     require(extent.numerator * asset['channels'] <= budget.max_frames,
             'sampler numerical extent over admitted frame budget')
 
     plan = SamplerPlan.prepare(source, sonic, sampler_evaluation(numerical_rate_hz, budget),
-                               frame_count=extent.numerator, cancelled=cancelled)
+                               frame_count=extent.numerator, cancelled=cancelled,
+                               delivery_rate_hz=delivery_rate_hz)
     numeric = plan.render(cancelled=cancelled)
     final = convert_numerical_to_delivery(numeric.audio, numerical_rate_hz,
                                          delivery_rate_hz, policy=policy,
                                          budget=budget, cancelled=cancelled)
-    require(final.audio.shape[0] == asset['frame_count'],
+    require(final.audio.shape[0] == expected_delivery_frames.numerator,
             'sampler delivery physical extent changed during conversion')
     require(final.diagnostics['source_pcm_sha256'] == numeric.diagnostics['pcm_sha256'],
             'sampler-to-delivery numerical PCM provenance mismatch')
@@ -211,8 +221,13 @@ def render_sampler_to_delivery(source, sonic, *, numerical_rate_hz: int,
     return SamplerDeliveryResult(
         audio=final.audio, policy=final.policy,
         diagnostics={
-            'method': 'nyq.local-physical-sampler-to-delivery.v1',
+            'method': ('nyq.local-physical-sampler-to-delivery.v1'
+                       if delivery_rate_hz == source.sample_rate_hz
+                       else 'nyq.local-physical-sampler-to-crossrate-delivery.v1'),
             'source_asset_sha256': source.asset.sha256,
+            'source_rate_hz': source.sample_rate_hz,
+            'source_extent_s': str(source_extent),
+            'expected_delivery_frames': expected_delivery_frames.numerator,
             'sonic_sha256': sonic.sonic_sha256,
             'clock_sha256': sonic.clock.sha256,
             'sampler_render_sha256': numeric.render_sha256,

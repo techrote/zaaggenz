@@ -292,7 +292,8 @@ def evaluate_local_convergence(
 
 
 def evaluate_sampler_convergence(
-    source, sonic, *, policy: FrozenConvergencePolicy = FrozenConvergencePolicy(),
+    source, sonic, *, delivery_rate_hz: int | None = None,
+    policy: FrozenConvergencePolicy = FrozenConvergencePolicy(),
     budget: ResourceBudget = ResourceBudget(), cancelled=None,
 ) -> LocalConvergenceResult:
     """Execute the real physical-event sampler for every local comparator.
@@ -316,6 +317,15 @@ def evaluate_sampler_convergence(
             'unadapted NYQ-004 virtual-clock controls are not executable')
     asset = source.asset.to_dict()
     require(asset['channels'] == sonic.channels, 'source/channel mismatch')
+    if delivery_rate_hz is None:
+        delivery_rate_hz = source.sample_rate_hz
+    integer(delivery_rate_hz, 'sampler convergence delivery rate Hz', 8000, 192000)
+    delivered_frames = Fraction(asset['frame_count'] * delivery_rate_hz,
+                                source.sample_rate_hz)
+    require(delivered_frames.denominator == 1,
+            'sampler convergence requires integral delivery extent')
+    require(delivered_frames.numerator * sonic.channels <= budget.max_frames,
+            'sampler convergence delivery frame budget exceeded')
     require(len(policy.rates_hz) <= budget.max_reference_passes,
             'convergence pass budget exceeded')
     # Align complete physical extent at every declared numerical rate.
@@ -339,7 +349,8 @@ def evaluate_sampler_convergence(
             raise ClockCancelled('sampler convergence cancelled before pass')
         plan = SamplerPlan.prepare(
             source, sonic, sampler_evaluation(rate, budget),
-            frame_count=frames_by_rate[rate], cancelled=cancelled)
+            frame_count=frames_by_rate[rate], cancelled=cancelled,
+            delivery_rate_hz=delivery_rate_hz)
         # Event float timestamps are diagnostic only. Use the unrounded
         # Fraction/Decimal80 coordinate as the custody identity.
         ledger = hashlib.sha256(b'nyq003.physical-events.v1\n')
@@ -360,7 +371,7 @@ def evaluate_sampler_convergence(
     result = evaluate_local_convergence(
         actual_candidate, source_sha256=hashes[0], sonic_sha256=hashes[1],
         clock_sha256=hashes[2], random_control_sha256=random_hash,
-        delivery_rate_hz=source.sample_rate_hz, policy=policy,
+        delivery_rate_hz=delivery_rate_hz, policy=policy,
         budget=budget, cancelled=cancelled)
     diagnostics = {
         **result.diagnostics,

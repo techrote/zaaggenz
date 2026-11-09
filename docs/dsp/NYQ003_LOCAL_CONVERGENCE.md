@@ -118,3 +118,18 @@ Focused regressions:
 `python -m unittest discover -s tests/dsp -p 'test_nyquismic_sampler_convergence.py' -v`
 and
 `python -m unittest discover -s tests/dsp -p 'test_nyquismic_convergence.py' -v`.
+
+## Separately declared source and delivery clocks (9 November 2026)
+
+The real physical-event comparator now admits a delivery Hz different from
+the immutable input PCM source rate. The output clock is bound into every
+sampler pass's versioned `RenderIdentity`, as well as its final FIR conversion
+and PCM digest. This is not a change to virtual-event timing or the saved
+artistic reference clock. Source duration must produce exactly integral
+numerical and delivery frame counts at all selected rates, and all conversion
+ratios must fit the admitted FIR filter budget before audio rendering.
+
+The legacy entrypoint delegates to the same physical-event sampler, with
+an unchanged 48 kHz default. Unsupported 192000 -> 44100 conversion still
+refuses before the first capture. The distinction between a comparison and
+independent analytic truth/product WAV acceptance remains unchanged.
