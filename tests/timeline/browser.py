@@ -626,8 +626,8 @@ def main():
             assert [stage['id'] for stage in order_a]==[chord_stage['id'],compressor_id]
             order_a_job=rendered('rack-order-spectral-then-compression')
             order_a_audio=server.timeline.scheduler.result(order_a_job).audio_bytes
-            order_a_report=server.timeline.status(order_a_job)['artifact'][
-                'scopes']['diagnostics']['rack']
+            order_a_status=server.timeline.status(order_a_job)['artifact']
+            order_a_report=order_a_status['scopes']['diagnostics']['rack']
             assert order_a_report['normalization']=='none'
             assert order_a_report['bands'][1]['order']==[chord_stage['id'],compressor_id]
             # The move button must operate the compressor's *existing ID*.
@@ -644,8 +644,8 @@ def main():
                 'The UI reorder changed stable identities, stage parameters or bypass policy')
             order_b_job=rendered('rack-order-compression-then-spectral')
             order_b_audio=server.timeline.scheduler.result(order_b_job).audio_bytes
-            order_b_report=server.timeline.status(order_b_job)['artifact'][
-                'scopes']['diagnostics']['rack']
+            order_b_status=server.timeline.status(order_b_job)['artifact']
+            order_b_report=order_b_status['scopes']['diagnostics']['rack']
             assert order_b_report['normalization']=='none'
             assert order_b_report['bands'][1]['order']==[compressor_id,chord_stage['id']]
             # An actually active transform, not a no-op spectral request or a
@@ -670,10 +670,12 @@ def main():
             # RenderArtifact.audio_bytes is *raw little-endian float32 PCM*.
             # The separately downloaded .wav is the user-facing container.
             # Compare the actual sample stream, never RIFF headers or revisions.
-            assert server.timeline.status(order_a_job)['artifact']['asset'][
-                'sample_rate_hz']==args.sample_rate
-            assert server.timeline.status(order_b_job)['artifact']['asset'][
-                'sample_rate_hz']==args.sample_rate
+            # A superseded job is deliberately revoked from the live status
+            # API after the UI reorder. Use the immutable artifact snapshots
+            # captured while each revision was current; never re-read stale
+            # job status and mistake its absence for a render failure.
+            assert order_a_status['asset']['sample_rate_hz']==args.sample_rate
+            assert order_b_status['asset']['sample_rate_hz']==args.sample_rate
             assert len(order_a_audio)==len(order_b_audio) and len(order_a_audio)%4==0
             samples_a=np.frombuffer(order_a_audio,dtype='<f4')
             samples_b=np.frombuffer(order_b_audio,dtype='<f4')
