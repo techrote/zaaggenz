@@ -467,6 +467,7 @@ class SonicSpec(_Record):
         choice(self.prefilter, 'prefilter', ('off_v1', *STATIC_FIR_PREFILTER_POLICIES))
         choice(self.reconstruction, 'reconstruction', ('hold_v1', 'linear_time_v1',
                                                       'nearest_time_v1', 'cubic_time_v1',
+                                                      'sinc4_hann_uniform_v1',
                                                       'sinc8_hann_uniform_v1',
                                                       'shepard8_hann_local_time_v1',
                                                       'sinc8_hann_local_time_v1'))

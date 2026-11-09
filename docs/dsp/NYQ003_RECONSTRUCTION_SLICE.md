@@ -460,3 +460,41 @@ midpoint/boundary oracles, stereo, chunk/checkpoint, 192/384 kHz delivered
 
 This remains local DSP on Draft #266; not graph/rack/export acceptance,
 general convergence certification or owner listening.
+
+
+## Short, explicitly ringing uniform-window option (9 November 2026)
+
+`sinc4_hann_uniform_v1` is an additional **opt-in** short-support
+virtual-event reconstruction. Unlike `sinc8_hann_uniform_v1`, it uses a
+symmetric radius-4 Hann-tapered cardinal sinc, evaluated in **physical time**
+at the original accepted virtual event coordinates. Its continuous kernel is
+`sinc(x) * (0.5 + 0.5*cos(pi*x/4))` for `abs(x) < 4`, zero otherwise,
+where `x` counts virtual-event intervals. The admitted neighborhood spans
+up to 4 event intervals on either side (eight off-grid captures). The finite
+filter-capability budget requires `max_filter_taps >= 9`; no coefficient
+array or resampling grid is silently substituted. Truncated source edges
+use their own finite coefficient-sum normalization to preserve captured DC.
+Exact events return the original captured value. Before the first event the
+output is zero; after the final event it remains held per the existing contract.
+
+This is **not** an antialias filter or an ideal nonuniform reconstruction. It
+intentionally retains captured alias frequencies while imposing a different
+hold-image/ringing tradeoff from radius 8. Hz automation, phase resets, routes,
+quantization and jitter are **rejected before execution** for both uniform
+windowed-sinc policies. Uneven clocks instead require the explicitly named
+`sinc8_hann_local_time_v1` (whose algorithm and limitations differ). The
+numerical output is not the product WAV or user-audition acceptance.
+
+Focused oracle and actual final-rate PCM fixture:
+
+```sh
+python -m unittest discover -s tests/dsp -p 'test_nyquismic_short_sinc.py' -v
+```
+
+The fixture derives a fractional midpoint output independently from finite
+sine/Hann coefficients, checks radius-4 versus radius-8 nonidentity, DC edge
+normalization, mono/stereo chunk/checkpoint and exact dry/bypass, support-budget
+and irregular-clock refusals, and measures a real 6 kHz source deliberately
+folded to 2 kHz by an 8 kHz virtual clock through both 192/384 kHz numerical
+evaluation and the existing 48 kHz final conversion. No clock, source, capture,
+conversion, defaults or shared transition ledgers are changed.

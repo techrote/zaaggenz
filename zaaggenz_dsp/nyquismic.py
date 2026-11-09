@@ -405,13 +405,14 @@ class SamplerPlan:
         # This admits the FULL render, even when the caller will later ask for a
         # small region, and validates unsupported clocks and latent bypasses.
         clock = admit_foundation(spec, qtext(end), evaluation.budget)[0]
-        if spec.reconstruction == 'sinc8_hann_uniform_v1':
+        if spec.reconstruction in ('sinc4_hann_uniform_v1', 'sinc8_hann_uniform_v1'):
             require(not spec.clock.points_hz and not spec.clock.resets and
                     not spec.clock.routes and spec.clock.quantizer.policy == 'none' and
                     spec.clock.jitter.model == 'none',
                     'sinc8 Hann reconstruction requires a static uniform event lattice')
-            require(evaluation.budget.max_filter_taps >= 17,
-                    'sinc8 Hann reconstruction exceeds admitted kernel support')
+            radius = 4 if spec.reconstruction == 'sinc4_hann_uniform_v1' else 8
+            require(evaluation.budget.max_filter_taps >= 2 * radius + 1,
+                    f'sinc{radius} Hann reconstruction exceeds admitted kernel support')
         if spec.reconstruction in ('shepard8_hann_local_time_v1',
                                    'sinc8_hann_local_time_v1'):
             # Both bounded irregular-event modes use at most 17 captures.
@@ -567,26 +568,27 @@ class SamplerPlan:
                         step = _ratio(Fraction(1, self.sample_rate_hz), duration)
                         alpha = alpha0 + (frames[mask] - anchor) * step
                         right = self.captures[owner + 1]
-                        if self.spec.reconstruction == 'sinc8_hann_uniform_v1':
+                        if self.spec.reconstruction in ('sinc4_hann_uniform_v1', 'sinc8_hann_uniform_v1'):
                             # Static uniform grid only (admitted at prepare).
-                            # Evaluate physical-time cardinal-sinc with a
-                            # symmetric Hann window, support |x| < 8 events.
+                            # Evaluate physical-time cardinal-sinc with an
+                            # explicit radius-4 or radius-8 symmetric Hann window.
                             # Renormalize the truncated edge kernel for
                             # declared constant-signal DC response; this
                             # does not perform global peak normalization.
+                            radius = 4 if self.spec.reconstruction == 'sinc4_hann_uniform_v1' else 8
                             positions = np.flatnonzero(mask)
                             for j, relative in zip(positions, alpha):
                                 if relative == 0:
                                     block[j] = left  # exact event capture
                                     continue
-                                lo = max(0, owner - 7)
-                                hi = min(len(self.events), owner + 9)
+                                lo = max(0, owner - (radius - 1))
+                                hi = min(len(self.events), owner + radius + 1)
                                 offsets = np.arange(lo, hi, dtype=np.float64) - owner
                                 x = relative - offsets
-                                support = np.abs(x) < 8
+                                support = np.abs(x) < radius
                                 weights = np.zeros(len(offsets), dtype=np.float64)
                                 weights[support] = (np.sinc(x[support]) *
-                                    (0.5 + 0.5 * np.cos(np.pi * x[support] / 8)))
+                                    (0.5 + 0.5 * np.cos(np.pi * x[support] / radius)))
                                 dc = float(np.sum(weights))
                                 require(math.isfinite(dc) and abs(dc) > 1e-12,
                                         'uniform Hann sinc local DC normalization invalid')
@@ -744,12 +746,15 @@ class SamplerPlan:
             'capture_support_source_frames': ([-1, 0, 1, 2] if self.spec.capture == 'cubic_catmull_rom_v1'
                                               else [0, 1] if self.spec.capture == 'linear_v1' else [0]),
             'reconstruction': self.spec.reconstruction,
-            'reconstruction_support_events': (8 if self.spec.reconstruction in
+            'reconstruction_support_events': (4 if self.spec.reconstruction == 'sinc4_hann_uniform_v1'
+                                              else 8 if self.spec.reconstruction in
                                               ('sinc8_hann_uniform_v1', 'shepard8_hann_local_time_v1',
                                                'sinc8_hann_local_time_v1')
                                               else 2 if self.spec.reconstruction == 'cubic_time_v1'
                                               else 1 if self.spec.reconstruction != 'hold_v1' else 0),
-            'reconstruction_window': ('hann_symmetric_radius_8_v1'
+            'reconstruction_window': ('hann_symmetric_radius_4_v1'
+                                      if self.spec.reconstruction == 'sinc4_hann_uniform_v1'
+                                      else 'hann_symmetric_radius_8_v1'
                                       if self.spec.reconstruction == 'sinc8_hann_uniform_v1'
                                       else 'hann_radius_8_local_time_density_weighted_sinc_v1'
                                       if self.spec.reconstruction == 'sinc8_hann_local_time_v1'
