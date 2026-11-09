@@ -494,8 +494,8 @@ def main():
             # The ordinary Compose UI must actually CREATE a source-bound
             # Chordness request from manually entered comb teeth. A preloaded
             # JSON-only Chordness project is not an editable instrument.
-            highmid=page.locator('#rack-editor .rack-band').nth(2)
-            chord_form=highmid.locator('.rack-chordness-create')
+            lowmid=page.locator('#rack-editor .rack-band').nth(2)
+            chord_form=lowmid.locator('.rack-chordness-create')
             chord_form.evaluate('(e)=>e.open=true')
             teeth=chord_form.get_by_label('Manual comb teeth (Hz, comma-separated)')
             initial_chord_doc=saved('rack-chordness-before.zgtimeline.json')
@@ -511,14 +511,14 @@ def main():
             chord_form.get_by_role('button',name='Add manual Chordness (off)').click();ready()
             chord_document=saved('rack-chordness-created.zgtimeline.json')
             chord_rack=json.loads(chord_document['project']['revisions'][-1]['recipe_json'])['rack']
-            chord_stage=chord_rack['bands'][2]['inserts'][0]
+            chord_stage=chord_rack['bands'][1]['inserts'][0]
             assert chord_stage['params']['kind']=='ChordnessRequest'
             assert chord_stage['params']['mode']=='off'
             assert chord_stage['params']['templates'][0]['teeth_hz']==[110.,220.,330.]
             assert chord_stage['params']['templates'][0]['label']=='Musical upper comb'
             assert chord_stage['params']['selected_template_ids']==['user.manual']
             assert chord_document['project']['revisions'][0]==short_doc.to_dict()['project']['revisions'][0]
-            chord_panel=highmid.locator('.rack-stage').filter(
+            chord_panel=lowmid.locator('.rack-stage').filter(
                 has=page.locator('.rack-stage-id',has_text=chord_stage['id']))
             expect(chord_panel).to_have_count(1)
             chord_panel.locator('.rack-spectral').evaluate('(e)=>e.open=true')
@@ -540,7 +540,7 @@ def main():
                 'button',name='Add Chordness template (unselected)').click();ready()
             multi=saved('rack-chordness-two-templates.zgtimeline.json')
             params=json.loads(multi['project']['revisions'][-1]['recipe_json'])[
-                'rack']['bands'][2]['inserts'][0]['params']
+                'rack']['bands'][1]['inserts'][0]['params']
             assert len(params['templates'])==2
             assert params['templates'][1]['id']=='user.manual.2'
             assert params['templates'][1]['teeth_hz']==[150.,300.,450.]
@@ -552,17 +552,22 @@ def main():
             edited_teeth.press('Tab');ready()
             changed=saved('rack-chordness-edited-template.zgtimeline.json')
             params=json.loads(changed['project']['revisions'][-1]['recipe_json'])[
-                'rack']['bands'][2]['inserts'][0]['params']
+                'rack']['bands'][1]['inserts'][0]['params']
             assert params['templates'][1]['teeth_hz']==[165.,330.,495.]
             cap=chord_panel.get_by_label('max selected templates',exact=False)
             cap.fill('2');cap.press('Tab');ready()
             chord_panel.get_by_label('Select template Second comb (user.manual.2)').check();ready()
-            # Freeze a highmid-band target, rather than relying on a comb
-            # wholly below this band's 520 Hz crossover. This is still an
+            # Original 48-kHz one-bar dry-source PCM was independently exercised
+            # with the accepted saved-rack executor: targeting 140/280/420 Hz
+            # in lowmid gives active spectral frames in both orderings and
+            # 1.53e-3 RMS order-difference without hidden normalization.
+            # Select that genuinely transformable pocket instead of highmid,
+            # where original tracker evidence is almost entirely abstentions.
+            # This is still an
             # ordinary source-bound UI edit, not a fabricated server request.
             high_teeth=chord_panel.get_by_label(
                 'Template user.manual.2 teeth (Hz, comma-separated)')
-            high_teeth.fill('900, 1800, 2700')
+            high_teeth.fill('140, 280, 420')
             high_teeth.press('Tab');ready()
             chord_panel.get_by_label(
                 'Select template Musical upper comb (user.manual)').uncheck();ready()
@@ -575,17 +580,17 @@ def main():
             chord_panel.get_by_role('combobox',name='mode',exact=True).select_option('reweight');ready()
             activated=saved('rack-chordness-active.zgtimeline.json')
             activated_rack=json.loads(activated['project']['revisions'][-1]['recipe_json'])['rack']
-            assert activated_rack['bands'][2]['inserts'][0]['params']['mode']=='reweight'
+            assert activated_rack['bands'][1]['inserts'][0]['params']['mode']=='reweight'
             chord_job=rendered('rack-chordness-reweight')
             chord_audio=server.timeline.scheduler.result(chord_job).audio_bytes
             assert len(chord_audio)>44
             chord_report=server.timeline.status(chord_job)['artifact']['scopes']['diagnostics']['rack']
             assert any(stage['type_id']=='zg.spectral' and stage['executed']
                        for row in chord_report['bands'] for stage in row['stages'])
-            chord_processor=next(stage['processor'] for stage in chord_report['bands'][2]['stages']
+            chord_processor=next(stage['processor'] for stage in chord_report['bands'][1]['stages']
                                  if stage['type_id']=='zg.spectral')
             assert chord_processor['diagnostics']['changed_frames']>0, (
-                'The highmid Chordness fixture is an inactive/abstained spectral transform: '
+                'The lowmid Chordness fixture is an inactive/abstained spectral transform: '
                 +repr(chord_processor['diagnostics']))
             assert chord_audio!=one_bar_dry_pcm, (
                 'Active Chordness must change numerical Compose PCM, not only metadata')
@@ -598,15 +603,15 @@ def main():
             # show changed component frames and PCM against a matched dry source.
             # Add the compressor through the browser, not through a preloaded
             # RackRecipe, and use one stable stage identity for both orders.
-            highmid=page.locator('#rack-editor .rack-band').nth(2)
-            highmid.get_by_role('button',name='Add compression').click();ready()
+            lowmid=page.locator('#rack-editor .rack-band').nth(2)
+            lowmid.get_by_role('button',name='Add compression').click();ready()
             added=saved('rack-order-with-compressor.zgtimeline.json')
             added_stages=json.loads(added['project']['revisions'][-1]['recipe_json'])[
-                'rack']['bands'][2]['inserts']
+                'rack']['bands'][1]['inserts']
             assert [stage['type_id'] for stage in added_stages]==[
                 'zg.spectral','zg.compression'], added_stages
             compressor_id=added_stages[1]['id']
-            compression_panel=highmid.locator('.rack-stage').filter(
+            compression_panel=lowmid.locator('.rack-stage').filter(
                 has=page.locator('.rack-stage-id',has_text=compressor_id))
             expect(compression_panel).to_have_count(1)
             for label,value in (('threshold db · dBFS','-40'),
@@ -617,14 +622,14 @@ def main():
                 field.fill(value);field.dispatch_event('change');ready()
             order_a_doc=saved('rack-order-spectral-then-compression.zgtimeline.json')
             order_a=json.loads(order_a_doc['project']['revisions'][-1]['recipe_json'])[
-                'rack']['bands'][2]['inserts']
+                'rack']['bands'][1]['inserts']
             assert [stage['id'] for stage in order_a]==[chord_stage['id'],compressor_id]
             order_a_job=rendered('rack-order-spectral-then-compression')
             order_a_audio=server.timeline.scheduler.result(order_a_job).audio_bytes
             order_a_report=server.timeline.status(order_a_job)['artifact'][
                 'scopes']['diagnostics']['rack']
             assert order_a_report['normalization']=='none'
-            assert order_a_report['bands'][2]['order']==[chord_stage['id'],compressor_id]
+            assert order_a_report['bands'][1]['order']==[chord_stage['id'],compressor_id]
             # The move button must operate the compressor's *existing ID*.
             # An old completed result is revoked on the intervening edit.
             compression_panel.get_by_role('button',name='Move up').click()
@@ -632,7 +637,7 @@ def main():
             ready()
             order_b_doc=saved('rack-order-compression-then-spectral.zgtimeline.json')
             order_b=json.loads(order_b_doc['project']['revisions'][-1]['recipe_json'])[
-                'rack']['bands'][2]['inserts']
+                'rack']['bands'][1]['inserts']
             assert [stage['id'] for stage in order_b]==[compressor_id,chord_stage['id']]
             assert {stage['id']:stage for stage in order_a}=={
                 stage['id']:stage for stage in order_b}, (
@@ -642,12 +647,12 @@ def main():
             order_b_report=server.timeline.status(order_b_job)['artifact'][
                 'scopes']['diagnostics']['rack']
             assert order_b_report['normalization']=='none'
-            assert order_b_report['bands'][2]['order']==[compressor_id,chord_stage['id']]
+            assert order_b_report['bands'][1]['order']==[compressor_id,chord_stage['id']]
             # An actually active transform, not a no-op spectral request or a
             # makeup-only compressor, is required in *both* orders.
             measured_order=[]
             for report in (order_a_report,order_b_report):
-                rows=report['bands'][2]['stages']
+                rows=report['bands'][1]['stages']
                 assert all(row['executed'] for row in rows),rows
                 spectrum=next(row['processor']['diagnostics']
                               for row in rows if row['type_id']=='zg.spectral')
@@ -708,14 +713,14 @@ def main():
             page.get_by_label('Bypass rack').uncheck();ready()
             # Return to one Chordness insert, so the original subsequent
             # spectral-retune and legacy timeline regressions are unchanged.
-            highmid=page.locator('#rack-editor .rack-band').nth(2)
-            compression_panel=highmid.locator('.rack-stage').filter(
+            lowmid=page.locator('#rack-editor .rack-band').nth(2)
+            compression_panel=lowmid.locator('.rack-stage').filter(
                 has=page.locator('.rack-stage-id',has_text=compressor_id))
             compression_panel.get_by_role('button',name='Remove insert').click();ready()
-            highmid=page.locator('#rack-editor .rack-band').nth(2)
-            highmid.get_by_role('button',name='Remove insert').click();ready()
+            lowmid=page.locator('#rack-editor .rack-band').nth(2)
+            lowmid.get_by_role('button',name='Remove insert').click();ready()
             assert not json.loads(saved('rack-chordness-removed.zgtimeline.json')[
-                'project']['revisions'][-1]['recipe_json'])['rack']['bands'][2]['inserts']
+                'project']['revisions'][-1]['recipe_json'])['rack']['bands'][1]['inserts']
             # Restore the empty band before exercising the separately owned
             # multivoice, scheduled retune acceptance below.
             lowmid=page.locator('#rack-editor .rack-band').nth(1)
