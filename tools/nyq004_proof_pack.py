@@ -20,6 +20,8 @@ from zaaggenz_contracts.nyquismic import (
     ClockSpec, JitterSpec, ModulationRoute, Point, RateQuantizer, SonicSpec,
     VirtualRate,
 )
+from zaaggenz_contracts.nyquismic_controls import SampledLfoSource
+
 from zaaggenz_contracts.nyquismic_input_envelope import (
     UpstreamRmsPolicy, compile_upstream_rms_route,
 )
@@ -33,7 +35,7 @@ from zaaggenz_dsp.nyquismic_controlled_audio_proof import (
 
 RATE = 12000
 FRAMES = RATE
-PACK_VERSION = 'nyq004.native-grid-audition-pack.v3'
+PACK_VERSION = 'nyq004.native-grid-audition-pack.v4'
 
 
 def _source() -> np.ndarray:
@@ -180,6 +182,44 @@ def generate_pack(destination: Path) -> dict:
                 'consumer_id': 'proof-transient-clock',
                 'declared_upstream_ids': ['proof-input'],
                 'graph_ancestry_verified': False,
+            },
+        )
+        # A tempo-linked *musical* control, not a frame/block-sampled oscillator.
+        # Compile the physical-time triangle and its exact 1/2-second BPM
+        # breakpoint into the ordinary saved additive-Hz route, then feed
+        # those events through the same real native-grid PCM proof executor.
+        # Clock phase is cumulative through the tempo change, not restarted.
+        beat_source = SampledLfoSource(
+            mode='beat_sync', frequency='1/1', base_bpm='120/1',
+            grid_s='1/64', tempo_points=(Point('1/2', '180/1'),),
+        )
+        beat_route = beat_source.compile_route(
+            '1/1', route_id='proof-beat-lfo', depth=120.0,
+        )
+        beat_spec = SonicSpec(clock=ClockSpec(
+            rate=VirtualRate('360/1'), routes=(beat_route,)))
+        beat_audio = render_controlled_audio_proof(source, beat_spec)
+        if beat_audio.diagnostics['product_rack_export_qualified']:
+            raise AssertionError('musical LFO PCM proof is not product export')
+        write_audio(
+            '08_beat_sync_lfo', beat_audio.audio,
+            description=('One triangle cycle per musical beat, 120 to 180 BPM '
+                         'at 1/2 second; exact continuous phase, 360 Hz base '
+                         'and +/-120 Hz controlled virtual rate'),
+            spec=beat_spec, diagnostics=beat_audio.diagnostics,
+            control_provenance={
+                'method': 'nyq.sampled-lfo-source.v1',
+                'source': beat_source.to_dict(),
+                'source_sha256': beat_source.sha256,
+                'route': beat_route.to_dict(),
+                'route_sha256': beat_route.sha256,
+                'route_id': 'proof-beat-lfo',
+                'mapping': 'add_hz',
+                'depth_hz': 120.0,
+                'compiled_extent_s': '1/1',
+                'tempo_change_s': '1/2',
+                'phase_policy': 'physical-time-cumulative-no-tempo-reset',
+                'product_execution_qualified': False,
             },
         )
         manifest = {
