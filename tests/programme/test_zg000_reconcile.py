@@ -8,7 +8,8 @@ from urllib.parse import parse_qs
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "tools"))
-from zg000_reconcile import Reconciler, ReconcileError, Superseded  # noqa: E402
+from zg000_reconcile import (Reconciler, ReconcileError, Superseded,
+                             validate_finalization_source)  # noqa: E402
 
 A, B, C = "a"*40, "b"*40, "c"*40
 REPO = "techrote/zaaggenz"
@@ -25,6 +26,16 @@ class FakeAPI:
         self.next_id, self.on_call = 1000, None
         self.wrong_sha, self.no_id, self.post_error = None, False, False
         self.delayed, self.fail_get, self.total_count = 0, False, None
+        self.list_limit, self.omit_total_count = None, False
+        self.invalid_inventory_row = False
+        self.boolean_run_id = False
+        self.boolean_workflow_id = False
+        self.duplicate_inventory_row = False
+        self.parent_runs = {}
+        self.parent_poll = 0
+        self.parent_hide_older_until = 0
+        self.parent_omit_current = False
+        self.put_parent()
 
     def put(self, workflow=R1["workflow"], sha=None, status="completed",
             conclusion="success", attempt=1, run_id=None, ref=None, event="workflow_dispatch"):
@@ -35,6 +46,18 @@ class FakeAPI:
                    status=status, conclusion=conclusion, run_attempt=attempt)
         self.runs[run_id] = run
         return run
+
+    def put_parent(self, run_id=41691032400, sha=None, attempt=1):
+        row = dict(id=run_id, workflow_id=42,
+                   path=".github/workflows/zg000-ci-impact.yml",
+                   event="pull_request", head_branch=self.ref,
+                   head_sha=sha if sha is not None else self.sha,
+                   run_attempt=attempt,
+                   # Real GitHub can update this linked PR snapshot after
+                   # the old workflow run. It is NOT historical run custody.
+                   pull_requests=[{"number":self.pr, "head":{"sha":self.sha}}])
+        self.parent_runs[run_id] = row
+        return row
 
     def request(self, method, path, payload=None):
         self.calls.append((method,path,payload))
@@ -50,26 +73,55 @@ class FakeAPI:
                 raise ReconcileError("2026-03-10 workflow dispatch request contains unsupported fields")
             self.posts.append(payload)
             if self.post_error:
+                if self.post_error in ("after", "multiple", "wrong_source"):
+                    workflow = path.split("/actions/workflows/")[1].split("/")[0]
+                    self.put(workflow, sha=B if self.post_error == "wrong_source" else self.sha,
+                             status="queued", conclusion=None)
+                    if self.post_error == "multiple":
+                        self.put(workflow, status="queued", conclusion=None)
                 raise ReconcileError("POST timed out; ambiguous mutation")
             if self.no_id:
                 return {}
+            if self.boolean_run_id:
+                return {"workflow_run_id": True}
             workflow = path.split("/actions/workflows/")[1].split("/")[0]
             run = self.put(workflow, sha=self.wrong_sha or self.sha, status="queued", conclusion=None)
             return {"workflow_run_id":run["id"]}
         if "/runs?" in path:
             wf, query = path.split("/actions/workflows/")[1].split("/runs?")
             params = parse_qs(query)
+            if wf == "zg000-ci-impact.yml":
+                self.parent_poll += 1
+                runs = [x for x in self.parent_runs.values()
+                        if x["event"] == params["event"][0]
+                        and x["head_branch"] == params["branch"][0]]
+                if self.parent_poll <= self.parent_hide_older_until:
+                    runs = [x for x in runs if x["id"] == 41691032400]
+                if self.parent_omit_current:
+                    runs = [x for x in runs if x["id"] != 41691032400]
+                return {"workflow_runs":runs, "total_count":len(runs)}
             runs = [x for x in self.runs.values() if x["path"] == ".github/workflows/"+wf
                     and x["event"] == params["event"][0] and x["head_sha"] == params["head_sha"][0]]
-            return {"workflow_runs":runs, "total_count":self.total_count if self.total_count is not None else len(runs)}
+            total = self.total_count if self.total_count is not None else len(runs)
+            visible = runs[:self.list_limit] if self.list_limit is not None else runs
+            if self.invalid_inventory_row and visible:
+                visible = [None, *visible[1:]]
+            if self.duplicate_inventory_row and len(visible) > 1:
+                # An apparently counted page repeats an old identity while
+                # hiding a newer row. Counts alone cannot establish coverage.
+                visible = [*visible[:-1], visible[0]]
+            return ({"workflow_runs":visible} if self.omit_total_count else
+                    {"workflow_runs":visible, "total_count":total})
         if "/actions/workflows/" in path:
             wf = path.split("/actions/workflows/")[1]
-            return {"id":42, "path":".github/workflows/"+wf,"state":"active"}
+            return {"id":True if self.boolean_workflow_id else 42,
+                    "path":".github/workflows/"+wf,"state":"active"}
         if "/actions/runs/" in path:
             if self.delayed:
                 self.delayed -= 1
                 raise ReconcileError("eventually consistent")
-            return dict(self.runs[int(path.rsplit("/",1)[1])])
+            run_id = int(path.rsplit("/",1)[1])
+            return dict((self.parent_runs if run_id in self.parent_runs else self.runs)[run_id])
         raise AssertionError((method,path))
 
 
@@ -254,6 +306,537 @@ class ZG000RegressionTests(unittest.TestCase):
         self.assertEqual([{"ref": REF}], api.posts)
         self.assertEqual(1000, selected[0]["run_id"])
         self.assertEqual("dispatched", selected[0]["decision"])
+
+    def test_30_ambiguous_post_with_unique_new_run_is_reconciled_without_retry(self):
+        api = FakeAPI(); api.post_error = "after"
+        rec = make(api); selected = rec.dispatch()
+        self.assertEqual(1, len(api.posts))
+        self.assertEqual("reconciled_ambiguous_post", selected[0]["decision"])
+        self.assertEqual(1000, selected[0]["run_id"])
+        self.assertEqual(1, rec.manifest["reconciled"])
+        self.assertEqual(0, rec.manifest["dispatched"])
+        self.assertIn("ambiguous_post_reconciled",
+                      [row["decision"] for row in rec.manifest["decisions"]])
+        api.runs[1000].update(status="completed", conclusion="success")
+        rec.finalize("success")
+        self.assertEqual("qualified", rec.manifest["state"])
+
+    def test_31_ambiguous_post_without_evidence_remains_blocked(self):
+        api = FakeAPI(); api.post_error = True
+        rec = make(api)
+        with self.assertRaisesRegex(ReconcileError, "no mutation retried"):
+            rec.dispatch()
+        self.assertEqual(1, len(api.posts))
+        self.assertEqual(0, rec.manifest["reconciled"])
+
+    def test_32_ambiguous_post_multiple_new_runs_fail_closed(self):
+        api = FakeAPI(); api.post_error = "multiple"
+        with self.assertRaisesRegex(ReconcileError, "multiple new runs"):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+
+    def test_33_ambiguous_post_wrong_source_cannot_qualify(self):
+        api = FakeAPI(); api.post_error = "wrong_source"
+        with self.assertRaises(ReconcileError):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+        self.assertEqual(B, api.runs[1000]["head_sha"])
+
+    def test_34_ambiguous_post_does_not_adopt_prior_cancelled_run(self):
+        api = FakeAPI(); old = api.put(conclusion="cancelled")
+        api.post_error = True
+        with self.assertRaises(ReconcileError):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+        self.assertEqual(old["id"], 1000)
+
+    def test_35_ambiguous_post_recovery_requires_authoritative_run_detail(self):
+        api = FakeAPI(); api.post_error = "after"; api.delayed = 100
+        with self.assertRaises(ReconcileError):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+
+    def test_36_initial_truncated_inventory_must_not_dispatch(self):
+        api = FakeAPI()
+        api.put(status="queued", conclusion=None)
+        api.list_limit = 0  # API reports one existing run but returns none.
+        with self.assertRaisesRegex(ReconcileError, "incomplete or uncounted pre-dispatch"):
+            make(api).dispatch()
+        self.assertFalse(api.posts)
+
+    def test_37_initial_missing_count_must_not_dispatch(self):
+        api = FakeAPI()
+        api.omit_total_count = True
+        with self.assertRaisesRegex(ReconcileError, "incomplete or uncounted pre-dispatch"):
+            make(api).dispatch()
+        self.assertFalse(api.posts)
+
+    def test_38_ambiguous_post_truncated_inventory_cannot_adopt_partial_evidence(self):
+        api = FakeAPI()
+        api.post_error = "multiple"
+        api.list_limit = 1  # Complete pre-POST empty; post-POST omits second run.
+        with self.assertRaisesRegex(ReconcileError, "incomplete or uncounted post-dispatch"):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+
+    def test_39_ambiguous_post_missing_count_cannot_be_reconciled(self):
+        api = FakeAPI()
+        api.post_error = "after"
+        api.on_call = lambda method, path, payload: (
+            setattr(api, "omit_total_count", True)
+            if method == "POST" else None
+        )
+        with self.assertRaisesRegex(ReconcileError, "malformed post-dispatch inventory"):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+    def test_40_invalid_pre_dispatch_row_is_recorded_blocker_not_crash(self):
+        api = FakeAPI()
+        api.put(status="queued", conclusion=None)
+        api.invalid_inventory_row = True
+        rec = make(api)
+        with self.assertRaisesRegex(ReconcileError, "invalid pre-dispatch run inventory") as caught:
+            rec.dispatch()
+        rec.record_error(caught.exception)
+        self.assertEqual("blocked", rec.manifest["state"])
+        self.assertFalse(api.posts)
+
+    def test_41_invalid_post_dispatch_row_never_triggers_second_post(self):
+        api = FakeAPI()
+        api.post_error = "after"
+        api.on_call = lambda method, path, payload: (
+            setattr(api, "invalid_inventory_row", True)
+            if method == "POST" else None
+        )
+        with self.assertRaisesRegex(ReconcileError, "invalid post-dispatch run inventory"):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+
+
+    def test_42_second_new_run_visible_on_confirmation_must_block(self):
+        api = FakeAPI()
+        api.post_error = "after"
+        observations = [0]
+
+        def add_late_run(method, path, payload):
+            if method == "GET" and "/runs?" in path and api.posts:
+                observations[0] += 1
+                if observations[0] == 2:
+                    api.put(status="queued", conclusion=None)
+
+        api.on_call = add_late_run
+        with self.assertRaisesRegex(ReconcileError, "multiple new runs"):
+            make(api).dispatch()
+        self.assertEqual(2, observations[0])
+        self.assertEqual(1, len(api.posts))
+
+    def test_43_candidate_only_visible_at_last_poll_must_block(self):
+        api = FakeAPI()
+        api.post_error = True
+        observations = [0]
+
+        def add_at_final_poll(method, path, payload):
+            if method == "GET" and "/runs?" in path and api.posts:
+                observations[0] += 1
+                if observations[0] == 5:
+                    api.put(status="queued", conclusion=None)
+
+        api.on_call = add_at_final_poll
+        with self.assertRaisesRegex(ReconcileError, "not reconciled"):
+            make(api).dispatch()
+        self.assertEqual(5, observations[0])
+        self.assertEqual(1, len(api.posts))
+
+    def test_44_second_inventory_becomes_partial_must_block(self):
+        api = FakeAPI()
+        api.post_error = "after"
+        observations = [0]
+
+        def truncate_second_poll(method, path, payload):
+            if method == "GET" and "/runs?" in path and api.posts:
+                observations[0] += 1
+                if observations[0] == 2:
+                    api.list_limit = 0
+
+        api.on_call = truncate_second_poll
+        with self.assertRaisesRegex(ReconcileError, "incomplete or uncounted post-dispatch"):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+
+    def test_45_boolean_dispatch_id_cannot_pass_positive_integer_check(self):
+        api = FakeAPI()
+        api.boolean_run_id = True
+        with self.assertRaisesRegex(ReconcileError, "no authoritative run ID"):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))
+
+    def test_46_boolean_run_attempt_cannot_qualify(self):
+        api = FakeAPI()
+        api.put(attempt=True)
+        with self.assertRaisesRegex(ReconcileError, "missing run ID/attempt"):
+            make(api).dispatch()
+        self.assertFalse(api.posts)
+
+
+    def test_47_newer_failed_same_head_run_cannot_hide_behind_old_success(self):
+        api = FakeAPI()
+        previous = api.put(status="completed", conclusion="success")
+        rec = make(api)
+        selected = rec.dispatch()[0]
+        self.assertEqual(previous["id"], selected["run_id"])
+        self.assertFalse(api.posts)
+        api.put(status="completed", conclusion="failure")
+        with self.assertRaisesRegex(ReconcileError, "newer exact-head run/attempt"):
+            rec.finalize("success")
+        self.assertNotEqual("qualified", rec.manifest["state"])
+
+    def test_48_even_newer_green_requires_its_own_watch_and_identity(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        rec = make(api)
+        rec.dispatch()
+        api.put(status="completed", conclusion="success")
+        with self.assertRaisesRegex(ReconcileError, "newer exact-head run/attempt"):
+            rec.finalize("success")
+        self.assertFalse(api.posts)
+
+    def test_49_partial_final_inventory_cannot_certify_old_green(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        rec = make(api)
+        rec.dispatch()
+        api.list_limit = 0
+        with self.assertRaisesRegex(ReconcileError, "incomplete final run inventory"):
+            rec.finalize("success")
+        self.assertFalse(api.posts)
+
+    def test_50_other_branch_on_same_sha_is_not_selected_authority(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        rec = make(api)
+        rec.dispatch()
+        api.put(ref="other-branch", status="completed", conclusion="failure")
+        rec.finalize("success")
+        self.assertEqual("qualified", rec.manifest["state"])
+        self.assertFalse(api.posts)
+
+    def test_51_changed_attempt_in_final_inventory_is_not_old_success(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        rec = make(api)
+        selected = rec.dispatch()[0]
+        # Verify-selected sees attempt 1; the final inventory sees a new
+        # attempt only afterwards. A stale watcher cannot qualify it.
+        def change_at_final_inventory(method, path, payload):
+            if method == "GET" and "/runs?" in path:
+                api.runs[selected["run_id"]]["run_attempt"] = 2
+        api.on_call = change_at_final_inventory
+        with self.assertRaises(ReconcileError):
+            rec.finalize("success")
+        self.assertFalse(api.posts)
+
+    def test_52_counted_pre_dispatch_inventory_must_have_distinct_run_ids(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        api.put(status="completed", conclusion="failure")
+        api.duplicate_inventory_row = True  # Hide the newer failed run.
+        with self.assertRaisesRegex(ReconcileError, "duplicate run IDs in pre-dispatch"):
+            make(api).dispatch()
+        self.assertEqual(0, len(api.posts))
+
+    def test_53_post_recovery_duplicate_ids_cannot_disguise_two_new_runs(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="cancelled")
+        api.post_error = "multiple"
+        def corrupt_post_inventory(method, path, payload):
+            if method == "POST":
+                api.duplicate_inventory_row = True
+        api.on_call = corrupt_post_inventory
+        with self.assertRaisesRegex(ReconcileError, "duplicate run IDs in post-dispatch"):
+            make(api).dispatch()
+        self.assertEqual(1, len(api.posts))  # Never POST twice.
+
+    def test_54_final_counted_inventory_cannot_repeat_old_green_in_place_of_new_red(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        rec = make(api)
+        rec.dispatch()
+        api.put(status="completed", conclusion="failure")
+        api.duplicate_inventory_row = True
+        with self.assertRaisesRegex(ReconcileError, "duplicate run IDs in final inventory"):
+            rec.finalize("success")
+        self.assertNotEqual("qualified", rec.manifest["state"])
+        self.assertEqual(0, len(api.posts))
+
+    def test_55_boolean_workflow_definition_id_is_not_valid_authority(self):
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success")
+        api.boolean_workflow_id = True
+        with self.assertRaisesRegex(ReconcileError, "unaccepted or inactive workflow definition"):
+            make(api).dispatch()
+        self.assertEqual(0, len(api.posts))
+
+
+    def test_56_cancelled_latest_cannot_duplicate_older_active_child(self):
+        # A cancelled newer run does not imply an earlier queued/running child
+        # was cancelled. Do not dispatch a duplicate or certify the older run
+        # as current authority until an operator reconciles the history.
+        for state in ("queued", "in_progress"):
+            with self.subTest(state=state):
+                api = FakeAPI()
+                api.put(status=state, conclusion=None, run_id=1000)
+                api.put(status="completed", conclusion="cancelled", run_id=1001)
+                with self.assertRaisesRegex(ReconcileError, "older same-source child is still active"):
+                    make(api).dispatch()
+                self.assertEqual(0, len(api.posts))
+        # When no earlier execution is active, the documented replacement
+        # policy still permits exactly one new dispatch.
+        api = FakeAPI()
+        api.put(status="completed", conclusion="success", run_id=1000)
+        api.put(status="completed", conclusion="cancelled", run_id=1001)
+        selected = make(api).dispatch()
+        self.assertEqual("dispatched", selected[0]["decision"])
+        self.assertEqual(1, len(api.posts))
+
+    def test_58_cancelled_latest_checks_prior_run_detail_not_just_stale_list(self):
+        # The workflow-list row can still say completed when the independent
+        # run-detail endpoint reports a queued/running previous child. A new
+        # dispatch would overlap that real child despite the latest cancellation.
+        for status in ("queued", "in_progress"):
+            with self.subTest(status=status):
+                api = FakeAPI()
+                previous = api.put(status="completed", conclusion="success", run_id=1000)
+                api.put(status="completed", conclusion="cancelled", run_id=1001)
+                def stale_list(method, path, payload):
+                    if method == "GET" and path.endswith("/actions/runs/1000"):
+                        # Replace the dict rather than mutate it: the earlier
+                        # inventory still holds its independently captured row.
+                        api.runs[1000] = {**previous, "status": status, "conclusion": None}
+                api.on_call = stale_list
+                with self.assertRaisesRegex(
+                        ReconcileError, "active in authoritative run detail"):
+                    make(api).dispatch()
+                self.assertEqual([], api.posts)
+
+    def test_59_cancelled_latest_does_not_replace_changed_previous_attempt(self):
+        api = FakeAPI()
+        previous = api.put(status="completed", conclusion="success", run_id=1000)
+        api.put(status="completed", conclusion="cancelled", run_id=1001)
+        def rerun_previous(method, path, payload):
+            if method == "GET" and path.endswith("/actions/runs/1000"):
+                api.runs[1000] = {**previous, "run_attempt": 2}
+        api.on_call = rerun_previous
+        with self.assertRaisesRegex(ReconcileError, "older child attempt changed"):
+            make(api).dispatch()
+        self.assertEqual([], api.posts)
+
+    def test_57_final_manifest_requires_current_orchestrator_run_identity(self):
+        # Two CI attempts can validate the same branch and source SHA. A
+        # downloaded dispatch manifest from attempt A is not authoritative
+        # for attempt B's watcher matrix, even if all child runs are green.
+        rec = make(FakeAPI())
+        manifest = rec.manifest
+        source = dict(repo=REPO, pr=267, sha=A, ref=REF,
+                      run_id=41691032400, run_attempt=1)
+        validate_finalization_source(manifest, **source)
+        for changed in (
+            {**source, 'run_id': 41691032401},
+            {**source, 'run_attempt': 2},  # GitHub rerun uses same run ID.
+            {**source, 'sha': B},
+        ):
+            with self.subTest(changed=changed), self.assertRaisesRegex(
+                    ReconcileError, 'another source or orchestration run'):
+                validate_finalization_source(manifest, **changed)
+        for forged in (
+            {**manifest, 'schema': 'zg000-dispatch-v0'},
+            {**manifest, 'orchestrator_run_id': True},
+            {**manifest, 'orchestrator_run_id': None},
+            {**manifest, 'orchestrator_run_attempt': True},
+            {**manifest, 'orchestrator_run_attempt': 0},
+            {k: v for k, v in manifest.items() if k != 'orchestrator_run_attempt'},
+            {k: v for k, v in manifest.items() if k != 'orchestrator_run_id'},
+        ):
+            with self.subTest(forged=forged.get('orchestrator_run_id')):
+                with self.assertRaises(ReconcileError):
+                    validate_finalization_source(forged, **source)
+
+
+    def test_60_late_red_on_first_child_during_second_child_audit_blocks_finalization(self):
+        # A single per-child verification sweep used to certify R1 first,
+        # then R2, even if R1 was superseded while R2 was being checked.
+        # The second full inventory sweep must catch that same-SHA red run.
+        api = FakeAPI()
+        api.put(workflow=R1["workflow"], run_id=1000)
+        api.put(workflow=R2["workflow"], run_id=1001)
+        rec = make(api, rows=[R1, R2])
+        rec.dispatch()
+        seen_second_inventory = False
+        def insert_late_red(method, path, payload):
+            nonlocal seen_second_inventory
+            if (method == "GET" and
+                    f"/actions/workflows/{R2['workflow']}/runs?" in path and
+                    not seen_second_inventory):
+                seen_second_inventory = True
+                api.put(workflow=R1["workflow"], run_id=1002,
+                        status="completed", conclusion="failure")
+        api.on_call = insert_late_red
+        with self.assertRaisesRegex(ReconcileError, "newer exact-head run/attempt"):
+            rec.finalize("success")
+        self.assertTrue(seen_second_inventory)
+        self.assertNotEqual("qualified", rec.manifest["state"])
+        self.assertEqual([], api.posts)
+
+    def test_61_two_child_stable_success_remains_qualified_without_dispatch(self):
+        api = FakeAPI()
+        api.put(workflow=R1["workflow"], run_id=1000)
+        api.put(workflow=R2["workflow"], run_id=1001)
+        rec = make(api, rows=[R1, R2])
+        rec.dispatch()
+        rec.finalize("success")
+        self.assertEqual("qualified", rec.manifest["state"])
+        self.assertEqual(2, len(rec.manifest["terminal_runs"]))
+        self.assertEqual([], api.posts)
+
+
+    def test_62_final_sweep_rechecks_details_when_run_list_lags_attempt_or_failure(self):
+        # After the first verification of R1, R2's inventory reveals a
+        # scheduling race. GitHub's R1 *listing* stays stale at attempt 1 /
+        # success, but the authoritative run endpoint sees the rerun or red
+        # result. A list-only second pass would incorrectly qualify R1.
+        for attempt, status, conclusion in ((2, "in_progress", None),
+                                            (1, "completed", "failure")):
+            with self.subTest(attempt=attempt, conclusion=conclusion):
+                api = FakeAPI()
+                api.put(workflow=R1["workflow"], run_id=1000)
+                api.put(workflow=R2["workflow"], run_id=1001)
+                rec = make(api, rows=[R1, R2])
+                rec.dispatch()
+                original = api.request
+                changed = False
+
+                def eventual_consistency(method, path, payload=None):
+                    nonlocal changed
+                    if (method == "GET" and
+                            f"/actions/workflows/{R2['workflow']}/runs?" in path and
+                            not changed):
+                        changed = True
+                        api.runs[1000].update(run_attempt=attempt,
+                                              status=status, conclusion=conclusion)
+                    response = original(method, path, payload)
+                    if (method == "GET" and changed and
+                            f"/actions/workflows/{R1['workflow']}/runs?" in path):
+                        # A counted, apparently valid yet eventually stale
+                        # workflow listing reports the original green attempt.
+                        response = {**response, "workflow_runs": [
+                            {**run, "run_attempt": 1, "status": "completed",
+                             "conclusion": "success"}
+                            if run["id"] == 1000 else run
+                            for run in response["workflow_runs"]]}
+                    return response
+
+                api.request = eventual_consistency
+                with self.assertRaises(ReconcileError):
+                    rec.finalize("success")
+                self.assertTrue(changed)
+                self.assertNotEqual("qualified", rec.manifest["state"])
+                self.assertEqual([], api.posts)
+
+    def test_63_final_sweep_blocks_unavailable_authoritative_details(self):
+        api = FakeAPI()
+        api.put(workflow=R1["workflow"], run_id=1000)
+        api.put(workflow=R2["workflow"], run_id=1001)
+        rec = make(api, rows=[R1, R2])
+        rec.dispatch()
+        original = api.request
+        r1_details = 0
+
+        def detail_disappears(method, path, payload=None):
+            nonlocal r1_details
+            if method == "GET" and path.endswith("/actions/runs/1000"):
+                r1_details += 1
+                # Mock is installed after dispatch; first call is the
+                # initial final audit, second is the final detail recheck.
+                if r1_details >= 2:
+                    raise ReconcileError("run detail unavailable during final audit")
+            return original(method, path, payload)
+
+        api.request = detail_disappears
+        with self.assertRaisesRegex(ReconcileError, "detail unavailable"):
+            rec.finalize("success")
+        self.assertGreaterEqual(r1_details, 2)
+        self.assertNotEqual("qualified", rec.manifest["state"])
+        self.assertEqual([], api.posts)
+
+    def test_64_stale_count_consistent_empty_child_with_prior_parent_blocks_post(self):
+        api = FakeAPI()
+        api.put_parent(run_id=41691032000, sha=A)
+        hidden = api.put(status="queued", conclusion=None)
+        original = api.request
+        def stale_child(method, path, payload=None):
+            if method == "GET" and "/actions/workflows/zg008-melody.yml/runs?" in path:
+                api.calls.append((method, path, payload))
+                return {"workflow_runs":[], "total_count":0}
+            return original(method, path, payload)
+        api.request = stale_child
+        with self.assertRaisesRegex(ReconcileError, "prior same-head orchestration"):
+            make(api).dispatch()
+        self.assertEqual("queued", hidden["status"])
+        self.assertEqual([], api.posts)
+
+    def test_65_first_parent_with_no_child_still_dispatches(self):
+        api = FakeAPI()
+        rec = make(api)
+        self.assertEqual("dispatched", rec.dispatch()[0]["decision"])
+        self.assertEqual(1, len(api.posts))
+        self.assertEqual(2, api.parent_poll)
+        self.assertIn("parent_lineage_checked",
+                      [d["decision"] for d in rec.manifest["decisions"]])
+
+    def test_66_older_different_source_parent_does_not_block_new_commit(self):
+        api = FakeAPI()
+        old = api.put_parent(run_id=41691032000, sha=B)
+        self.assertEqual(A, old["pull_requests"][0]["head"]["sha"])
+        self.assertEqual(B, old["head_sha"])
+        self.assertEqual("dispatched", make(api).dispatch()[0]["decision"])
+        self.assertEqual(1, len(api.posts))
+
+    def test_67_same_parent_rerun_refuses_new_child(self):
+        api = FakeAPI()
+        api.put_parent(attempt=2)
+        rec = Reconciler(api, REPO, 267, A, REF, [R1],
+                         41691032400, sleep=lambda _:None, run_attempt=2)
+        with self.assertRaisesRegex(ReconcileError, "orchestration rerun"):
+            rec.dispatch()
+        self.assertEqual([], api.posts)
+
+    def test_68_previous_parent_emerges_during_second_read_blocks_post(self):
+        api = FakeAPI()
+        api.put_parent(run_id=41691032000, sha=A)
+        api.parent_hide_older_until = 1
+        with self.assertRaisesRegex(ReconcileError, "changing orchestration-parent inventory"):
+            make(api).dispatch()
+        self.assertEqual(2, api.parent_poll)
+        self.assertEqual([], api.posts)
+
+    def test_69_current_parent_unindexed_blocks_post(self):
+        api = FakeAPI()
+        api.parent_omit_current = True
+        with self.assertRaisesRegex(ReconcileError, "current parent missing"):
+            make(api).dispatch()
+        self.assertEqual([], api.posts)
+
+    def test_70_prior_parent_detail_conflict_blocks_post(self):
+        api = FakeAPI()
+        prior = api.put_parent(run_id=41691032000, sha=B)
+        original = api.request
+        def stale_parent_detail(method, path, payload=None):
+            if method == "GET" and path.endswith("/actions/runs/41691032000"):
+                api.calls.append((method, path, payload))
+                return {**prior, "run_attempt":2}
+            return original(method, path, payload)
+        api.request = stale_parent_detail
+        with self.assertRaisesRegex(ReconcileError, "prior parent source/attempt detail disagreement"):
+            make(api).dispatch()
+        self.assertEqual([], api.posts)
 
 
 if __name__ == "__main__":

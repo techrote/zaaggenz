@@ -78,7 +78,8 @@ class GitHubAPI:
 
 class Reconciler:
     def __init__(self, api: Any, repo: str, pr: int, sha: str, ref: str,
-                 rows: list[dict], run_id: int, sleep: Callable[[float], None] = time.sleep):
+                 rows: list[dict], run_id: int, sleep: Callable[[float], None] = time.sleep,
+                 run_attempt: int = 1):
         if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
             raise ValueError("invalid repository")
         if pr < 1 or not SHA.fullmatch(sha) or not ref or ref.startswith("refs/"):
@@ -93,15 +94,22 @@ class Reconciler:
         names = [x["workflow"] for x in rows]
         if len(set(names)) != len(names):
             raise ValueError("duplicate workflow in selection")
+        if type(run_id) is not int or run_id <= 0 or type(run_attempt) is not int or run_attempt <= 0:
+            raise ValueError("invalid orchestrator Actions run ID/attempt")
         self.api, self.repo, self.pr, self.sha, self.ref = api, repo, pr, sha, ref
         self.rows, self.run_id, self.sleep = rows, run_id, sleep
         self.workflow_ids: dict[str, int] = {}
+        # Inventory IDs before every POST, including cancelled runs. A run seen
+        # before an ambiguous POST cannot be presented as its new evidence.
+        self.prior_run_ids: dict[str, set[int]] = {}
+        self.reconciled_workflows: set[str] = set()
         self.manifest: dict[str, Any] = {
             "schema": "zg000-dispatch-v1", "repo": repo, "pr": pr,
             "requested_sha": sha, "current_pr_sha": None, "source_ref": ref,
-            "orchestrator_run_id": run_id, "selected": rows,
+            "orchestrator_run_id": run_id,
+            "orchestrator_run_attempt": run_attempt, "selected": rows,
             "runs": [], "rejected": [], "decisions": [], "state": "pending",
-            "reused": 0, "dispatched": 0, "avoided_dispatches": 0,
+            "reused": 0, "dispatched": 0, "reconciled": 0, "avoided_dispatches": 0,
             "policy": "no child cancellation; no ambiguous dispatch retry",
         }
 
@@ -124,7 +132,8 @@ class Reconciler:
         if workflow not in self.workflow_ids:
             data = self.api.request("GET", self.api_path(f"actions/workflows/{workflow}"))
             if (data.get("path") != f".github/workflows/{workflow}"
-                    or data.get("state") != "active" or not isinstance(data.get("id"), int)):
+                    or data.get("state") != "active" or type(data.get("id")) is not int
+                    or data["id"] < 1):
                 raise ReconcileError(f"unaccepted or inactive workflow definition: {workflow}")
             self.workflow_ids[workflow] = data["id"]
         return self.workflow_ids[workflow]
@@ -142,8 +151,8 @@ class Reconciler:
             if run.get(key) != value:
                 raise ReconcileError(f"{workflow} run {run.get('id')}: {key}="
                                      f"{run.get(key)!r}, required {value!r}")
-        if not isinstance(run.get("id"), int) or not isinstance(run.get("run_attempt"), int) \
-                or run["run_attempt"] < 1:
+        if (type(run.get("id")) is not int or run["id"] < 1
+                or type(run.get("run_attempt")) is not int or run["run_attempt"] < 1):
             raise ReconcileError(f"{workflow}: missing run ID/attempt")
         status = run.get("status")
         if status not in TERMINAL | ACTIVE:
@@ -164,6 +173,85 @@ class Reconciler:
             raise ReconcileError("run-ID lookup returned different run")
         return data
 
+    def guard_parent_lineage(self, workflow: str) -> None:
+        """Block a known earlier same-head orchestration before any new POST.
+
+        A counted empty child list can lag a cancelled parent's real POST.
+        Two independent parent-list observations are a bounded mitigation,
+        never an atomic reservation or proof of globally absent older runs.
+        """
+        if self.manifest["orchestrator_run_attempt"] != 1:
+            raise ReconcileError(
+                f"{workflow}: orchestration rerun cannot safely initiate a new child")
+        parent_workflow = "zg000-ci-impact.yml"
+        expected_id = self.workflow_id(parent_workflow)
+        query = urlencode({"event": "pull_request", "branch": self.ref, "per_page": 100})
+
+        def source_of(run: dict) -> str:
+            if (type(run.get("id")) is not int or run["id"] < 1
+                    or type(run.get("run_attempt")) is not int or run["run_attempt"] < 1
+                    or run.get("workflow_id") != expected_id
+                    or run.get("path") != f".github/workflows/{parent_workflow}"
+                    or run.get("event") != "pull_request"
+                    or run.get("head_branch") != self.ref):
+                raise ReconcileError(f"{workflow}: invalid orchestration identity")
+            links = run.get("pull_requests")
+            if not isinstance(links, list):
+                raise ReconcileError(f"{workflow}: parent PR provenance unavailable")
+            matches = [link for link in links if isinstance(link, dict)
+                       and link.get("number") == self.pr]
+            if len(matches) != 1 or not isinstance(matches[0].get("head"), dict):
+                raise ReconcileError(f"{workflow}: parent PR provenance ambiguous")
+            # Linked PR objects can reflect today's branch tip even on an
+            # older immutable workflow run. Use the RUN'S head_sha, never
+            # links[...].head.sha, to decide historical source identity.
+            source = run.get("head_sha")
+            if not isinstance(source, str) or not SHA.fullmatch(source):
+                raise ReconcileError(f"{workflow}: invalid immutable parent run SHA")
+            return source
+
+        previous_ids: set[int] | None = None
+        for _ in range(2):
+            self.check_head()
+            listing = self.api.request(
+                "GET", self.api_path(f"actions/workflows/{parent_workflow}/runs?{query}"))
+            runs, total = listing.get("workflow_runs"), listing.get("total_count")
+            if (not isinstance(runs, list) or type(total) is not int
+                    or total < 0 or total > 100 or len(runs) != total
+                    or any(not isinstance(r, dict) or type(r.get("id")) is not int
+                           or r["id"] < 1 for r in runs)):
+                raise ReconcileError(f"{workflow}: incomplete orchestration-parent inventory")
+            ids = {run["id"] for run in runs}
+            if len(ids) != len(runs) or self.run_id not in ids:
+                raise ReconcileError(f"{workflow}: current parent missing or duplicate IDs")
+            if previous_ids is not None and ids != previous_ids:
+                raise ReconcileError(f"{workflow}: changing orchestration-parent inventory")
+            previous_ids = ids
+            for run in runs:
+                source = source_of(run)
+                if run["id"] == self.run_id:
+                    if (source != self.sha or
+                            run["run_attempt"] != self.manifest["orchestrator_run_attempt"]):
+                        raise ReconcileError(f"{workflow}: current parent source/attempt mismatch")
+                    continue
+                if run["id"] > self.run_id:
+                    raise ReconcileError(f"{workflow}: newer orchestration parent exists")
+                if source == self.sha:
+                    raise ReconcileError(
+                        f"{workflow}: prior same-head orchestration parent {run['id']} "
+                        "may have a still-unindexed child; dispatch blocked")
+                detail = self.get_run(run["id"])
+                if (source_of(detail) != source or
+                        detail["run_attempt"] != run["run_attempt"]):
+                    raise ReconcileError(
+                        f"{workflow}: prior parent source/attempt detail disagreement")
+            self.check_head()
+        self.manifest["decisions"].append({
+            "workflow": workflow, "decision": "parent_lineage_checked",
+            "orchestrator_run_id": self.run_id,
+            "scope": "two read-only inventories, not atomic dispatch custody",
+        })
+
     def existing(self, row: dict) -> tuple[str, dict | None]:
         workflow = row["workflow"]
         query = urlencode({"event": "workflow_dispatch", "head_sha": self.sha, "per_page": 100})
@@ -171,6 +259,22 @@ class Reconciler:
         runs = data.get("workflow_runs")
         if not isinstance(runs, list):
             raise ReconcileError(f"{workflow}: malformed workflow run list")
+        # A short or uncounted inventory cannot prove that dispatch is needed.
+        # The query requests a complete 100-run page for this exact head. If
+        # GitHub reports more entries than it returned, an existing queued or
+        # failed child may be hidden, making a second POST unsafe.
+        total = data.get("total_count")
+        if (type(total) is not int or total < 0 or total > 100
+                or len(runs) != total):
+            raise ReconcileError(f"{workflow}: incomplete or uncounted pre-dispatch inventory")
+        # Validate rows BEFORE reading their fields: a malformed API entry
+        # must produce a recorded blocked manifest, not an uncaught
+        # AttributeError that loses the normal evidence handover.
+        if any(not isinstance(run, dict) or type(run.get("id")) is not int
+               or run["id"] < 1 for run in runs):
+            raise ReconcileError(f"{workflow}: invalid pre-dispatch run inventory")
+        if len({run["id"] for run in runs}) != len(runs):
+            raise ReconcileError(f"{workflow}: duplicate run IDs in pre-dispatch inventory")
         candidates = []
         for run in runs:
             if (run.get("head_sha") != self.sha or run.get("event") != "workflow_dispatch"
@@ -178,8 +282,10 @@ class Reconciler:
                 continue
             self.verify(row, run)
             candidates.append(run)
-        if data.get("total_count", 0) > 100:
-            raise ReconcileError(f"{workflow}: exact-head inventory exceeds single-page bound")
+
+        # Record every listed ID, not just accepted candidates. The next POST
+        # must not adopt an older cancelled or mismatched run after ambiguity.
+        self.prior_run_ids[workflow] = {run["id"] for run in runs}
         if not candidates:
             return "missing_or_cancelled", None
         # Latest run/attempt is authoritative: old green may not hide new red.
@@ -193,16 +299,132 @@ class Reconciler:
         if detail["status"] == "completed" and detail.get("conclusion") == "success":
             return "reuse_success", detail
         if detail["status"] == "completed" and detail.get("conclusion") == "cancelled":
+            # A cancelled *latest* execution is not evidence that every
+            # earlier execution has stopped. Starting a replacement while
+            # an older same-source child remains queued/running would create
+            # avoidable concurrent children. The superseded run is not
+            # qualified, and the older active run cannot stand in for it.
+            # Require operator reconciliation instead of a second POST.
+            for previous in candidates:
+                if previous["id"] == latest["id"]:
+                    continue
+                # The listing is eventually consistent: a previous child may
+                # still be executing even when its cached list row says
+                # completed. Inspect the authoritative run detail for EVERY
+                # prior same-source child before permitting replacement.
+                if previous["status"] in ACTIVE:
+                    raise ReconcileError(
+                        f"{workflow}: latest exact-head run cancelled but an older "
+                        "same-source child is still active; dispatch blocked")
+                actual_previous = self.get_run(previous["id"])
+                self.verify(row, actual_previous)
+                if actual_previous["run_attempt"] != previous["run_attempt"]:
+                    raise ReconcileError(
+                        f"{workflow}: older child attempt changed during cancelled-run reconciliation")
+                if actual_previous["status"] in ACTIVE:
+                    raise ReconcileError(
+                        f"{workflow}: latest exact-head run cancelled but an older "
+                        "same-source child is still active in authoritative run detail; dispatch blocked")
             return "missing_or_cancelled", None
         raise QualificationFailed(f"{workflow}: latest exact-head run {detail['id']} is "
                                   f"{detail['status']}/{detail.get('conclusion')}; explicit repair required")
 
+    def recover_ambiguous_post(self, row: dict, cause: ReconcileError) -> dict:
+        """Read-only, bounded reconciliation after an uncertain POST outcome.
+
+        A second POST is forbidden. Only ONE newly visible, independently
+        verified exact-head run (absent from the pre-POST inventory) can be
+        adopted. Missing, wrong-source or multiple new runs leave the gate
+        blocked rather than guessing which mutation took place.
+        """
+        workflow = row["workflow"]
+        before = self.prior_run_ids.get(workflow)
+        if before is None:
+            raise ReconcileError(f"{workflow}: missing pre-POST inventory") from cause
+        self.manifest["decisions"].append({
+            "workflow": workflow, "decision": "ambiguous_post",
+            "reason": str(cause),
+            "policy": "read-only reconciliation; never retry POST",
+        })
+        query = urlencode({"event": "workflow_dispatch", "head_sha": self.sha, "per_page": 100})
+        # A newly visible run might not be the only new run: workflow listings
+        # are eventually consistent. Require two separately verified complete
+        # inventories before accepting uniqueness. This is bounded evidence,
+        # not proof of POST attribution or globally atomic discovery.
+        observed: tuple[int, int] | None = None
+        for delay in (0, 2, 5, 10, 20):
+            if delay:
+                self.sleep(delay)
+            self.check_head()
+            try:
+                data = self.api.request(
+                    "GET", self.api_path(f"actions/workflows/{workflow}/runs?{query}"))
+            except ReconcileError:
+                continue  # Bounded read-only API recovery. No second POST.
+            runs = data.get("workflow_runs")
+            if not isinstance(runs, list) or not isinstance(data.get("total_count"), int):
+                raise ReconcileError(f"{workflow}: malformed post-dispatch inventory") from cause
+            if (type(data["total_count"]) is not int or data["total_count"] < 0
+                    or data["total_count"] > 100 or len(runs) != data["total_count"]):
+                raise ReconcileError(f"{workflow}: incomplete or uncounted post-dispatch inventory") from cause
+            if any(not isinstance(run, dict) or type(run.get("id")) is not int
+                   or run["id"] < 1 for run in runs):
+                raise ReconcileError(f"{workflow}: invalid post-dispatch run inventory") from cause
+            if len({run["id"] for run in runs}) != len(runs):
+                raise ReconcileError(f"{workflow}: duplicate run IDs in post-dispatch inventory") from cause
+            newly_visible = [run for run in runs if run["id"] not in before]
+            if len(newly_visible) > 1:
+                raise ReconcileError(
+                    f"{workflow}: ambiguous POST followed by multiple new runs; no attribution") from cause
+            if not newly_visible:
+                if observed is not None:
+                    raise ReconcileError(
+                        f"{workflow}: new run disappeared during ambiguous POST confirmation") from cause
+                continue
+            candidate = newly_visible[0]
+            # Verify the list result and authoritative run detail independently.
+            self.verify(row, candidate)
+            try:
+                detail = self.get_run(candidate["id"])
+            except ReconcileError:
+                observed = None  # A missing detail is not a validated observation.
+                continue
+            self.verify(row, detail)
+            if detail["run_attempt"] != candidate["run_attempt"]:
+                raise ReconcileError(
+                    f"{workflow}: attempt changed while reconciling ambiguous POST") from cause
+            identity = (detail["id"], detail["run_attempt"])
+            if observed is None:
+                observed = identity
+                continue  # A second complete inventory must corroborate it.
+            if observed != identity:
+                raise ReconcileError(
+                    f"{workflow}: candidate identity changed during ambiguous POST confirmation") from cause
+            self.check_head()
+            self.manifest["decisions"].append({
+                "workflow": workflow, "decision": "ambiguous_post_reconciled",
+                "run_id": detail["id"], "run_attempt": detail["run_attempt"],
+            })
+            # This is an observed run, not proof the uncertain POST created it.
+            self.reconciled_workflows.add(workflow)
+            self.manifest["reconciled"] += 1
+            return detail
+        raise ReconcileError(
+            f"{workflow}: ambiguous POST not reconciled to one newly visible exact-head run; "
+            "no mutation retried") from cause
+
     def dispatch_one(self, row: dict) -> dict:
         workflow = row["workflow"]
-        response = self.api.request("POST", self.api_path(f"actions/workflows/{workflow}/dispatches"),
-                                    {"ref": self.ref})
+        try:
+            response = self.api.request(
+                "POST", self.api_path(f"actions/workflows/{workflow}/dispatches"),
+                {"ref": self.ref})
+        except ReconcileError as exc:
+            # A transport/CLI failure cannot prove whether GitHub dispatched.
+            # Reconcile only pre/post IDs at this exact source, without POSTing.
+            return self.recover_ambiguous_post(row, exc)
         run_id = response.get("workflow_run_id")
-        if not isinstance(run_id, int) or run_id < 1:
+        if type(run_id) is not int or run_id < 1:
             raise ReconcileError(f"{workflow}: dispatch returned no authoritative run ID; do not retry")
         self.manifest["dispatched"] += 1
         self.manifest["decisions"].append({"workflow": workflow, "decision": "dispatch_issued", "run_id": run_id})
@@ -232,8 +454,11 @@ class Reconciler:
             decision, detail = self.existing(row)
             self.check_head()
             if detail is None:
+                self.guard_parent_lineage(row["workflow"])
+                self.check_head()
                 detail = self.dispatch_one(row)
-                decision = "dispatched"
+                decision = ("reconciled_ambiguous_post" if row["workflow"] in self.reconciled_workflows
+                            else "dispatched")
             else:
                 self.manifest["reused"] += 1
                 self.manifest["avoided_dispatches"] += 1
@@ -267,6 +492,46 @@ class Reconciler:
         self.check_head()
         return run
 
+    def confirm_latest_selected(self, selected: dict) -> None:
+        """Recheck latest run/attempt at acceptance, not only at dispatch.
+
+        A same-head manual dispatch or rerun after selection supersedes the
+        previously watched run. Its outcome must not be hidden by an older
+        successful run. Inventory must be complete; unavailable evidence
+        blocks qualification without dispatching any additional child.
+        """
+        workflow = selected["workflow"]
+        query = urlencode({"event": "workflow_dispatch", "head_sha": self.sha, "per_page": 100})
+        data = self.api.request(
+            "GET", self.api_path(f"actions/workflows/{workflow}/runs?{query}"))
+        runs = data.get("workflow_runs")
+        total = data.get("total_count")
+        if (not isinstance(runs, list) or type(total) is not int
+                or total < 0 or total > 100 or len(runs) != total):
+            raise ReconcileError(f"{workflow}: incomplete final run inventory")
+        if any(not isinstance(run, dict) or type(run.get("id")) is not int
+               or run["id"] < 1 for run in runs):
+            raise ReconcileError(f"{workflow}: invalid final run inventory")
+        if len({run["id"] for run in runs}) != len(runs):
+            raise ReconcileError(f"{workflow}: duplicate run IDs in final inventory")
+        candidates = []
+        for run in runs:
+            if (run.get("head_sha") != self.sha or run.get("event") != "workflow_dispatch"
+                    or run.get("head_branch") != self.ref):
+                continue
+            self.verify({"workflow": workflow, "stable_id": selected["stable_id"]}, run)
+            candidates.append(run)
+        if not candidates:
+            raise ReconcileError(f"{workflow}: selected child absent from final inventory")
+        latest = max(candidates, key=lambda run: (run["id"], run["run_attempt"]))
+        if (latest["id"], latest["run_attempt"]) != (
+                selected["run_id"], selected["run_attempt"]):
+            raise ReconcileError(
+                f"{workflow}: newer exact-head run/attempt superseded selected watcher "
+                f"{selected['run_id']}/{selected['run_attempt']} with "
+                f"{latest['id']}/{latest['run_attempt']}")
+        self.check_head()
+
     def finalize(self, watcher_result: str) -> None:
         self.check_head()
         if watcher_result != "success":
@@ -281,12 +546,27 @@ class Reconciler:
         self.manifest["terminal_runs"] = []
         for row in selected:
             actual = self.verify_selected(row, completed=True)
+            self.confirm_latest_selected(row)
             self.manifest["terminal_runs"].append({
                 "workflow": row["workflow"], "run_id": actual["id"],
                 "run_attempt": actual["run_attempt"], "head_sha": actual["head_sha"],
                 "workflow_id": actual["workflow_id"], "event": actual["event"],
                 "status": actual["status"], "conclusion": actual["conclusion"],
             })
+        # Cross-workflow finalization is not an atomic snapshot: a newer
+        # attempt of an early workflow can appear while a later workflow's
+        # detail and inventory are still being checked. Sweep the full matrix
+        # again after all terminal checks, so a late same-head supersession
+        # cannot be hidden by the first workflow's earlier green result.
+        # GitHub's eventual consistency still precludes a global atomic claim.
+        for row in selected:
+            # The inventory endpoint can lag a same-ID GitHub rerun or a
+            # late terminal-to-active transition. Re-read each selected run's
+            # authoritative details during this final sweep, not only its
+            # eventually consistent list row. Neither response is globally
+            # atomic, but a known later attempt/failure must never certify.
+            self.verify_selected(row, completed=True)
+            self.confirm_latest_selected(row)
         self.check_head()
         self.manifest["state"] = "qualified"
 
@@ -307,6 +587,28 @@ class Reconciler:
         temporary.replace(path)
 
 
+def validate_finalization_source(manifest: dict, *, repo: str, pr: int,
+                                 sha: str, ref: str, run_id: int, run_attempt: int = 1) -> None:
+    """Bind a downloaded dispatch artifact to its *own* Actions run.
+
+    Source SHA alone is insufficient: a previous orchestration attempt can
+    have the same PR head and branch, but a different watch/dispatch history.
+    Reusing its manifest must never qualify the current workflow attempt.
+    """
+    if (manifest.get("schema") != "zg000-dispatch-v1" or
+            (manifest.get("repo"), manifest.get("pr"),
+             manifest.get("requested_sha"), manifest.get("source_ref")) !=
+            (repo, pr, sha, ref) or
+            type(run_id) is not int or run_id <= 0 or
+            type(run_attempt) is not int or run_attempt <= 0 or
+            type(manifest.get("orchestrator_run_id")) is not int or
+            manifest["orchestrator_run_id"] != run_id or
+            type(manifest.get("orchestrator_run_attempt")) is not int or
+            manifest["orchestrator_run_attempt"] != run_attempt):
+        raise ReconcileError(
+            "refusing to finalize a dispatch manifest from another source or orchestration run")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("mode", choices=("dispatch", "verify-run", "finalize"))
@@ -315,6 +617,7 @@ def main() -> int:
     parser.add_argument("--sha", required=True)
     parser.add_argument("--ref", required=True)
     parser.add_argument("--run-id", type=int, default=int(os.getenv("GITHUB_RUN_ID", "0")))
+    parser.add_argument("--run-attempt", type=int, default=int(os.getenv("GITHUB_RUN_ATTEMPT", "1")))
     parser.add_argument("--manifest", type=Path, default=Path("zg000-dispatch-manifest.json"))
     parser.add_argument("--github-output", type=Path)
     parser.add_argument("--watcher-result", default="")
@@ -325,15 +628,19 @@ def main() -> int:
         raise SystemExit("missing authoritative dispatch manifest; cannot finalize")
     if args.mode == "finalize" and args.manifest.exists():
         manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-        if (manifest.get("repo"), manifest.get("pr"), manifest.get("requested_sha"), manifest.get("source_ref")) != (
-                args.repo, args.pr, args.sha, args.ref):
-            raise SystemExit("refusing to finalize a manifest for another source")
+        try:
+            validate_finalization_source(
+                manifest, repo=args.repo, pr=args.pr, sha=args.sha,
+                ref=args.ref, run_id=args.run_id, run_attempt=args.run_attempt)
+        except ReconcileError as exc:
+            raise SystemExit(str(exc)) from exc
         rows = manifest["selected"]
     elif args.mode == "dispatch":
         rows = json.loads(os.getenv("ZG000_MATRIX_JSON", "[]"))
     else:
         rows = [json.loads(args.row_json)] if args.row_json else []
-    engine = Reconciler(GitHubAPI(), args.repo, args.pr, args.sha, args.ref, rows, args.run_id)
+    engine = Reconciler(GitHubAPI(), args.repo, args.pr, args.sha, args.ref,
+                        rows, args.run_id, run_attempt=args.run_attempt)
     if manifest:
         engine.manifest = manifest
     try:
