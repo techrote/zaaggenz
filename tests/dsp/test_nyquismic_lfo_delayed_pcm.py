@@ -124,7 +124,7 @@ class DelayedLfoPcmTests(unittest.TestCase):
                 route_id='no-delay', depth=1.)
         with self.assertRaises(ContractError):
             compile_delayed_lfo_additive_routes(
-                source, '1/2', route_id='past', depth=1.)
+                source, '1/16', route_id='past', depth=1.)
         with self.assertRaises(ClockCancelled):
             compile_delayed_lfo_additive_routes(
                 source, '1/2', route_id='cancel', depth=1.,
