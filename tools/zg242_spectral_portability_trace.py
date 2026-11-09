@@ -100,6 +100,30 @@ def _canonical(value):
 # Actual read-only tracker operations, with bounded first-frame numerical bytes.
 MAX_SUBLEDGER_FRAMES=512
 MAX_SNAPSHOT_FRAMES=4
+MAX_STAGE_PCM_BYTES=1048576
+
+def _stage_pcm_bytes(a):
+    a=np.ascontiguousarray(a,dtype='<f4')
+    if a.ndim not in (1,2) or a.nbytes==0 or a.nbytes>MAX_STAGE_PCM_BYTES:
+        raise ValueError('bounded spectral stage PCM required')
+    if not np.isfinite(a).all():raise ValueError('non-finite spectral stage PCM')
+    return {'shape':list(a.shape),'sha256':digest_bytes(a.tobytes()),
+            'f32le_b64':base64.b64encode(a.tobytes()).decode('ascii')}
+
+def _checked_stage_pcm(packet,identity):
+    shape=packet['shape']
+    if not isinstance(shape,list) or len(shape) not in (1,2) or any(type(n)is not int or n<1 for n in shape):
+        raise ValueError('bad spectral stage PCM shape')
+    size=int(np.prod(shape))*4
+    if size==0 or size>MAX_STAGE_PCM_BYTES:raise ValueError('bad spectral stage PCM size')
+    raw=base64.b64decode(packet['f32le_b64'],validate=True)
+    if len(raw)!=size or digest_bytes(raw)!=packet['sha256']:
+        raise ValueError('spectral stage PCM byte identity mismatch')
+    a=np.frombuffer(raw,dtype='<f4').reshape(shape).copy()
+    if not np.isfinite(a).all() or pcm_identity(a)['f32le_sha256']!=identity['f32le_sha256'] or pcm_identity(a)['f64le_sha256']!=identity['f64le_sha256']:
+        raise ValueError('foreign or non-finite spectral analysis input')
+    return a
+
 
 def _numerical_tensor(a):
     a=np.asarray(a)
@@ -369,7 +393,8 @@ def capture_document(document, *, expected_pcm=None, provenance=None, frozen_pre
 
     def analyse(*args,**kwargs):
         probe={'version':'zg242-actual-tracker-subledger-v1','input':pcm_identity(args[0]),
-               'stft':None,'candidates':[],'assignments':[],'transient':None}
+               'stft':None,'candidates':[],'assignments':[],'transient':None,
+                'stage_input_f32le_b64':_stage_pcm_bytes(args[0])}
         active[0]=probe
         try:result=origin_analyse(*args,**kwargs)
         finally:active[0]=None
