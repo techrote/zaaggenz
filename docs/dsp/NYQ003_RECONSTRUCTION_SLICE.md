@@ -292,6 +292,15 @@ the generated kernel must fit the explicit resource budget. In particular,
 which exceeds the default 4096-tap budget and is rejected instead of
 silently using a shorter fallback. Empty mono/stereo PCM yields matching
 empty output, and all intermediate/output samples must be finite.
+The helper copies bounded input PCM into a private float64 snapshot
+**before finite-data admission and external SciPy FIR execution**.
+It does not pass a caller-owned float64 view through the filter: later
+concurrent mutation of that view must not silently replace the checked
+sample values. A deterministic adversarial regression mutates the caller's
+buffer at the SciPy invocation boundary while verifying identical output
+and immutable delivery PCM. This is one-call input ownership, not proof
+against unsynchronised mutation *during* the initial copy or an independent
+sonic/clock provenance oracle.
 Cancellation is checked before and after one complete SciPy conversion;
 the helper does **not** claim mid-kernel cooperative cancellation. Its use
 for long-form work requires additional bounded-window streaming/context
