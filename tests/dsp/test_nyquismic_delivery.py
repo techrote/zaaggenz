@@ -4,6 +4,7 @@ This does not qualify the real export path, production convergence gate,
 Nyquismic graph integration or a universal 'cleaner sounds better' claim.
 """
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -111,6 +112,35 @@ class DeliveryConversionTests(unittest.TestCase):
                 {**DeliveryConversionPolicy().to_dict(), 'new_unknown': True})
         with self.assertRaises(ContractError):
             convert_numerical_to_delivery(source, True, 48000)
+
+    def test_mutable_caller_pcm_cannot_replace_checked_fir_input(self):
+        # The converter used to give SciPy the caller's float64 array directly.
+        # Simulate a hostile/concurrent owner mutation exactly at the external
+        # DSP boundary. The declared conversion must process its OWN snapshot.
+        from scipy.signal import resample_poly
+        rate = 192000
+        t = np.arange(960, dtype=np.float64) / rate
+        caller = (0.3 * np.sin(2 * np.pi * 1200 * t) +
+                  0.1 * np.cos(2 * np.pi * 4200 * t))
+        accepted = caller.copy()
+        expected = convert_numerical_to_delivery(accepted, rate, 48000)
+        original = resample_poly
+        calls = []
+
+        def mutate_caller_then_convert(pcm, up, down, **kwargs):
+            calls.append((up, down, np.shares_memory(pcm, caller)))
+            caller[:] = 0.0
+            return original(pcm, up, down, **kwargs)
+
+        with patch('scipy.signal.resample_poly', new=mutate_caller_then_convert):
+            actual = convert_numerical_to_delivery(caller, rate, 48000)
+        self.assertEqual(calls, [(1, 4, False)])
+        self.assertTrue(np.all(caller == 0.0))
+        np.testing.assert_array_equal(actual.audio, expected.audio)
+        self.assertFalse(actual.audio.flags.writeable)
+        self.assertEqual(actual.diagnostics['source_frames'], 960)
+        self.assertEqual(actual.diagnostics['kernel_sha256'],
+                         expected.diagnostics['kernel_sha256'])
 
     def test_cancellation_can_abort_before_and_after_atomic_calculation(self):
         source = np.arange(512, dtype=np.float64)
