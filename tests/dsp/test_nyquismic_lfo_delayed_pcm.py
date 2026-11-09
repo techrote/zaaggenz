@@ -109,6 +109,64 @@ class DelayedLfoPcmTests(unittest.TestCase):
             render_controlled_audio_proof(signal(6000), silent_control).diagnostics['event_ledger_sha256'],
             render_controlled_audio_proof(signal(6000), dry).diagnostics['event_ledger_sha256'])
 
+
+    def test_pre_onset_short_preview_is_neutral_and_matches_full_pcm(self):
+        # A future beat-synced nonzero-onset LFO must not make an otherwise
+        # valid short source-native preview refuse or leak future tempo.
+        source = SampledLfoSource(
+            mode='beat_sync', origin_s='3/4', phase_cycles='0/1',
+            frequency='1/1', base_bpm='120/1', grid_s='1/16',
+            tempo_points=(Point('7/8', '180/1'),))
+        saved = source.to_json()
+        short = compile_delayed_lfo_additive_routes(
+            source, '1/2', route_id='later', depth=80.)
+        full = compile_delayed_lfo_additive_routes(
+            source, '1/1', route_id='later', depth=80.)
+        self.assertEqual((short.onset_s, short.through_s), ('3/4', '1/2'))
+        self.assertEqual(short.source_sha256, source.sha256)
+        self.assertEqual([r.id for r in short.routes],
+                         ['later-onset', 'later-motion'])
+        self.assertEqual([r.points for r in short.routes], [(), ()])
+        self.assertEqual([r.initial for r in short.routes], ['0/1', '0/1'])
+        self.assertEqual((short.routes[0].depth, short.routes[1].depth),
+                         (80., 160.))
+        self.assertEqual(
+            tuple(r.to_json() for r in short.routes),
+            tuple(r.to_json() for r in compile_delayed_lfo_additive_routes(
+                source, '1/2', route_id='later', depth=80.).routes))
+        self.assertEqual(source.to_json(), saved)
+
+        static = SonicSpec(clock=ClockSpec(rate=VirtualRate('360/1')))
+        early_spec = SonicSpec(clock=ClockSpec(
+            rate=VirtualRate('360/1'), routes=short.routes))
+        full_spec = SonicSpec(clock=ClockSpec(
+            rate=VirtualRate('360/1'), routes=full.routes))
+        for when in ('0/1', '1/4', '1/2'):
+            self.assertEqual(Fraction(evaluate_instantaneous_rate(
+                early_spec, when).realized_hz), Fraction(360))
+            self.assertEqual(Fraction(evaluate_instantaneous_rate(
+                full_spec, when).realized_hz), Fraction(360))
+        early_pcm = render_controlled_audio_proof(signal(4000), early_spec)
+        dry_pcm = render_controlled_audio_proof(signal(4000), static)
+        full_pcm = render_controlled_audio_proof(signal(8000), full_spec)
+        full_dry = render_controlled_audio_proof(signal(8000), static)
+        np.testing.assert_array_equal(early_pcm.audio, dry_pcm.audio)
+        np.testing.assert_array_equal(full_pcm.audio[:4000], early_pcm.audio)
+        np.testing.assert_array_equal(full_pcm.audio[:6000], full_dry.audio[:6000])
+        self.assertGreater(float(np.max(np.abs(
+            full_pcm.audio[6000:] - full_dry.audio[6000:]))), .01)
+        self.assertEqual(early_pcm.diagnostics['pcm_sha256'],
+                         render_controlled_audio_proof(
+                             signal(4000), early_spec).diagnostics['pcm_sha256'])
+        # Cancellation still interrupts a neutral preview before publication.
+        with self.assertRaises(ClockCancelled):
+            compile_delayed_lfo_additive_routes(
+                source, '1/2', route_id='later', depth=80.,
+                cancelled=lambda: True)
+        with self.assertRaises(ContractError):
+            compile_delayed_lfo_additive_routes(
+                source, '-1/16', route_id='later', depth=80.)
+
     def test_invalid_and_cancelled_sources_fail_closed(self):
         source = SampledLfoSource(origin_s='1/8', phase_cycles='0/1',
                                   grid_s='1/32')
@@ -124,7 +182,7 @@ class DelayedLfoPcmTests(unittest.TestCase):
                 route_id='no-delay', depth=1.)
         with self.assertRaises(ContractError):
             compile_delayed_lfo_additive_routes(
-                source, '1/16', route_id='past', depth=1.)
+                source, '-1/16', route_id='past', depth=1.)
         with self.assertRaises(ClockCancelled):
             compile_delayed_lfo_additive_routes(
                 source, '1/2', route_id='cancel', depth=1.,

@@ -57,7 +57,24 @@ def compile_delayed_lfo_additive_routes(
         raise ClockCancelled('delayed LFO compilation cancelled')
     start = Fraction(source.origin_s)
     require(start > 0, 'delayed LFO adapter requires a positive source onset')
-    end = rational_value(end_s, 'delayed LFO end seconds', start)
+    end = rational_value(end_s, 'delayed LFO end seconds', 0)
+    if end < start:
+        # A preview that ends before the saved onset has no active LFO.
+        # Preserve both stable lane IDs and the exact source/depth intent,
+        # without translating future BPM points or evaluating negative time.
+        if cancelled is not None and cancelled():
+            raise ClockCancelled('delayed LFO compilation cancelled; no partial routes')
+        neutral = (
+            ModulationRoute(
+                id=route_id + '-onset', mapping='add_hz', depth=depth,
+                initial='0/1', points=(), interpolation='step'),
+            ModulationRoute(
+                id=route_id + '-motion', mapping='add_hz', depth=2 * depth,
+                initial='0/1', points=(), interpolation='linear'),
+        )
+        return DelayedLfoRoutePair(
+            method=METHOD, source_sha256=source.sha256,
+            onset_s=qtext(start), through_s=qtext(end), routes=neutral)
     duration = end - start
 
     # A translated *physical-time* source has precisely the same phase,

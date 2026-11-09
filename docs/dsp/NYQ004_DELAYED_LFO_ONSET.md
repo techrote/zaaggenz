@@ -16,6 +16,14 @@ reuses the bounded exact turning-point compiler, and then stores:
   onset level at each certified physical-time grid, tempo and cusp point, with
   twice the Hz depth.
 
+A source-native preview ending **before** the delayed onset now emits the
+same stable pair of neutral routes (both zero control, no points). Its
+`through_s` records the requested preview extent and `onset_s` retains the
+actual future onset. This avoids rejecting short legitimate previews or
+leaking future tempo changes. Source identity, requested depth, cancellation
+and strict negative-time validation are preserved; extending a preview
+requires recompilation from the saved original source.
+
 The ordered sum is exactly zero before onset and exactly the original
 `depth * LFO(t)` from the onset onward. This does not reset the sampling
 clock's phase, move samples to frame boundaries, approximate a beat map,
@@ -35,8 +43,9 @@ Log2 routes and a registered production SamplerPlan adapter are not claimed.
 Run `python -m unittest discover -s tests/dsp -p 'test_nyquismic_lfo_delayed_pcm.py' -v`.
 The test covers a nonzero delayed physical onset, analytic post-step affine
 phase/crossing, no pre-onset PCM leak, exact saved repeat/region output, an
-off-grid beat tempo change, zero-depth event identity and strict
-invalid/cancel/budget refusal. It exercises the existing real
+off-grid beat tempo change, zero-depth event identity, a neutral
+pre-onset short-preview/full-render PCM-prefix oracle with a future tempo
+change, and strict invalid/cancel/budget refusal. It exercises the existing real
 `compile_step_clock_events` and `render_controlled_audio_proof` consumer,
 not a fabricated hold-period mock. Cross-evaluation-rate convergence, rack,
 Compose, WAV export, native VST and owner audition are *not* qualified.
