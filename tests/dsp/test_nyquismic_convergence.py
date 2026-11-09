@@ -354,6 +354,16 @@ class FrozenConvergenceTests(unittest.TestCase):
                 expensive, budget=ResourceBudget(max_filter_taps=96), **HASHES)
         self.assertEqual(calls[0], 0)
 
+    def test_reference_pass_budget_rejects_before_any_candidate_render(self):
+        calls = []
+        def tracked(rate):
+            calls.append(rate)
+            return candidate(rate)
+        with self.assertRaisesRegex(ContractError, 'reference-pass budget'):
+            evaluate_local_convergence(
+                tracked, **HASHES, budget=ResourceBudget(max_reference_passes=2))
+        self.assertEqual(calls, [])
+
     def test_cancellation_aborts_without_promoting_partial_results(self):
         with self.assertRaises(ClockCancelled):
             evaluate_local_convergence(candidate, cancelled=lambda: True, **HASHES)

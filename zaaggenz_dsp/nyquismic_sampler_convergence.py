@@ -1,22 +1,17 @@
-"""NYQ-003 opt-in same-model bridge from accepted NYQ-002 sampler to local convergence.
+"""NYQ-003 compatibility entrypoint for the single physical-event convergence bridge.
 
-Local engineering evaluation, not graph/rack/export integration. Every rate
-executes the same immutable PCM, sonic recipe and physical clock.
+The original same-model bridge and the newer executable sampler bridge used
+different source identities, event-ledger encodings and admission budgets.
+They must not independently certify the same request. This adapter retains
+the old call surface, but delegates ALL physical-clock, PCM and numerical
+qualification to evaluate_sampler_convergence.
 """
 from __future__ import annotations
 
-from fractions import Fraction
-import hashlib
-
-from zaaggenz_contracts import digest
-from zaaggenz_contracts.nyquismic import (
-    ResourceBudget, SonicSpec, record, require,
-)
-from zaaggenz_contracts.nyquismic_clock import ClockCancelled
-from .nyquismic import FrozenInput, SamplerPlan, sampler_evaluation
+from zaaggenz_contracts.nyquismic import ResourceBudget, SonicSpec, record, require
+from .nyquismic import FrozenInput
 from .nyquismic_convergence import (
-    FrozenConvergencePolicy, LocalConvergenceResult, NumericalCandidate,
-    evaluate_local_convergence,
+    FrozenConvergencePolicy, LocalConvergenceResult, evaluate_sampler_convergence,
 )
 
 METHOD = 'nyq.same-model-sampler-convergence-bridge.v1'
@@ -29,93 +24,21 @@ def evaluate_sampler_model_convergence(
     budget: ResourceBudget = ResourceBudget(),
     cancelled=None,
 ) -> LocalConvergenceResult:
-    """Compare real sampler executions on exactly aligned physical-time grids.
+    """Legacy call surface; executes the canonical physical-event comparator.
 
-    The complete physical event ledger is hashed and compared between passes.
-    Numerical agreement cannot substitute for an independent analytic oracle
-    or prove correctness of the eventual product export.
+    The present sampler binds its delivery clock to the immutable source clock.
+    An independently requested delivery rate is NOT silently substituted; it
+    needs a future versioned capability and its own validation.
     """
     record(source, FrozenInput, 'convergence immutable source')
-    record(sonic, SonicSpec, 'convergence sonic specification')
-    record(policy, FrozenConvergencePolicy, 'convergence policy')
-    record(budget, ResourceBudget, 'convergence resource budget')
-    require(cancelled is None or callable(cancelled), 'convergence cancellation hook')
-    require(sonic.mode == 'sampler', 'same-model comparison requires sampler mode')
-    asset = source.asset.to_dict()
-    require(asset['channels'] == sonic.channels, 'convergence source/channel mismatch')
-    # Until NYQ-004 is integrated, do not advertise executed modulated clocks.
-    require(not sonic.clock.routes and sonic.clock.jitter.model == 'none' and
-            sonic.clock.quantizer.policy == 'none',
-            'same-model bridge does not execute routed/jittered/quantized clocks')
-    frame_counts = {}
-    for rate in policy.rates_hz:
-        count = Fraction(asset['frame_count'] * rate, source.sample_rate_hz)
-        require(count.denominator == 1, 'evaluation grid must exactly cover source duration')
-        require(count.numerator * sonic.channels <= budget.max_frames,
-                'evaluation extent exceeds frame budget')
-        frame_counts[rate] = count.numerator
-
-    source_hash = asset['content_sha256']
-    sonic_hash = sonic.sha256
-    clock_hash = sonic.clock.sha256
-    random_hash = digest({
-        'domain': METHOD, 'random': 'none', 'clock_sha256': clock_hash,
-    })
-    event_sha = None
-    event_count = None
-    render_hashes = []
-
-    def render(rate: int) -> NumericalCandidate:
-        nonlocal event_sha, event_count
-        if cancelled is not None and cancelled():
-            raise ClockCancelled('same-model sampler cancelled before execution')
-        plan = SamplerPlan.prepare(
-            source, sonic, sampler_evaluation(rate, budget),
-            frame_count=frame_counts[rate], cancelled=cancelled,
-        )
-        # Versioned exact event ledger: the rounded float display timestamp
-        # cannot distinguish distinct Decimal80/exact-rational crossings.
-        ledger = hashlib.sha256()
-        ledger.update(b'nyq.exact-physical-event-ledger.v1\0')
-        for i, event in enumerate(plan.events):
-            if (i & 255) == 0 and cancelled is not None and cancelled():
-                raise ClockCancelled('same-model sampler event ledger cancelled')
-            coordinate = plan.clock.event_coordinate(i)
-            if isinstance(coordinate, Fraction):
-                timestamp = f'r:{coordinate.numerator}/{coordinate.denominator}'
-            else:
-                # ClockPlan's nonrational roots are Decimal80, never binary64.
-                timestamp = 'd:' + str(coordinate)
-            ledger.update(
-                f'{event.index}:{event.epoch}:{event.crossing}:{timestamp}\n'.encode('ascii')
-            )
-        current = ledger.hexdigest()
-        if event_sha is None:
-            event_sha, event_count = current, len(plan.events)
-        require(current == event_sha and len(plan.events) == event_count,
-                'evaluation rate changed the physical event ledger')
-        rendered = plan.render(cancelled=cancelled)
-        render_hashes.append(rendered.render_sha256)
-        return NumericalCandidate(
-            rate, rendered.audio, source_hash, sonic_hash, clock_hash, random_hash,
-        )
-
-    result = evaluate_local_convergence(
-        render, source_sha256=source_hash, sonic_sha256=sonic_hash,
-        clock_sha256=clock_hash, random_control_sha256=random_hash,
-        delivery_rate_hz=delivery_rate_hz, policy=policy,
-        budget=budget, cancelled=cancelled,
+    require(type(delivery_rate_hz) is int and
+            delivery_rate_hz == source.sample_rate_hz,
+            'sampler convergence delivery rate must match immutable source rate')
+    result = evaluate_sampler_convergence(
+        source, sonic, policy=policy, budget=budget, cancelled=cancelled,
     )
     return LocalConvergenceResult(
         status=result.status, policy=result.policy,
-        diagnostics={
-            **result.diagnostics, 'sampler_bridge_method': METHOD,
-            'event_ledger_sha256': event_sha, 'event_count': event_count,
-            'event_ledger_method': 'nyq.exact-physical-event-ledger.v1',
-            'sampler_render_sha256_by_rate': dict(zip(policy.rates_hz, render_hashes)),
-            'event_schedule_verified_across_rates': True,
-            'same_model_execution': 'accepted-NYQ-002-SamplerPlan',
-            'analytic_oracle_verified': False, 'product_export_verified': False,
-        },
+        diagnostics={**result.diagnostics, 'compatibility_entrypoint': METHOD},
         selected_audio=result.selected_audio,
     )

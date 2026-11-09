@@ -184,6 +184,10 @@ def evaluate_local_convergence(
     record(budget, ResourceBudget, 'convergence resource budget')
     require(callable(render_candidate), 'convergence requires callable renderer')
     require(cancelled is None or callable(cancelled), 'convergence cancellation hook')
+    # This bound controls actual comparison executions, not merely the
+    # contract's maximum policy length. Reject before calling a renderer.
+    require(len(policy.rates_hz) <= budget.max_reference_passes,
+            'convergence reference-pass budget exceeded')
     for name, value in (
         ('source', source_sha256), ('sonic', sonic_sha256),
         ('clock', clock_sha256), ('random control', random_control_sha256),

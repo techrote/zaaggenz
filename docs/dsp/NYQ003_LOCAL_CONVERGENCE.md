@@ -101,3 +101,20 @@ sampler, clock, renderer, graph or default sound.
 
 Focused command:
 `python -m unittest discover -s tests/dsp -p 'test_nyquismic_sampler_convergence.py' -v`
+
+## One authoritative sampler comparator and finite-pass budget (9 November 2026)
+
+`evaluate_sampler_convergence` is the authoritative real-sampler numerical
+bridge. The older `evaluate_sampler_model_convergence` now delegates to it
+rather than issuing a second, differently hashed physical-event qualification.
+The old call surface only accepts a delivery rate matching the original
+immutable source rate, consistent with the current SamplerPlan identity.
+`ResourceBudget.max_reference_passes` is now enforced by the generic
+callback evaluator before any numerical candidate runs; both sampler
+entrypoints share the same strict preflight. This is a correctness/coordination
+repair, not a new numerical evaluation guarantee or a quality-default change.
+
+Focused regressions:
+`python -m unittest discover -s tests/dsp -p 'test_nyquismic_sampler_convergence.py' -v`
+and
+`python -m unittest discover -s tests/dsp -p 'test_nyquismic_convergence.py' -v`.

@@ -5,8 +5,20 @@ engineering-only adapter between the accepted NYQ-002 fractional-event
 SamplerPlan and NYQ-003's frozen-rate convergence evaluator, **not**
 production graph/rack/Compose, export, preset or default-quality wiring.
 
-Method: nyq.same-model-sampler-convergence-bridge.v1.
-Call evaluate_sampler_model_convergence(FrozenInput, SonicSpec, ...).
+The **authoritative executable bridge** is
+`evaluate_sampler_convergence(FrozenInput, SonicSpec, ...)` in
+`nyquismic_convergence.py`. Its diagnostic method remains
+`nyq003.physical-event-frozen-convergence.v1` and its exact ledger includes
+event index, epoch, crossing and physical Fraction/Decimal80 coordinate.
+
+The previous `evaluate_sampler_model_convergence` call surface is retained
+as a compatibility adapter (`nyq.same-model-sampler-convergence-bridge.v1`),
+but now **delegates to that same implementation**: it no longer independently
+hashes events, executes a separate source identity, or silently bypasses
+reference-pass budgets. Its optional `delivery_rate_hz` must exactly equal
+the immutable source rate until independently qualified output-rate flexibility
+exists. Results expose `compatibility_entrypoint` and otherwise use canonical
+event/PCM evidence fields.
 Every frozen rate executes the identical immutable source bytes, SonicSpec,
 clock origin, capture and reconstruction setting through the actual SamplerPlan.
 The complete event ledger at each rate is SHA-256 hashed under the
@@ -49,3 +61,8 @@ physical-frequency stability across 192/384 kHz evaluation grids and that
 time-linear reconstruction changes image strength without removing the
 already-formed capture alias. These are analytic-frequency observations,
 NOT a full nonlinear/workflow, conversion, artifact or owner audition gate.
+
+The local convergence callback and both real-sampler entrypoints reject a
+`FrozenConvergencePolicy` whose three/four passes exceed
+`ResourceBudget.max_reference_passes` **before invoking any renderer**.
+The comparison's numerical agreement remains an experimental, limited claim.
