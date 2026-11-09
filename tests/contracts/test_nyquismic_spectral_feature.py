@@ -49,12 +49,13 @@ def policy(samples, **kwargs):
 
 
 def compile_(samples, p=None, **kwargs):
-    return compile_upstream_centroid_route(
-        samples, p or policy(samples), consumer_id='air-clock',
-        upstream_ids=('lowmid',), route_id='lowmid-centroid',
-        depth=400.0, graph_snapshot=GRAPH,
-        expected_graph_sha256=GRAPH.sha256, **kwargs,
-    )
+    options = {
+        'consumer_id': 'air-clock', 'upstream_ids': ('lowmid',),
+        'route_id': 'lowmid-centroid', 'depth': 400.0,
+        'graph_snapshot': GRAPH, 'expected_graph_sha256': GRAPH.sha256,
+    }
+    options.update(kwargs)
+    return compile_upstream_centroid_route(samples, p or policy(samples), **options)
 
 
 class CentroidSourceTests(unittest.TestCase):
