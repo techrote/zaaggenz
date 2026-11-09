@@ -559,3 +559,33 @@ intentional fold and checks independent SciPy FIR stage calculations,
 mono/stereo silence and strict invalid admission. This is **local**
 numerical PCM evidence, not graph/rack export, listening, accepted convergence
 or a 44.1-kHz default change.
+
+## Explicit fractional-tail 44.1-kHz delivery (9 November 2026)
+
+Most finite 96-kHz source lengths do not end at an integral 44.1-kHz
+sample boundary. The existing opt-in 48-kHz-intermediate FIR policy is
+unchanged and refuses these sources before capture. A separately versioned
+`DeliveryConversionPolicy(method='nyq.polyphase-delivery-44100-via-48000-ceil-tail.v1')`
+permits a source with an exactly aligned **numerical** grid to be delivered
+at 44.1 kHz. The immutable source duration and original exact virtual events
+remain authoritative; neither is stretched or regenerated at the output rate.
+The final frame count is `ceil(source_frames * delivery_Hz/source_Hz)`;
+the fraction beyond the source is constant-zero FIR boundary support,
+not a new valid source sample. A partial 48-kHz intermediate frame rounds
+up, and if the second FIR yields one surplus 44.1-kHz frame, that frame is
+cropped to the original-duration ceiling.
+
+The method records source physical extent, the final sample-grid overhang
+and cropped intermediate rounding-frame count. It is not sample-exact to a
+hypothetical one-shot continuous-time FIR and may have different boundary
+ringing. It retains all original tap, frame and cancellation limits, and
+supports only explicitly admitted 48-kHz-intermediate ratios. It does not
+support fractional **numerical** extents. Strict/default method and its
+previous successful PCM and identities remain unchanged. The local numerical
+PCM result is not Compose/WAV export or human listening acceptance.
+
+Test: `python -m unittest discover -s tests/dsp -p 'test_nyquismic_crossrate_delivery.py' -v`.
+A 9613-frame immutable 96-kHz source independently exercises 192/384/768-kHz
+actual sampler render, a 48-kHz-intermediate partial frame, surplus FIR
+output crop to exactly 4416 final frames, unchanged virtual-event ledgers,
+and the same-model three-rate numerical convergence path.

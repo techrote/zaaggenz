@@ -21,6 +21,7 @@ from .nyquismic import _immutable
 
 METHOD = 'nyq.polyphase-delivery-kaiser10-24lobes.v1'
 STAGED_44100_METHOD = 'nyq.polyphase-delivery-44100-via-48000.v1'
+STAGED_44100_CEIL_TAIL_METHOD = 'nyq.polyphase-delivery-44100-via-48000-ceil-tail.v1'
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,7 @@ class DeliveryConversionPolicy(_Record):
     def __post_init__(self):
         require(self.version == 'nyq.delivery-conversion.v1',
                 'unsupported Nyquismic delivery conversion version')
-        require(self.method in (METHOD, STAGED_44100_METHOD),
+        require(self.method in (METHOD, STAGED_44100_METHOD, STAGED_44100_CEIL_TAIL_METHOD),
                 'unsupported Nyquismic numerical conversion method')
         require(self.boundary == 'constant_zero',
                 'unsupported delivery conversion edge policy')
@@ -58,11 +59,11 @@ def admit_delivery_stages(numerical_rate_hz: int, delivery_rate_hz: int, *,
     integer(delivery_rate_hz, 'delivery rate Hz', 8000, 192000)
     require(numerical_rate_hz >= delivery_rate_hz,
             'delivery converter only admits downconversion or identical rates')
-    if policy.method == STAGED_44100_METHOD:
+    if policy.method in (STAGED_44100_METHOD, STAGED_44100_CEIL_TAIL_METHOD):
         require(delivery_rate_hz == 44100 and numerical_rate_hz >= 48000 and
                 numerical_rate_hz % 48000 == 0,
                 'staged 44.1 kHz delivery requires an integral 48 kHz intermediate')
-        if frames is not None:
+        if frames is not None and policy.method == STAGED_44100_METHOD:
             require(frames * 48000 % numerical_rate_hz == 0 and
                     frames * delivery_rate_hz % numerical_rate_hz == 0,
                     'staged delivery requires integral intermediate/final physical extent')
@@ -161,10 +162,19 @@ def convert_numerical_to_delivery(
         })
         if cancelled is not None and cancelled():
             raise ClockCancelled('delivery conversion cancelled between FIR stages')
+    rounded_tail_frames = 0
+    if policy.method == STAGED_44100_CEIL_TAIL_METHOD:
+        # A fractional 48-kHz intermediate is rounded up by the first FIR.
+        # The second FIR can then produce one surplus output frame. Crop ONLY
+        # this explicitly selected policy to the true source-duration ceiling.
+        rounded_tail_frames = result.shape[0] - output_frames
+        require(0 <= rounded_tail_frames <= 1,
+                'staged tail changed the original physical-time frame bound')
+        result = result[:output_frames].copy(order='C')
     require(result.shape == (output_frames,) if samples.ndim == 1
             else result.shape == (output_frames, channels),
             'delivery converter returned unexpected frame/channel extent')
-    if policy.method == STAGED_44100_METHOD:
+    if policy.method in (STAGED_44100_METHOD, STAGED_44100_CEIL_TAIL_METHOD):
         aggregate = hashlib.sha256(b'nyq.delivery-ordered-fir-stages.v1\\n')
         for row in stage_details:
             aggregate.update(f"{row['input_rate_hz']}|{row['output_rate_hz']}|{row['kernel_sha256']}\\n".encode('ascii'))
@@ -186,8 +196,16 @@ def convert_numerical_to_delivery(
             'kernel_taps': sum(row['kernel_taps'] for row in stage_details),
             'kernel_sha256': kernel_hash,
             'window': ('staged_kaiser_beta10_v1'
-                       if policy.method == STAGED_44100_METHOD else 'kaiser_beta10'),
-            **({'stages': stage_details} if policy.method == STAGED_44100_METHOD else {}),
+                       if policy.method in (STAGED_44100_METHOD, STAGED_44100_CEIL_TAIL_METHOD)
+                       else 'kaiser_beta10'),
+            **({'stages': stage_details} if policy.method in
+                (STAGED_44100_METHOD, STAGED_44100_CEIL_TAIL_METHOD) else {}),
+            **({'tail_policy': 'ceil_final_frame_zero_pad_v1',
+                'nominal_source_extent_s': str(Fraction(frames, numerical_rate_hz)),
+                'tail_overhang_s': str(Fraction(output_frames, delivery_rate_hz) -
+                                        Fraction(frames, numerical_rate_hz)),
+                'cropped_rounding_frames': rounded_tail_frames}
+               if policy.method == STAGED_44100_CEIL_TAIL_METHOD else {}),
             'boundary': policy.boundary,
             'clipping': policy.clipping,
             'source_frames': frames,
@@ -245,9 +263,11 @@ def render_sampler_to_delivery(source, sonic, *, numerical_rate_hz: int,
     asset = source.asset.to_dict()
     source_extent = Fraction(asset['frame_count'], source.sample_rate_hz)
     expected_delivery_frames = source_extent * delivery_rate_hz
-    require(expected_delivery_frames.denominator == 1,
-            'sampler delivery requires integral final physical extent')
-    require(expected_delivery_frames.numerator * asset['channels'] <= budget.max_frames,
+    if policy.method != STAGED_44100_CEIL_TAIL_METHOD:
+        require(expected_delivery_frames.denominator == 1,
+                'sampler delivery requires integral final physical extent')
+    expected_final_count = -(-expected_delivery_frames.numerator // expected_delivery_frames.denominator)
+    require(expected_final_count * asset['channels'] <= budget.max_frames,
             'sampler final extent over admitted frame budget')
     # Qualify every exact FIR stage and intermediate extent before capture.
     extent = source_extent * numerical_rate_hz
@@ -264,7 +284,7 @@ def render_sampler_to_delivery(source, sonic, *, numerical_rate_hz: int,
     final = convert_numerical_to_delivery(numeric.audio, numerical_rate_hz,
                                          delivery_rate_hz, policy=policy,
                                          budget=budget, cancelled=cancelled)
-    require(final.audio.shape[0] == expected_delivery_frames.numerator,
+    require(final.audio.shape[0] == expected_final_count,
             'sampler delivery physical extent changed during conversion')
     require(final.diagnostics['source_pcm_sha256'] == numeric.diagnostics['pcm_sha256'],
             'sampler-to-delivery numerical PCM provenance mismatch')
@@ -279,7 +299,7 @@ def render_sampler_to_delivery(source, sonic, *, numerical_rate_hz: int,
             'source_asset_sha256': source.asset.sha256,
             'source_rate_hz': source.sample_rate_hz,
             'source_extent_s': str(source_extent),
-            'expected_delivery_frames': expected_delivery_frames.numerator,
+            'expected_delivery_frames': expected_final_count,
             'sonic_sha256': sonic.sonic_sha256,
             'clock_sha256': sonic.clock.sha256,
             'sampler_render_sha256': numeric.render_sha256,

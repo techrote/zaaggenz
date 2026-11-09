@@ -9,7 +9,7 @@ from zaaggenz_contracts.nyquismic import ClockSpec, ResourceBudget, SonicSpec, V
 from zaaggenz_dsp.nyquismic import FrozenInput, SamplerPlan, sampler_evaluation
 from zaaggenz_dsp.nyquismic_convergence import evaluate_sampler_convergence
 from zaaggenz_dsp.nyquismic_delivery import (
-    STAGED_44100_METHOD, DeliveryConversionPolicy,
+    STAGED_44100_METHOD, STAGED_44100_CEIL_TAIL_METHOD, DeliveryConversionPolicy,
     convert_numerical_to_delivery, render_sampler_to_delivery,
 )
 from zaaggenz_dsp.nyquismic_sampler_convergence import evaluate_sampler_model_convergence
@@ -323,6 +323,70 @@ class IndependentDeliveryClockTests(unittest.TestCase):
             np.testing.assert_array_equal(actual.audio, expected)
         self.assertLess(abs(observed[0] - observed[1]), .02)
         self.assertNotEqual(DeliveryConversionPolicy().sha256, policy.sha256)
+
+    def test_opt_in_fractional_final_tail_preserves_physical_sampling(self):
+        # A normal source length need not align to a whole 44.1-kHz frame.
+        # This fixture also triggers an extra stage-rounding frame to crop.
+        from fractions import Fraction
+        from scipy.signal import firwin, resample_poly
+        n, final_frames = 9613, 4416
+        source = FrozenInput.from_pcm(
+            np.sin(2 * np.pi * 6000 * np.arange(n) / SOURCE_HZ).astype('<f4'),
+            SOURCE_HZ)
+        sonic = SonicSpec(clock=ClockSpec(rate=VirtualRate('8000/1')))
+        strict = DeliveryConversionPolicy(method=STAGED_44100_METHOD)
+        tail = DeliveryConversionPolicy(method=STAGED_44100_CEIL_TAIL_METHOD)
+        self.assertNotEqual(tail.sha256, strict.sha256)
+        with patch('zaaggenz_dsp.nyquismic.SamplerPlan.prepare',
+                   side_effect=AssertionError('strict mode captured invalid tail')):
+            with self.assertRaisesRegex(ContractError, 'integral final physical extent'):
+                render_sampler_to_delivery(
+                    source, sonic, numerical_rate_hz=192000,
+                    delivery_rate_hz=44100, policy=strict)
+            with self.assertRaisesRegex(ContractError, 'integral delivery extent'):
+                evaluate_sampler_convergence(
+                    source, sonic, delivery_rate_hz=44100, delivery_policy=strict)
+
+        outputs = []
+        for rate in RATES:
+            result = render_sampler_to_delivery(
+                source, sonic, numerical_rate_hz=rate,
+                delivery_rate_hz=44100, policy=tail)
+            self.assertEqual(result.audio.shape, (final_frames,))
+            self.assertFalse(result.audio.flags.writeable)
+            self.assertEqual(result.diagnostics['expected_delivery_frames'], final_frames)
+            self.assertEqual(result.diagnostics['source_extent_s'], str(Fraction(n, SOURCE_HZ)))
+            self.assertEqual(result.diagnostics['delivery']['tail_policy'],
+                             'ceil_final_frame_zero_pad_v1')
+            self.assertEqual(result.diagnostics['delivery']['nominal_source_extent_s'],
+                             str(Fraction(n, SOURCE_HZ)))
+            self.assertEqual(result.diagnostics['delivery']['tail_overhang_s'],
+                             str(Fraction(final_frames, 44100) - Fraction(n, SOURCE_HZ)))
+            self.assertEqual(result.diagnostics['delivery']['cropped_rounding_frames'], 1)
+            plan = SamplerPlan.prepare(source, sonic, sampler_evaluation(rate),
+                frame_count=n * rate // SOURCE_HZ, delivery_rate_hz=44100)
+            numerical = plan.render().audio
+            first = resample_poly(numerical, 1, rate // 48000,
+                window=firwin(24 * (rate // 48000) + 1,
+                              1. / (rate // 48000), window=('kaiser', 10.)))
+            second = resample_poly(first, 147, 160,
+                window=firwin(3841, 1. / 160, window=('kaiser', 10.)))
+            self.assertEqual(len(second), final_frames + 1)
+            np.testing.assert_array_equal(result.audio, second[:final_frames])
+            outputs.append(result)
+        self.assertEqual(len({o.diagnostics['event_count'] for o in outputs}), 1)
+        self.assertEqual(len({o.diagnostics['clock_sha256'] for o in outputs}), 1)
+        comparison = evaluate_sampler_convergence(
+            source, sonic, delivery_rate_hz=44100, delivery_policy=tail)
+        self.assertEqual(comparison.diagnostics['event_counts_by_rate'],
+                         [outputs[0].diagnostics['event_count']] * 3)
+        self.assertEqual(len(set(comparison.diagnostics['event_ledger_sha256_by_rate'])), 1)
+        self.assertEqual([row['output_frames'] for row in
+                          comparison.diagnostics['candidate_conversion']], [final_frames] * 3)
+        self.assertEqual(comparison.diagnostics['candidate_conversion'][-1]['output_pcm_sha256'],
+                         outputs[-1].diagnostics['output_pcm_sha256'])
+        self.assertEqual(comparison.selected_audio is not None,
+                         comparison.status == 'converged')
 
     def test_44100_staging_refuses_wrong_clock_ratio_budget_and_extent_before_capture(self):
         source = source_tone()

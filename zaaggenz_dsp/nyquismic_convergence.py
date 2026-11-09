@@ -21,7 +21,7 @@ from zaaggenz_contracts.nyquismic import (
 )
 from zaaggenz_contracts.nyquismic_clock import ClockCancelled
 from .nyquismic_delivery import (
-    METHOD as DIRECT_DELIVERY_METHOD, DeliveryConversionPolicy,
+    METHOD as DIRECT_DELIVERY_METHOD, STAGED_44100_CEIL_TAIL_METHOD, DeliveryConversionPolicy,
     admit_delivery_stages, convert_numerical_to_delivery,
 )
 
@@ -337,9 +337,11 @@ def evaluate_sampler_convergence(
     integer(delivery_rate_hz, 'sampler convergence delivery rate Hz', 8000, 192000)
     delivered_frames = Fraction(asset['frame_count'] * delivery_rate_hz,
                                 source.sample_rate_hz)
-    require(delivered_frames.denominator == 1,
-            'sampler convergence requires integral delivery extent')
-    require(delivered_frames.numerator * sonic.channels <= budget.max_frames,
+    if delivery_policy.method != STAGED_44100_CEIL_TAIL_METHOD:
+        require(delivered_frames.denominator == 1,
+                'sampler convergence requires integral delivery extent')
+    delivered_count = -(-delivered_frames.numerator // delivered_frames.denominator)
+    require(delivered_count * sonic.channels <= budget.max_frames,
             'sampler convergence delivery frame budget exceeded')
     require(len(policy.rates_hz) <= budget.max_reference_passes,
             'convergence pass budget exceeded')
