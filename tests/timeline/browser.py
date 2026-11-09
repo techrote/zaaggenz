@@ -519,7 +519,10 @@ def main():
                 has=page.locator('.rack-stage-id',has_text=chord_stage['id']))
             expect(chord_panel).to_have_count(1)
             chord_panel.locator('.rack-spectral').evaluate('(e)=>e.open=true')
-            chord_panel.get_by_label('mode',exact=True).select_option('reweight');ready()
+            # The requested mode is a specifically named, accessible select;
+            # do not infer identity from a generic select ordinal or from the
+            # separate selection_mode policy field.
+            chord_panel.get_by_role('combobox',name='mode',exact=True).select_option('reweight');ready()
             activated=saved('rack-chordness-active.zgtimeline.json')
             activated_rack=json.loads(activated['project']['revisions'][-1]['recipe_json'])['rack']
             assert activated_rack['bands'][2]['inserts'][0]['params']['mode']=='reweight'
