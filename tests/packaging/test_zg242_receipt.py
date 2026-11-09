@@ -91,6 +91,13 @@ class PhysicalReceiptVerifierTests(unittest.TestCase):
         wavfile.write(self.p / "after.wav", 48000, np.zeros(480, np.float32))
         self.assertEqual(self.run_finalize(), 2)
 
+    def test_windows_powershell_bom_metadata(self):
+        self.assertEqual(self.run_snapshot(), 0)
+        for filename in ("identity.json", "sessions.json"):
+            path = self.p / filename
+            path.write_bytes(b"\xef\xbb\xbf" + path.read_bytes())
+        self.assertEqual(self.run_finalize(), 0)
+
     def test_bad_process_attestation_and_missing_release_id_fail(self):
         self.assertEqual(self.run_snapshot(), 0)
         sessions = json.loads((self.p / "sessions.json").read_text())
