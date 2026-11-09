@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from zaaggenz_contracts.nyquismic import ResourceBudget, SonicSpec, record, require
 from .nyquismic import FrozenInput
+from .nyquismic_delivery import DeliveryConversionPolicy
 from .nyquismic_convergence import (
     FrozenConvergencePolicy, LocalConvergenceResult, evaluate_sampler_convergence,
 )
@@ -20,6 +21,7 @@ METHOD = 'nyq.same-model-sampler-convergence-bridge.v1'
 def evaluate_sampler_model_convergence(
     source: FrozenInput, sonic: SonicSpec, *,
     delivery_rate_hz: int = 48000,
+    delivery_policy: DeliveryConversionPolicy = DeliveryConversionPolicy(),
     policy: FrozenConvergencePolicy = FrozenConvergencePolicy(),
     budget: ResourceBudget = ResourceBudget(),
     cancelled=None,
@@ -33,7 +35,8 @@ def evaluate_sampler_model_convergence(
     record(source, FrozenInput, 'convergence immutable source')
     result = evaluate_sampler_convergence(
         source, sonic, delivery_rate_hz=delivery_rate_hz,
-        policy=policy, budget=budget, cancelled=cancelled,
+        delivery_policy=delivery_policy, policy=policy, budget=budget,
+        cancelled=cancelled,
     )
     return LocalConvergenceResult(
         status=result.status, policy=result.policy,

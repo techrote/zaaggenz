@@ -133,3 +133,27 @@ The legacy entrypoint delegates to the same physical-event sampler, with
 an unchanged 48 kHz default. Unsupported 192000 -> 44100 conversion still
 refuses before the first capture. The distinction between a comparison and
 independent analytic truth/product WAV acceptance remains unchanged.
+
+## Actual physical-time sampler convergence at opt-in 44.1 kHz (9 November 2026)
+
+`evaluate_sampler_convergence`, `evaluate_local_convergence`, and the delegating
+`evaluate_sampler_model_convergence` now accept an explicit independent
+`delivery_policy=DeliveryConversionPolicy(method='nyq.polyphase-delivery-44100-via-48000.v1')`.
+This freezes the SAME two-stage, post-artistic 48 kHz intermediate FIR method
+across all three numerical comparison rates (192/384/768 kHz), without
+altering the 8 kHz artistic capture events or the legacy direct-only default.
+The selected delivery policy method and SHA-256 are recorded in the
+convergence diagnostics, alongside each actual output PCM and FIR stage hash.
+
+All stage ratios/tap budgets, source/numerical/delivery integral physical
+extents and per-pass resource ceilings refuse **before** any virtual capture.
+A 96 kHz frozen source lasting 0.1 seconds has 800 captures at the 8 kHz
+artistic clock, 4,800 frames on the intermediate grid, and exactly 4,410
+44.1 kHz final PCM frames. New actual-sampler tests verify the same physical
+event ledger across numerical rates, the signed intentional 6 -> 2 kHz
+fold, and final PCM identity against separately executed delivery. An
+unselected 192 kHz -> 44.1 kHz direct FIR still fails its 4,096-tap cap.
+
+This is a source-local bounded *same-model comparator*, not an analytic
+truth oracle, declared convergence unless all metrics pass, application
+Compose/graph integration, product WAV export or a new default quality policy.

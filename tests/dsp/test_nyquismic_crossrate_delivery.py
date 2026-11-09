@@ -96,6 +96,67 @@ class IndependentDeliveryClockTests(unittest.TestCase):
             np.testing.assert_array_equal(canonical.selected_audio,
                                           legacy.selected_audio)
 
+    def test_staged_44100_convergence_uses_real_events_and_identical_fir(self):
+        source = source_tone()
+        sonic = SonicSpec(clock=ClockSpec(rate=VirtualRate('8000/1')),
+                          reconstruction='hold_v1', prefilter='off_v1')
+        staged = DeliveryConversionPolicy(method=STAGED_44100_METHOD)
+        canonical = evaluate_sampler_convergence(
+            source, sonic, delivery_rate_hz=44100, delivery_policy=staged)
+        diagnostics = canonical.diagnostics
+        self.assertEqual(diagnostics['delivery_rate_hz'], 44100)
+        self.assertEqual(diagnostics['delivery_method'], STAGED_44100_METHOD)
+        self.assertEqual(diagnostics['delivery_policy_sha256'], staged.sha256)
+        self.assertEqual(diagnostics['rates_hz'], list(RATES))
+        self.assertEqual(diagnostics['event_counts_by_rate'], [800] * 3)
+        self.assertEqual(len(set(diagnostics['event_ledger_sha256_by_rate'])), 1)
+        for rate, row in zip(RATES, diagnostics['candidate_conversion']):
+            self.assertEqual(row['policy_sha256'], staged.sha256)
+            self.assertEqual(row['output_frames'], 4410)
+            self.assertEqual(
+                [(part['input_rate_hz'], part['output_rate_hz']) for part in row['stages']],
+                [(rate, 48000), (48000, 44100)])
+        # The comparator must convert the same actual 768-kHz sampler PCM
+        # as a separate source-matched sampler/delivery execution.
+        direct = render_sampler_to_delivery(
+            source, sonic, numerical_rate_hz=RATES[-1],
+            delivery_rate_hz=44100, policy=staged)
+        self.assertEqual(diagnostics['candidate_conversion'][-1]['output_pcm_sha256'],
+                         direct.diagnostics['output_pcm_sha256'])
+        self.assertGreater(coherent_amplitude(direct.audio, 2000, 44100), .75)
+        self.assertEqual(canonical.selected_audio is not None,
+                         canonical.status == 'converged')
+        legacy = evaluate_sampler_model_convergence(
+            source, sonic, delivery_rate_hz=44100, delivery_policy=staged)
+        self.assertEqual(legacy.diagnostics['exact_event_ledger_sha256'],
+                         diagnostics['exact_event_ledger_sha256'])
+        self.assertEqual(
+            [row['output_pcm_sha256'] for row in legacy.diagnostics['candidate_conversion']],
+            [row['output_pcm_sha256'] for row in diagnostics['candidate_conversion']])
+        self.assertEqual(legacy.status, canonical.status)
+
+    def test_staged_44100_preflight_refuses_before_physical_capture(self):
+        source = source_tone()
+        sonic = SonicSpec(clock=ClockSpec(rate=VirtualRate('8000/1')))
+        staged = DeliveryConversionPolicy(method=STAGED_44100_METHOD)
+        with patch('zaaggenz_dsp.nyquismic.SamplerPlan.prepare',
+                   side_effect=AssertionError('captured before admission')):
+            with self.assertRaisesRegex(ContractError, 'unsupported delivery FIR taps'):
+                evaluate_sampler_convergence(source, sonic, delivery_rate_hz=44100)
+            with self.assertRaisesRegex(ContractError, 'staged 44.1 kHz delivery'):
+                evaluate_sampler_convergence(
+                    source, sonic, delivery_rate_hz=48000, delivery_policy=staged)
+            with self.assertRaisesRegex(ContractError, 'kernel tap budget'):
+                evaluate_sampler_convergence(
+                    source, sonic, delivery_rate_hz=44100, delivery_policy=staged,
+                    budget=ResourceBudget(max_filter_taps=100))
+            # At 1 ms, the 48k intermediate has 48 frames, but 44.1k
+            # final delivery has 44.1 frames: no fractional tail rounding.
+            tiny = FrozenInput.from_pcm(np.zeros(96, dtype='<f4'), SOURCE_HZ)
+            with self.assertRaisesRegex(ContractError, 'integral delivery extent'):
+                evaluate_sampler_convergence(
+                    tiny, sonic, delivery_rate_hz=44100, delivery_policy=staged)
+
     def test_boundary_bypass_exact_before_declared_nonidentity_final_fir(self):
         pcm = np.arange(960, dtype='<f4') / 1024
         source = FrozenInput.from_pcm(pcm, SOURCE_HZ)

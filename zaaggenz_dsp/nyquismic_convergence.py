@@ -20,7 +20,10 @@ from zaaggenz_contracts.nyquismic import (
     hash_value, integer, record, require,
 )
 from zaaggenz_contracts.nyquismic_clock import ClockCancelled
-from .nyquismic_delivery import DeliveryConversionPolicy, convert_numerical_to_delivery
+from .nyquismic_delivery import (
+    METHOD as DIRECT_DELIVERY_METHOD, DeliveryConversionPolicy,
+    admit_delivery_stages, convert_numerical_to_delivery,
+)
 
 METHOD = 'nyq.local-frozen-rate-convergence.v1'
 
@@ -170,6 +173,7 @@ def evaluate_local_convergence(
     render_candidate, *, source_sha256: str, sonic_sha256: str,
     clock_sha256: str, random_control_sha256: str,
     delivery_rate_hz: int = 48000,
+    delivery_policy: DeliveryConversionPolicy = DeliveryConversionPolicy(),
     policy: FrozenConvergencePolicy = FrozenConvergencePolicy(),
     budget: ResourceBudget = ResourceBudget(), cancelled=None,
 ) -> LocalConvergenceResult:
@@ -181,6 +185,7 @@ def evaluate_local_convergence(
     declared changes but cannot independently prove that callback's model.
     """
     record(policy, FrozenConvergencePolicy, 'frozen convergence policy')
+    record(delivery_policy, DeliveryConversionPolicy, 'frozen delivery conversion policy')
     record(budget, ResourceBudget, 'convergence resource budget')
     require(callable(render_candidate), 'convergence requires callable renderer')
     require(cancelled is None or callable(cancelled), 'convergence cancellation hook')
@@ -201,11 +206,17 @@ def evaluate_local_convergence(
     # above the default 4,096-tap budget; never render then silently fail.
     from math import gcd
     for rate in policy.rates_hz:
-        common = gcd(rate, delivery_rate_hz)
-        up, down = delivery_rate_hz // common, rate // common
-        if up != down:
-            require(24 * max(up, down) + 1 <= budget.max_filter_taps,
-                    'frozen convergence rate requires unsupported delivery FIR taps')
+        if delivery_policy.method == DIRECT_DELIVERY_METHOD:
+            # Preserve the existing direct-policy refusal and default behavior.
+            common = gcd(rate, delivery_rate_hz)
+            up, down = delivery_rate_hz // common, rate // common
+            if up != down:
+                require(24 * max(up, down) + 1 <= budget.max_filter_taps,
+                        'frozen convergence rate requires unsupported delivery FIR taps')
+        else:
+            # Qualify every stage BEFORE the expensive numerical renderer.
+            admit_delivery_stages(rate, delivery_rate_hz,
+                                  policy=delivery_policy, budget=budget)
 
     candidate_diagnostics = []
     converted = []
@@ -242,7 +253,7 @@ def evaluate_local_convergence(
                 'numerical candidates must cover identical physical-time extent')
         result = convert_numerical_to_delivery(
             audio, rate, delivery_rate_hz,
-            policy=DeliveryConversionPolicy(), budget=budget, cancelled=cancelled)
+            policy=delivery_policy, budget=budget, cancelled=cancelled)
         if shape is None:
             shape = result.audio.shape
         require(result.audio.shape == shape,
@@ -280,6 +291,8 @@ def evaluate_local_convergence(
             'clock_sha256': clock_sha256,
             'random_control_sha256': random_control_sha256,
             'delivery_rate_hz': delivery_rate_hz,
+            'delivery_method': delivery_policy.method,
+            'delivery_policy_sha256': delivery_policy.sha256,
             'rates_hz': list(policy.rates_hz),
             'passes': len(converted),
             'candidate_conversion': candidate_diagnostics,
@@ -293,6 +306,7 @@ def evaluate_local_convergence(
 
 def evaluate_sampler_convergence(
     source, sonic, *, delivery_rate_hz: int | None = None,
+    delivery_policy: DeliveryConversionPolicy = DeliveryConversionPolicy(),
     policy: FrozenConvergencePolicy = FrozenConvergencePolicy(),
     budget: ResourceBudget = ResourceBudget(), cancelled=None,
 ) -> LocalConvergenceResult:
@@ -308,6 +322,7 @@ def evaluate_sampler_convergence(
     require(type(source) is FrozenInput, 'convergence requires immutable source PCM')
     record(sonic, SonicSpec, 'convergence sonic spec')
     record(policy, FrozenConvergencePolicy, 'convergence policy')
+    record(delivery_policy, DeliveryConversionPolicy, 'convergence delivery policy')
     record(budget, ResourceBudget, 'convergence budget')
     require(cancelled is None or callable(cancelled),
             'convergence cancellation hook must be callable')
@@ -338,6 +353,10 @@ def evaluate_sampler_convergence(
         require(frames.numerator * sonic.channels <= budget.max_frames,
                 'sampler convergence numerical frame budget exceeded')
         frames_by_rate[rate] = frames.numerator
+        if delivery_policy.method != DIRECT_DELIVERY_METHOD:
+            # Validate exact intermediate and final extents before capture.
+            admit_delivery_stages(rate, delivery_rate_hz, policy=delivery_policy,
+                                  budget=budget, frames=frames.numerator)
 
     hashes = (source.asset.sha256, sonic.sonic_sha256, sonic.clock.sha256)
     random_hash = digest({'domain': 'nyq003.no-external-control-v1',
@@ -371,8 +390,8 @@ def evaluate_sampler_convergence(
     result = evaluate_local_convergence(
         actual_candidate, source_sha256=hashes[0], sonic_sha256=hashes[1],
         clock_sha256=hashes[2], random_control_sha256=random_hash,
-        delivery_rate_hz=delivery_rate_hz, policy=policy,
-        budget=budget, cancelled=cancelled)
+        delivery_rate_hz=delivery_rate_hz, delivery_policy=delivery_policy,
+        policy=policy, budget=budget, cancelled=cancelled)
     diagnostics = {
         **result.diagnostics,
         'sampler_bridge': 'nyq003.physical-event-frozen-convergence.v1',
