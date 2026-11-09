@@ -14,12 +14,90 @@ import math
 import numpy as np
 
 from .nyquismic import (
-    MAX_FRAMES, MAX_POINTS, MAX_TIME_S, ModulationRoute, Point, _Record,
+    MAX_FRAMES, MAX_NODES, MAX_POINTS, MAX_TIME_S, ModulationRoute, Point, _Record,
     hash_value, identifier, integer, qtext, rational_value, record, require,
 )
 from .nyquismic_clock import ClockCancelled
 
 METHOD = 'nyq.upstream-rms-envelope-v1'
+
+
+@dataclass(frozen=True)
+class UpstreamGraphEdge(_Record):
+    """An immutable audio dependency: upstream output -> downstream input."""
+    source_id: str
+    destination_id: str
+
+    def __post_init__(self):
+        identifier(self.source_id, 'graph edge source')
+        identifier(self.destination_id, 'graph edge destination')
+        require(self.source_id != self.destination_id, 'graph self-dependency forbidden')
+
+
+@dataclass(frozen=True)
+class UpstreamGraphSnapshot(_Record):
+    """Bounded acyclic snapshot; product integration must bind its SHA to live graph."""
+    version: str = 'nyq.upstream-graph-snapshot.v1'
+    nodes: tuple[str, ...] = ()
+    edges: tuple[UpstreamGraphEdge, ...] = ()
+    _children = {'edges': (UpstreamGraphEdge,)}
+
+    def __post_init__(self):
+        require(self.version == 'nyq.upstream-graph-snapshot.v1',
+                'unsupported upstream graph snapshot version')
+        require(type(self.nodes) is tuple and 1 <= len(self.nodes) <= MAX_NODES,
+                'graph nodes must be a bounded nonempty tuple')
+        for node in self.nodes:
+            identifier(node, 'graph node')
+        require(tuple(sorted(set(self.nodes))) == self.nodes,
+                'graph nodes must be unique and sorted by stable ID')
+        require(type(self.edges) is tuple and len(self.edges) <= 1024,
+                'graph dependency edge budget exceeded')
+        for edge in self.edges:
+            record(edge, UpstreamGraphEdge, 'graph dependency edge')
+        require(tuple(sorted(self.edges, key=lambda e: (e.source_id, e.destination_id))) == self.edges
+                and len({(e.source_id, e.destination_id) for e in self.edges}) == len(self.edges),
+                'graph edges must be unique and sorted by stable IDs')
+        nodes = set(self.nodes)
+        require(all(e.source_id in nodes and e.destination_id in nodes
+                    for e in self.edges), 'graph edge has missing/foreign endpoint')
+        outgoing = {n: [] for n in self.nodes}
+        indegree = {n: 0 for n in self.nodes}
+        for edge in self.edges:
+            outgoing[edge.source_id].append(edge.destination_id)
+            indegree[edge.destination_id] += 1
+        ready = [node for node in self.nodes if not indegree[node]]
+        visited = 0
+        for node in ready:
+            visited += 1
+            for child in outgoing[node]:
+                indegree[child] -= 1
+                if indegree[child] == 0:
+                    ready.append(child)
+        require(visited == len(self.nodes), 'upstream graph contains a feedback cycle')
+
+    @classmethod
+    def from_dict(cls, data):
+        require(type(data) is dict and set(data) == {'version', 'nodes', 'edges'}
+                and type(data['nodes']) is list and type(data['edges']) is list,
+                'upstream graph snapshot requires complete version/nodes/edges arrays')
+        return cls(version=data['version'], nodes=tuple(data['nodes']),
+                   edges=tuple(UpstreamGraphEdge.from_dict(edge) for edge in data['edges']))
+
+    def ancestors_of(self, consumer_id: str) -> tuple[str, ...]:
+        identifier(consumer_id, 'graph consumer ID')
+        require(consumer_id in self.nodes, 'consumer absent from graph snapshot')
+        parents = {n: [] for n in self.nodes}
+        for edge in self.edges:
+            parents[edge.destination_id].append(edge.source_id)
+        seen = set()
+        pending = list(parents[consumer_id])
+        while pending:
+            node = pending.pop()
+            if node not in seen:
+                seen.add(node)
+                pending.extend(parents[node])
+        return tuple(sorted(seen))
 
 
 @dataclass(frozen=True)
@@ -69,6 +147,8 @@ def compile_upstream_rms_route(
     pcm, policy: UpstreamRmsPolicy, *, consumer_id: str,
     upstream_ids: tuple[str, ...], route_id: str,
     mapping: str = 'add_hz', depth: float = 0.0, cancelled=None,
+    graph_snapshot: UpstreamGraphSnapshot | None = None,
+    expected_graph_sha256: str | None = None,
 ) -> UpstreamRmsResult:
     """Bind immutable PCM to a bounded, saved, right-continuous step route.
 
@@ -86,7 +166,19 @@ def compile_upstream_rms_route(
             'upstream ancestor IDs must be unique')
     require(policy.source_id != consumer_id and consumer_id not in upstream_ids
             and policy.source_id in upstream_ids,
-            'source is not a verified acyclic upstream input')
+            'source is not a declared upstream input')
+    if graph_snapshot is None:
+        require(expected_graph_sha256 is None,
+                'expected graph identity supplied without a topology snapshot')
+    else:
+        record(graph_snapshot, UpstreamGraphSnapshot, 'upstream graph snapshot')
+        hash_value(expected_graph_sha256, 'expected current upstream graph SHA-256')
+        require(graph_snapshot.sha256 == expected_graph_sha256,
+                'stale or foreign upstream graph snapshot')
+        require(policy.source_id in graph_snapshot.nodes,
+                'input source missing from upstream graph snapshot')
+        require(set(upstream_ids) == set(graph_snapshot.ancestors_of(consumer_id)),
+                'upstream declaration disagrees with complete acyclic graph ancestry')
     require(cancelled is None or callable(cancelled), 'RMS cancellation hook must be callable')
     if cancelled is not None and cancelled():
         raise ClockCancelled('upstream RMS cancelled before source validation')
@@ -160,5 +252,9 @@ def compile_upstream_rms_route(
                      'selected_channel': policy.channel,
                      'interpolation': 'step',
                      'pre_origin_control': 'neutral_zero' if delayed else 'not_applicable',
-                     'clipping': 'reject'},
+                     'clipping': 'reject',
+                     'graph_topology': ('snapshot-dag-verified' if graph_snapshot is not None
+                                        else 'caller-declared-only'),
+                     'graph_snapshot_sha256': (graph_snapshot.sha256
+                                               if graph_snapshot is not None else None)},
     )

@@ -10,7 +10,7 @@ from zaaggenz_contracts.nyquismic import SonicSpec, ClockSpec, VirtualRate
 from zaaggenz_contracts.nyquismic_clock import ClockCancelled
 from zaaggenz_contracts.nyquismic_controls import evaluate_instantaneous_rate
 from zaaggenz_contracts.nyquismic_input_envelope import (
-    UpstreamRmsPolicy, compile_upstream_rms_route,
+    UpstreamGraphEdge, UpstreamGraphSnapshot, UpstreamRmsPolicy, compile_upstream_rms_route,
 )
 
 
@@ -143,6 +143,48 @@ class InputEnvelopeTests(unittest.TestCase):
         self.assertEqual(tuple(x.value for x in result.route.points), ('1/4',))
         self.assertTrue(np.all(source == 0))
         self.assertEqual(result.diagnostics['source_sha256'], policy.source_sha256)
+
+    def test_complete_graph_snapshot_rejects_stale_cycle_and_forward_tap(self):
+        raw = np.full(16, .25, dtype='<f4')
+        policy = make(raw, window=4)
+        graph = UpstreamGraphSnapshot(
+            nodes=('band_a', 'band_b', 'middle'),
+            edges=(UpstreamGraphEdge('band_a', 'middle'),
+                   UpstreamGraphEdge('middle', 'band_b')),
+        )
+        self.assertEqual(UpstreamGraphSnapshot.from_json(graph.to_json()), graph)
+        self.assertEqual(graph.ancestors_of('band_b'), ('band_a', 'middle'))
+        result = compile_upstream_rms_route(
+            raw, policy, consumer_id='band_b', upstream_ids=('middle', 'band_a'),
+            route_id='rms', graph_snapshot=graph, expected_graph_sha256=graph.sha256)
+        self.assertEqual(result.diagnostics['graph_topology'], 'snapshot-dag-verified')
+        self.assertEqual(result.diagnostics['graph_snapshot_sha256'], graph.sha256)
+        with self.assertRaises(ContractError):
+            compile_upstream_rms_route(
+                raw, policy, consumer_id='band_b',
+                upstream_ids=('band_a', 'middle'), route_id='rms',
+                graph_snapshot=graph, expected_graph_sha256='0'*64)
+        with self.assertRaises(ContractError):
+            compile_upstream_rms_route(
+                raw, policy, consumer_id='band_b', upstream_ids=('band_a',),
+                route_id='rms', graph_snapshot=graph,
+                expected_graph_sha256=graph.sha256)
+        with self.assertRaises(ContractError):
+            compile_upstream_rms_route(
+                raw, policy, consumer_id='middle', upstream_ids=('band_a', 'band_b'),
+                route_id='rms', graph_snapshot=graph,
+                expected_graph_sha256=graph.sha256)
+        with self.assertRaises(ContractError):
+            UpstreamGraphSnapshot(nodes=('band_a', 'band_b'),
+                edges=(UpstreamGraphEdge('band_a', 'band_b'),
+                       UpstreamGraphEdge('band_b', 'band_a')))
+        with self.assertRaises(ContractError):
+            UpstreamGraphSnapshot(nodes=('band_a', 'band_b'),
+                edges=(UpstreamGraphEdge('unknown', 'band_b'),))
+        with self.assertRaises(ContractError):
+            UpstreamGraphSnapshot(nodes=('band_a', 'band_b'),
+                edges=(UpstreamGraphEdge('band_a', 'band_b'),
+                       UpstreamGraphEdge('band_a', 'band_b')))
 
     def test_windows_bound_and_cancellation_preserve_atomicity(self):
         signal = np.zeros(258, dtype='<f4')

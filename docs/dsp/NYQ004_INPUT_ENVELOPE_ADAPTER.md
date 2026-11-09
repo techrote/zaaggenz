@@ -45,3 +45,25 @@ Tests cover exact step/window boundaries, actual clock inspector consumption,
 source tampering, upstream identity/cycle admission, pre-origin leakage and
 strict delayed-source point budgets, mono/stereo/partial/empty
 input, full-snapshot persistence, deterministic repeat, bounds and cancellation.
+
+## Exact DAG-snapshot input binding (experimental)
+
+`UpstreamGraphSnapshot` / `UpstreamGraphEdge` provide the optional
+`nyq.upstream-graph-snapshot.v1` proof mode for RMS and transient controls.
+A complete bounded 128-node / 1024-edge stable-ID DAG rejects cycles,
+foreign endpoints, duplicates and unordered identities. The exact
+transitive ancestors of the consumer must match the declared source set.
+The supplied current graph SHA must match the snapshot digest; stale,
+missing, forward, self and downstream input references refuse execution.
+The source PCM remains privately snapshotted and content-hashed. Diagnostics
+record the verified **snapshot** digest, separately from the PCM/policy hashes.
+
+**Authority limitation:** this validates a *provided* graph and hash, not
+that either originates from the live Compose/RenderRecipe graph. Integration
+must independently bind the snapshot and expected digest to the current
+project revision. Legacy ID-only calls explicitly report
+`caller-declared-only`; they are not reclassified as verified ancestry.
+No product graph, NYQ-002 sampler, schema migration or default sound changes.
+A controlled-clock cross-band numerical PCM test is an experimental model
+fixture, not evidence of live Compose feature plumbing or general audio-rate
+modulation.

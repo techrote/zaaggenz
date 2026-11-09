@@ -54,6 +54,7 @@ def compile_upstream_transient_route(
     pcm, policy: UpstreamTransientPolicy, *, consumer_id: str,
     upstream_ids: tuple[str, ...], route_id: str,
     mapping: str = 'add_hz', depth: float = 0.0, cancelled=None,
+    graph_snapshot=None, expected_graph_sha256=None,
 ) -> UpstreamTransientResult:
     """Compile one source-verified positive RMS-rise onset lane.
 
@@ -67,6 +68,7 @@ def compile_upstream_transient_route(
         pcm, policy.source, consumer_id=consumer_id,
         upstream_ids=upstream_ids, route_id=route_id,
         mapping='add_hz', depth=0.0, cancelled=cancelled,
+        graph_snapshot=graph_snapshot, expected_graph_sha256=expected_graph_sha256,
     )
     levels = (Fraction(base.route.initial),
               *(Fraction(point.value) for point in base.route.points))
@@ -111,6 +113,7 @@ def compile_upstream_transient_route(
             'rms_quantization_denominator': 1000000,
             'rise_quantization_denominator': 1000000,
             'clipping': 'reject-upstream-rms-and-no-transient-clipping',
-            'graph_topology': 'caller-verified-only',
+            'graph_topology': base.diagnostics['graph_topology'],
+            'graph_snapshot_sha256': base.diagnostics['graph_snapshot_sha256'],
         },
     )
