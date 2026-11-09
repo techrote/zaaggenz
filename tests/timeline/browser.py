@@ -488,6 +488,56 @@ def main():
             # executes the existing band-selective DSP and saves its exact
             # nested target/selection contract. No new audio backend or mock.
             page.locator('#rack-editor').get_by_role('button',name='Enable four-band rack').click();ready()
+            # The ordinary Compose UI must actually CREATE a source-bound
+            # Chordness request from manually entered comb teeth. A preloaded
+            # JSON-only Chordness project is not an editable instrument.
+            highmid=page.locator('#rack-editor .rack-band').nth(2)
+            chord_form=highmid.locator('.rack-chordness-create')
+            chord_form.evaluate('(e)=>e.open=true')
+            teeth=chord_form.get_by_label('Manual comb teeth (Hz, comma-separated)')
+            initial_chord_doc=saved('rack-chordness-before.zgtimeline.json')
+            initial_chord_identity=server.timeline.session.current_identity()
+            teeth.fill('110, 110')
+            chord_form.get_by_role('button',name='Add manual Chordness (off)').click()
+            assert teeth.evaluate('(e)=>e.validity.customError')
+            assert 'strictly increasing' in teeth.evaluate('(e)=>e.validationMessage')
+            assert server.timeline.session.current_identity()==initial_chord_identity
+            assert saved('rack-chordness-invalid.zgtimeline.json')==initial_chord_doc
+            teeth.fill('110, 220, 330')
+            chord_form.get_by_label('Manual comb label').fill('Musical upper comb')
+            chord_form.get_by_role('button',name='Add manual Chordness (off)').click();ready()
+            chord_document=saved('rack-chordness-created.zgtimeline.json')
+            chord_rack=json.loads(chord_document['project']['revisions'][-1]['recipe_json'])['rack']
+            chord_stage=chord_rack['bands'][2]['inserts'][0]
+            assert chord_stage['params']['kind']=='ChordnessRequest'
+            assert chord_stage['params']['mode']=='off'
+            assert chord_stage['params']['templates'][0]['teeth_hz']==[110.,220.,330.]
+            assert chord_stage['params']['templates'][0]['label']=='Musical upper comb'
+            assert chord_stage['params']['selected_template_ids']==['user.manual']
+            assert chord_document['project']['revisions'][0]==short_doc.to_dict()['project']['revisions'][0]
+            chord_panel=highmid.locator('.rack-stage').filter(
+                has=page.locator('.rack-stage-id',has_text=chord_stage['id']))
+            expect(chord_panel).to_have_count(1)
+            chord_panel.locator('.rack-spectral').evaluate('(e)=>e.open=true')
+            chord_panel.get_by_label('mode',exact=True).select_option('reweight');ready()
+            activated=saved('rack-chordness-active.zgtimeline.json')
+            activated_rack=json.loads(activated['project']['revisions'][-1]['recipe_json'])['rack']
+            assert activated_rack['bands'][2]['inserts'][0]['params']['mode']=='reweight'
+            chord_job=rendered('rack-chordness-reweight')
+            chord_audio=server.timeline.scheduler.result(chord_job).audio_bytes
+            assert len(chord_audio)>44
+            chord_report=server.timeline.status(chord_job)['artifact']['scopes']['diagnostics']['rack']
+            assert any(stage['type_id']=='zg.spectral' and stage['executed']
+                       for row in chord_report['bands'] for stage in row['stages'])
+            page.locator('#open').set_input_files(args.out/'rack-chordness-active.zgtimeline.json');ready()
+            chord_reloaded=rendered('rack-chordness-reopened')
+            assert server.timeline.scheduler.result(chord_reloaded).audio_bytes==chord_audio
+            highmid=page.locator('#rack-editor .rack-band').nth(2)
+            highmid.get_by_role('button',name='Remove insert').click();ready()
+            assert not json.loads(saved('rack-chordness-removed.zgtimeline.json')[
+                'project']['revisions'][-1]['recipe_json'])['rack']['bands'][2]['inserts']
+            # Restore the empty band before exercising the separately owned
+            # multivoice, scheduled retune acceptance below.
             lowmid=page.locator('#rack-editor .rack-band').nth(1)
             lowmid.get_by_role('button',name='Add spectral').click();ready()
             # Read the authoritative saved revision before querying the DOM.
