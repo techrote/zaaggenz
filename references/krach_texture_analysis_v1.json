@@ -1,0 +1,37 @@
+{
+  "version": "1.0.0",
+  "method": {
+    "id": "zg-krach-body-surface-v1",
+    "analysis_sample_rate_hz": 24000,
+    "decode": "ffmpeg mono float32",
+    "stft": {
+      "window_samples": 1024,
+      "hop_samples": 256,
+      "power_bands_hz": {
+        "sub": [20, 120],
+        "body": [120, 500],
+        "mid": [500, 2000],
+        "teeth": [2000, 6000],
+        "air": [6000, 10000]
+      }
+    },
+    "energetic_frame_selection": "top 35% of 20-10000 Hz STFT-frame power",
+    "stable_sub_condition": "bottom 40% of absolute sub-band log-power changes within energetic frames",
+    "interpretation": "descriptive design evidence only; not a genre classifier, authenticity metric, or preference score"
+  },
+  "assets": [
+    {"filename_hint":"Elements Of Nature (So W'Happy Festival Official Anthem 2026).mp3","sha256":"51526e8453f4ab3cc8e32b9bbfec0870816b6ea96899a1952847f585f43d2a8e","median_power_fraction":{"sub":0.825341,"body":0.060567,"mid":0.080963,"teeth":0.022633,"air":0.005464},"low_high_log_envelope_correlation":-0.058572,"surface_to_body_flux_ratio":1.237375,"high_change_vs_low_when_low_stable":4.022115},
+    {"filename_hint":"FA-TI-CO (EQUAL2 ZAAG-TI-CO EDIT) [FREE DL].mp3","sha256":"f20ddc3e355cbbb4ce82fd61bdc22398635a2858fe79890df45c2a1834da9665","median_power_fraction":{"sub":0.799527,"body":0.038022,"mid":0.078765,"teeth":0.059763,"air":0.019823},"low_high_log_envelope_correlation":-0.543046,"surface_to_body_flux_ratio":1.215539,"high_change_vs_low_when_low_stable":3.117481},
+    {"filename_hint":"PEYGAN X EQUAL2 - UPTEMPO SԼUT.mp3","sha256":"1c2986811cd3e077e34a0b6eda81efd2d53d7179be51bb4a5eb21a74ccef757b","median_power_fraction":{"sub":0.866559,"body":0.028809,"mid":0.06099,"teeth":0.030873,"air":0.011267},"low_high_log_envelope_correlation":-0.436188,"surface_to_body_flux_ratio":0.989651,"high_change_vs_low_when_low_stable":3.655093},
+    {"filename_hint":"This Is Krach.mp3","sha256":"bb59a7b6b2ab18b6a5fbd1f62a16042705c0f767eec5ff147f02313fbff33b99","median_power_fraction":{"sub":0.825798,"body":0.073054,"mid":0.057689,"teeth":0.025399,"air":0.006635},"low_high_log_envelope_correlation":-0.318158,"surface_to_body_flux_ratio":1.790343,"high_change_vs_low_when_low_stable":4.114901},
+    {"filename_hint":"BLOW.mp3","sha256":"db006184a4e8f3957d3bce96aa93be6aba9db15184423d285908345e5dfa12f9","median_power_fraction":{"sub":0.629937,"body":0.155601,"mid":0.080733,"teeth":0.04256,"air":0.014111},"low_high_log_envelope_correlation":-0.327239,"surface_to_body_flux_ratio":0.814237,"high_change_vs_low_when_low_stable":1.957751},
+    {"filename_hint":"BOUNCIN 2 THA BEAT.mp3","sha256":"ac02630a8ab50b30778bc5d01100108fc44f9c2713cd51fbce63be009e995afd","median_power_fraction":{"sub":0.777115,"body":0.084444,"mid":0.064338,"teeth":0.026523,"air":0.006407},"low_high_log_envelope_correlation":-0.484045,"surface_to_body_flux_ratio":1.257963,"high_change_vs_low_when_low_stable":4.616097}
+  ],
+  "design_observations": [
+    "All six references retain a large low-frequency mass while mid/high bands can change substantially when the sub band is locally stable.",
+    "BOUNCIN 2 THA BEAT is a bridge condition: dark/sub-heavy allocation with the strongest high-vs-low change ratio under stable-low conditions in this set.",
+    "FA-TI-CO exposes the largest 2-10 kHz power share in this set while still retaining dominant sub energy.",
+    "BLOW is comparatively body-heavy and less surface-flux-dominated; This Is Krach shows stronger surface-to-body flux separation.",
+    "These observations motivate four mechanism-level candidates: dark stable mass, dark animated bounce, moving destructive midrange, and exposed upper teeth/air."
+  ]
+}

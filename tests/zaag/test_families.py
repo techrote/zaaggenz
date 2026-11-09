@@ -19,8 +19,8 @@ class ZaagFamilyTests(unittest.TestCase):
         self.assertNotIn('synth_overrides',LOCKED_BLOOM.to_dict())
 
     def test_registry_has_six_candidates_three_controls_and_no_new_default(self):
-        self.assertEqual(len(candidates()),6);self.assertEqual(len(contrasts()),3);self.assertEqual(len(FAMILIES),9)
-        self.assertEqual(len({x.id for x in FAMILIES}),9);self.assertTrue(all(not x.approved_default for x in FAMILIES))
+        self.assertEqual(len(candidates()),6);self.assertEqual(len(contrasts()),3);self.assertEqual(len(FAMILIES),13)
+        self.assertEqual(len({x.id for x in FAMILIES}),13);self.assertTrue(all(not x.approved_default for x in FAMILIES))
         payload=registry_payload();self.assertIsNone(payload['new_default']);self.assertTrue(payload['owner_approval_required'])
         self.assertEqual(len(registry_sha256()),64)
 
