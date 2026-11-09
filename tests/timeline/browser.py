@@ -865,6 +865,17 @@ def main():
             expect(page.locator('#revision')).to_have_text(before_bad_segment)
             assert segment_start_existing.evaluate('(e)=>!e.validity.valid')
             segment_start_existing.fill('1200')
+            # The authored target must act on real lowmid components, not
+            # merely pass source/schedule serialization. Use declared bounded
+            # DSP controls; any processor abstention below must fail closed.
+            for label,value in (
+                ('min confidence · ratio','0'),
+                ('max displacement cents · cents','2400'),
+                ('max correction slew cents per second · cents/s','20000'),
+            ):
+                field=spectral_stage.get_by_label(label)
+                field.fill(value);field.dispatch_event('change');ready()
+            spectral_stage.get_by_label('preserve ambiguous').uncheck();ready()
             spectral_doc=saved('rack-spectral-source-bound.zgtimeline.json')
             spectral_rack=json.loads(spectral_doc['project']['revisions'][-1]['recipe_json'])['rack']
             spectral_params=next(s['params'] for s in spectral_rack['bands'][1]['inserts']
@@ -883,12 +894,93 @@ def main():
             assert spectral_params['segments'][0]['voices'][1]['degree']==12
             assert spectral_params['tuning_spec']==json.loads(
                 spectral_doc['project']['revisions'][0]['recipe_json'])['tuning']
-            spectral_id=rendered('rack-spectral-retune')
-            spectral_wav=server.timeline.scheduler.result(spectral_id).audio_bytes
-            assert len(spectral_wav)>44
-            page.locator('#open').set_input_files(args.out/'rack-spectral-source-bound.zgtimeline.json');ready()
+            def retune_activity(job):
+                artifact=server.timeline.status(job)['artifact']
+                rack_report=artifact['scopes']['diagnostics']['rack']
+                assert rack_report['normalization']=='none',rack_report
+                stage=next((row for row in rack_report['bands'][1]['stages']
+                            if row['type_id']=='zg.spectral'),None)
+                assert stage is not None and stage['executed'],rack_report
+                processor=stage['processor']
+                diag=processor['diagnostics']
+                assert diag['target_segments']==2,diag
+                assert diag['changed_frames']>0 and not diag['identity_path'] and (
+                    diag['max_abs_correction_cents']>1e-6),(
+                    'Retune fixture abstained; do not report a successful sonic edit: '
+                    +repr(processor))
+                return processor
+
+            spectral_job=rendered('rack-spectral-retune')
+            spectral_wav=server.timeline.scheduler.result(spectral_job).audio_bytes
+            assert len(spectral_wav)==len(one_bar_dry_pcm)>44
+            spectral_activity=retune_activity(spectral_job)
+            assert spectral_wav!=one_bar_dry_pcm,(
+                'Activated retune left actual PCM dry despite nonzero stage diagnostics')
+            # A second, genuine scheduled lattice through the normal UI:
+            # retain 1200 source samples as the target change-point, stage ID,
+            # source ancestry and all processor controls, edit both voices.
+            root=spectral_doc['project']['revisions'][0]
+            old_stage=next(s for s in spectral_rack['bands'][1]['inserts']
+                           if s['id']==spectral_id)
+            segment=spectral_stage.get_by_role('group',name='Retune target segment 1')
+            for voice_no,degree_value in ((1,'-5'),(2,'-1')):
+                field=segment.get_by_label('Segment 1 voice '+str(voice_no)+' degree')
+                field.fill(degree_value);field.dispatch_event('change');ready()
+            alternative=saved('rack-retune-alternative-scheduled-target.zgtimeline.json')
+            assert alternative['project']['revisions'][0]==root
+            alternative_rack=json.loads(alternative['project']['revisions'][-1][
+                'recipe_json'])['rack']
+            new_stage=next(s for s in alternative_rack['bands'][1]['inserts']
+                           if s['id']==spectral_id)
+            assert [v['degree'] for v in new_stage['params']['segments'][0]['voices']]==[-5,-1]
+            assert new_stage['params']['segments'][0]['start_sample']==1200
+            assert {k:v for k,v in old_stage.items() if k!='params'}=={
+                k:v for k,v in new_stage.items() if k!='params'}
+            assert {k:v for k,v in old_stage['params'].items() if k!='segments'}=={
+                k:v for k,v in new_stage['params'].items() if k!='segments'}
+            assert [s for s in spectral_rack['bands'][1]['inserts'] if s['id']!=spectral_id]==[
+                s for s in alternative_rack['bands'][1]['inserts'] if s['id']!=spectral_id]
+            alternative_job=rendered('rack-retune-alternative-scheduled-target')
+            alternative_pcm=server.timeline.scheduler.result(alternative_job).audio_bytes
+            alternative_activity=retune_activity(alternative_job)
+            assert len(alternative_pcm)==len(spectral_wav)
+            before=np.frombuffer(spectral_wav,dtype='<f4')
+            after=np.frombuffer(alternative_pcm,dtype='<f4')
+            assert np.isfinite(before).all() and np.isfinite(after).all()
+            delta=before.astype(np.float64)-after.astype(np.float64)
+            difference_rms=float(np.sqrt(np.mean(delta*delta)))
+            post_change_rms=float(np.sqrt(np.mean(delta[1200:]*delta[1200:])))
+            assert difference_rms>1e-5 and post_change_rms>1e-5,(
+                'Scheduled target did not change numerical PCM after 1200 samples: '+
+                repr((difference_rms,post_change_rms,spectral_activity,alternative_activity)))
+            # The spectral-only bypass is the exact original dry path.
+            spectral_stage.get_by_label('Bypass insert').check();ready()
+            bypass_job=rendered('rack-spectral-retune-insert-bypass')
+            bypass_pcm=server.timeline.scheduler.result(bypass_job).audio_bytes
+            assert bypass_pcm==one_bar_dry_pcm,(
+                'Stage bypass changed original dry source samples')
+            page.locator('#open').set_input_files(
+                args.out/'rack-spectral-source-bound.zgtimeline.json');ready()
             reopen_id=rendered('rack-spectral-reopened')
-            assert server.timeline.scheduler.result(reopen_id).audio_bytes==spectral_wav
+            reopen_pcm=server.timeline.scheduler.result(reopen_id).audio_bytes
+            assert reopen_pcm==spectral_wav
+            (args.out/'rack-retune-numerical-evidence.json').write_text(json.dumps({
+                'source_root_id':root['id'],
+                'source_id':json.loads(root['recipe_json'])['source']['id'],
+                'sample_rate_hz':args.sample_rate,'change_sample':1200,
+                'insert_id':spectral_id,'target_degrees_a':[9,12],
+                'target_degrees_b':[-5,-1],
+                'stage_activity_a':spectral_activity,
+                'stage_activity_b':alternative_activity,
+                'target_difference_rms_full_scale':difference_rms,
+                'post_change_difference_rms_full_scale':post_change_rms,
+                'pcm_sha256_a':hashlib.sha256(spectral_wav).hexdigest(),
+                'pcm_sha256_b':hashlib.sha256(alternative_pcm).hexdigest(),
+                'pcm_sha256_dry':hashlib.sha256(one_bar_dry_pcm).hexdigest(),
+                'pcm_sha256_bypass':hashlib.sha256(bypass_pcm).hexdigest(),
+                'pcm_sha256_reopen':hashlib.sha256(reopen_pcm).hexdigest(),
+                'normalization':'none','evidence_class':'real Chromium and numerical PCM, not listening',
+            },sort_keys=True,indent=2)+'\n',encoding='utf-8')
             # Restore the pre-rack document so the following legacy
             # four-bar revision identity/save-reopen regression stays intact.
             page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json')
