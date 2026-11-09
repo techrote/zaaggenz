@@ -113,10 +113,10 @@ class RealSamplerConvergenceTests(unittest.TestCase):
             with self.assertRaisesRegex(ContractError, 'delivery rate must match'):
                 evaluate_sampler_model_convergence(
                     source, spec, delivery_rate_hz=44100)
-            with self.assertRaisesRegex(ContractError, 'reference-pass budget'):
+            with self.assertRaisesRegex(ContractError, 'pass budget exceeded'):
                 evaluate_sampler_model_convergence(
                     source, spec, budget=ResourceBudget(max_reference_passes=2))
-            with self.assertRaisesRegex(ContractError, 'reference-pass budget'):
+            with self.assertRaisesRegex(ContractError, 'pass budget exceeded'):
                 evaluate_sampler_convergence(
                     source, spec, budget=ResourceBudget(max_reference_passes=2))
 
