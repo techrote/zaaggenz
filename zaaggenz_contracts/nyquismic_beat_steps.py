@@ -114,16 +114,19 @@ class BeatStepSource(_Record):
 
         check_cancel()
         origin = Fraction(self.origin_s)
-        end = rational_value(end_s, 'beat-step end seconds', origin, MAX_TIME_S)
+        # A short preview entirely before a delayed onset is valid and neutral;
+        # no future step is permitted to leak into that physical-time window.
+        end = rational_value(end_s, 'beat-step end seconds', 0, MAX_TIME_S)
         width = Fraction(self.step_beats)
         first_level = Fraction(self.levels[self.phase_steps])
         points: list[Point] = []
-        if origin > 0:
-            require(end >= origin, 'beat-step source has not reached its origin')
+        if origin > 0 and end >= origin:
             points.append(Point(qtext(origin), qtext(first_level)))
-        tempo = [(origin, Fraction(self.base_bpm))]
+        # Do not integrate negative beat time or synthesize future steps when
+        # a short preview ends before the scheduled musical onset.
+        tempo = [] if end < origin else [(origin, Fraction(self.base_bpm))]
         tempo += [(Fraction(p.time_s), Fraction(p.value)) for p in self.tempo_points
-                  if Fraction(p.time_s) < end]
+                  if end >= origin and Fraction(p.time_s) < end]
         beats = Fraction(0)
         for i, (a, bpm) in enumerate(tempo):
             check_cancel()

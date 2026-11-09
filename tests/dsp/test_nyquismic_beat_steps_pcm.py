@@ -113,6 +113,46 @@ class BeatStepPhysicalAudioTests(unittest.TestCase):
             [e.coordinate_s for e in compile_step_clock_events(no_depth, '1/1')],
             [e.coordinate_s for e in compile_step_clock_events(sonic(), '1/1')])
 
+    def test_delayed_onset_neutral_short_preview_and_future_full_pcm(self):
+        # Render a legitimate 1/2-second preview with a musical source
+        # scheduled to start at 3/4 second; no future beats should leak.
+        beat = BeatStepSource(
+            origin_s='3/4', step_beats='1/4',
+            levels=('-1/1', '1/1'),
+            tempo_points=(Point('7/8', '180/1'),),
+        )
+        short = beat.compile_route('1/2', route_id='future-beat', depth=80.)
+        self.assertEqual((short.initial, short.points), ('0/1', ()))
+        self.assertEqual(short.sha256, beat.compile_route(
+            '1/2', route_id='future-beat', depth=80.).sha256)
+        octave = beat.compile_route('1/2', route_id='future-octave',
+                                    depth=1., mapping='log2_ratio')
+        self.assertEqual((octave.initial, octave.points), ('0/1', ()))
+        full_asset = target()
+        preview_asset = FrozenInput.from_pcm(full_asset.pcm[:4000].copy(), 8000)
+        clean_preview = render_controlled_audio_proof(preview_asset, sonic())
+        additive_preview = render_controlled_audio_proof(preview_asset, sonic(short))
+        octave_preview = render_controlled_audio_proof(preview_asset, sonic(octave))
+        np.testing.assert_array_equal(additive_preview.audio, clean_preview.audio)
+        np.testing.assert_array_equal(octave_preview.audio, clean_preview.audio)
+        self.assertEqual(additive_preview.diagnostics['full_output_frames'], 4000)
+
+        # A complete render still activates the scheduled beat, and its
+        # pre-onset prefix is precisely the short preview's PCM.
+        full = beat.compile_route('1/1', route_id='future-beat', depth=80.)
+        self.assertEqual(full.points[0].time_s, '3/4')
+        active = render_controlled_audio_proof(full_asset, sonic(full))
+        baseline = render_controlled_audio_proof(full_asset, sonic())
+        np.testing.assert_array_equal(active.audio[:4000], additive_preview.audio)
+        self.assertGreater(float(np.max(np.abs(
+            active.audio[6500:] - baseline.audio[6500:]))), .01)
+        self.assertEqual(beat.value_at('7/8'), Fraction(1))
+        with self.assertRaises(ContractError):
+            beat.compile_route('-1/8', route_id='negative-time', depth=80.)
+        with self.assertRaises(ClockCancelled):
+            beat.compile_route('1/2', route_id='cancelled-before-onset',
+                               depth=80., cancelled=lambda: True)
+
     def test_reject_invalid_bpm_budget_and_cancel_without_partial_route(self):
         with self.assertRaises(ContractError):
             BeatStepSource(tempo_points=(Point('1/2', '180/1'),
