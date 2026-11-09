@@ -142,6 +142,48 @@ def _numerical_tensor(a):
             'frame_f64le_b64':[base64.b64encode(np.ascontiguousarray(f[i]).tobytes()).decode()
                                for i in range(min(len(f),MAX_SNAPSHOT_FRAMES))]}
 
+def matched_stage_probe(current,reference):
+    """Separate *new-execution* tracker probe on exact common Windows-stage PCM."""
+    from zaaggenz_components import tracker as tr
+    if (reference.get('input_policy')!='ordinary-compiled-timeline-synthline' or
+        reference.get('source',{}).get('archive_sha256')!='9cbf9dbbb01dd236facc00b528c66e023c472bf7f601f99658026567dae42abc' or
+        reference.get('source',{}).get('export_wav_sha256')!='2db1913eaafe142b060bd89849bb54552a7b98907019fb5de9dca44c0e569d8f' or
+        reference.get('original_export_comparison',{}).get('nonzero_samples')!=0):
+        raise ValueError('source trace not authenticated original Windows normal replay')
+    for key in ('document_revision_id','compiled_recipe_sha256','rack_sha256',
+                'rack_sonic_sha256','implementation_sha256','sample_rate_hz'):
+        if current.get(key)!=reference.get(key):
+            raise ValueError('foreign stage source/rack: '+key)
+    if len(current.get('spectral',[]))!=1 or len(reference.get('spectral',[]))!=1:
+        raise ValueError('one original spectral stage required')
+    s=reference['spectral'][0]
+    if current['spectral'][0]['request']!=s['request']:
+        raise ValueError('foreign original spectral request')
+    x=_checked_stage_pcm(s['subledger']['stage_input_f32le_b64'],s['analysis_input'])
+    tap={'stft':None,'candidates':[],'assignments':[],'transient':None}
+    with ExitStack() as stack:
+        _tracker_taps(stack,[tap])
+        analysis=tr.analyse_components(x,current['sample_rate_hz'])
+    observed=pcm_identity(analysis.source)
+    if observed['f32le_sha256']!=s['analysis_input']['f32le_sha256']:
+        raise ValueError('tracker consumed a changed stage input')
+    return {'input_policy':'MATCHED-WINDOWS-STAGE-F32-NEW-EXECUTION-NOT-ORIGINAL-TRACKER',
+            'analysis_input':observed,'subledger':tap,'tracked':_frame_ledger(analysis),
+            'diagnostics':analysis.diagnostics,'request':s['request'],
+            'reference_archive_sha256':reference['source']['archive_sha256']}
+
+
+def _anchor_frame_rows(tracked):
+    rows={}
+    for t in tracked:
+        for f in t['frames']:
+            rows.setdefault(str(f['anchor']),[]).append({
+                'frequency_hz':f['frequency_hz'],'confidence':f['confidence'],
+                'action':f['action'],'continuity':t['continuity']})
+    return {key:sorted(value,key=lambda x:float.fromhex(x['frequency_hz']))
+            for key,value in rows.items()}
+
+
 def _first_tensor_delta(a,b):
     if a['kind']!=b['kind'] or a['shape']!=b['shape']:
         return {'kind':'type-or-shape','left':[a['kind'],a['shape']],
@@ -538,6 +580,18 @@ def compare_trace(a,b):
              'changed_support_extent':[left['changed_support_extent'],right['changed_support_extent']],
               'tracker_subledger':compare_subledger(left,right)}
         report['spectral'].append(row)
+    if bool(a.get('matched_stage'))!=bool(b.get('matched_stage')):
+        raise ValueError('matched-stage result missing on one host')
+    if a.get('matched_stage'):
+        u,w=a['matched_stage'],b['matched_stage']
+        if u['reference_archive_sha256']!=w['reference_archive_sha256']:
+            raise ValueError('mismatched common source receipt')
+        matched=compare_subledger(u,w)
+        p,q=_anchor_frame_rows(u['tracked']),_anchor_frame_rows(w['tracked'])
+        first=next((k for k in sorted(set(p)|set(q),key=int) if p.get(k)!=q.get(k)),None)
+        matched['first_physical_decision_difference']=None if first is None else {
+            'anchor_sample':int(first),'ubuntu':p.get(first),'windows':q.get(first)}
+        report['matched_stage']=matched
     for index in range(max(len(a['stages']),len(b['stages']))):
         left=a['stages'][index] if index<len(a['stages']) else None
         right=b['stages'][index] if index<len(b['stages']) else None
@@ -618,6 +672,7 @@ def main(argv=None):
     capture.add_argument('--document',required=True)
     capture.add_argument('--out',required=True,type=Path)
     capture.add_argument('--frozen-pre-rack-wav',help='OPTIONAL counterfactual artifact-local dry PCM; not original pre-rack state')
+    capture.add_argument('--match-stage-from',type=Path,help='optional separate matched tracker probe from original Windows normal trace')
     compare=sub.add_parser('compare',help='independent source-matched cross-host trace diff')
     compare.add_argument('--ubuntu',required=True,type=Path)
     compare.add_argument('--windows',required=True,type=Path)
@@ -643,6 +698,11 @@ def main(argv=None):
         trace=capture_document(doc,expected_pcm=expected,provenance=prov,frozen_pre_rack=frozen)
         if sr is not None and trace.get('sample_rate_hz')!=sr:
             raise ValueError('artifact exported rate does not match replay rate')
+        if args.match_stage_from:
+            if args.frozen_pre_rack_wav:
+                raise ValueError('counterfactual dry substitution incompatible with matched stage')
+            trace['matched_stage']=matched_stage_probe(
+                trace,json.loads(args.match_stage_from.read_text(encoding='utf-8')))
         data=trace
     elif args.action=='compare':
         data=compare_trace(json.loads(args.ubuntu.read_text()),json.loads(args.windows.read_text()))
