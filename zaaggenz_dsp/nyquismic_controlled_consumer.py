@@ -136,6 +136,11 @@ class ControlledSamplerPlan:
     def prepare(cls, source, spec, evaluation, *, frame_count, cancelled, progress,
                 source_revision_sha256, context_sha256, delivery_rate_hz,
                 controlled_clock, graph_revision_sha256, rack_revision_sha256):
+        # An inherited factory must not admit executable subclasses: their
+        # attribute dispatch could change sampled PCM without changing the
+        # canonical render/packet/checkpoint identity.
+        require(cls is ControlledSamplerPlan,
+                'controlled sampler factory requires exact ControlledSamplerPlan class')
         # Import only on the opt-in path. #267 producer is separately owned
         # and is not silently copied or cherry-picked into Draft #266.
         from zaaggenz_contracts.nyquismic_clock_packet import (
