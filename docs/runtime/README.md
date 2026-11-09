@@ -108,12 +108,13 @@ These commands use the same bounded revision-validation and undo/redo pipeline.
 **Remove rack (dry)** restores the original source processing route without
 changing source presets, locked_bloom or retained BODY/AUX/SUB ownership.
 
-This is a bounded MBR-003 development slice, **not full MBR-003 acceptance**:
-specialist spectral retuning/Chordness authoring, cross-band monitoring,
-full spectral target construction, complete control-surface usability/accessibility and physical Windows acceptance
-remain outstanding. Existing spectral and external insert payloads are shown
-as preserved but not falsely advertised as editable. External VST3 hosting
-remains outside Phase A and is not implied.
+This is a bounded MBR-003 development slice, **not full MBR-003 acceptance**.
+The branch implements opt-in retune authoring, an explicit manual Chordness
+creation route, completed-artifact metering and monitor-only raw/dry and band
+comparisons (described below). Complete keyboard/accessibility and integrated
+product acceptance, source-shared preset #237 reconciliation, independent
+review, physical Windows testing and owner listening remain outstanding.
+External VST3 hosting remains outside Phase A and is not implied.
 
 
 Crossover numeric controls enforce the executable rack's actual ordered
@@ -242,16 +243,32 @@ explicit explanation. This does not relax full backend validation. Changing a se
 sonic digest. New independent scheduled voice inventories and new Chordness
 comb templates remain out of scope.
 
-Imported source-bound `ChordnessRequest` stages expose their accepted mode,
-selection, gain, confidence, assignment and objective-weight scalars, and a
-bounded selection among existing saved comb templates. Switching modes never
-constructs arbitrary new comb teeth, and invalid manual selection fails closed.
-The UI deliberately does **not** reauthor opaque external stages, new comb
-inventories or target schedules. These remain preserved
-on save/reopen. Additional specialized target construction, monitoring-only
-pre-rack band-stem inspection, RMS/loudness-matched A/B, physical Windows and owner
-audition remain outstanding for MBR-003; passing deterministic/browser CI is
-not a musical acceptance claim.
+**Explicit manual Chordness creation (draft):** In a band without an existing
+spectral insert, expand **Create manual Chordness stage**, enter 1–128 strictly
+increasing positive physical comb-tooth frequencies in Hz (not scale degrees),
+and name the comb. The browser rejects empty, nonfinite, repeated, unsorted or
+over-Nyquist teeth before queuing any edit; the Project/RackRecipe validates
+them again. The constructed `ChordnessRequest` contains one fully declared
+manual comb, fixed source attribution, a selected template and starts in
+**Off** mode. This cannot change the sound until the operator explicitly
+selects reweight, retune or hybrid; it never changes saved source tuning,
+factory presets or the final master. The normal editor and project snapshot
+restore its mode, weights and Hz teeth without an external host or Research.
+The ordinary Compose real-browser/actual DSP regression tests creation,
+invalid-input refusal, selected mode, a completed rendered WAV and exact
+save/reopen PCM. This is a proposed branch test, not acceptance until CI
+passes at its final source head.
+
+Previously saved source-bound Chordness requests also expose their accepted
+mode, template selection, gain, confidence, assignment and objective-weight
+scalars. Switching modes never silently regenerates comb teeth. Adding,
+editing or deleting *additional* comb templates within one stage is not yet
+supported by the browser; existing inventories remain preserved exactly.
+The UI does not destructively reauthor opaque external stages. Further
+specialized target construction, actual pre-rack band-stem monitoring,
+RMS/loudness-matched A/B, independent review, physical Windows and owner
+audition remain outstanding. Deterministic/browser CI is not a musical
+acceptance claim.
 Band solo/mute selection changes now invalidate any prior or in-flight monitoring request (including A→B→A selection reversals), cancel known jobs and restore the exact processed output if a monitor was playing. Exported PCM and the saved rack remain unchanged.
 
 
