@@ -1,0 +1,670 @@
+// MBR-003 Compose rack surface; rendered exclusively from validated server
+// contract metadata. Never silently change a source, render, or output slot.
+const make=(name,label)=>{const node=document.createElement(name);if(label!==undefined)node.textContent=label;return node;};
+function group(parent,klass='rack-controls'){const node=make('div');node.className=klass;parent.append(node);return node;}
+// A validated revision redraws this entire editor. Give operable controls
+// stable identity independent of their current DOM node or display position.
+// No source state, processing order, or saved project identity uses this key.
+function controlKey(action){
+  return JSON.stringify([action.kind,action.scope,action.id,action.field,
+    action.band,action.type_id,action.step,action.template_id,
+    action.voice_index,action.segment_index].map(v=>v??null));
+}
+function restoreControlFocus(host,key){
+  if(!key)return;
+  const target=Array.from(host.querySelectorAll('[data-rack-control-key]'))
+    .find(node=>node.dataset.rackControlKey===key&&!node.disabled);
+  target?.focus({preventScroll:true});
+}
+function button(parent,label,action,apply,disabled=false){
+  const node=make('button',label);node.type='button';node.disabled=disabled;
+  node.dataset.rackControlKey=controlKey(action);
+  node.addEventListener('click',()=>apply(action));parent.append(node);return node;
+}
+function number(parent,label,current,meta,action,apply){
+  const wrapper=make('label',label+(meta.unit?' · '+meta.unit:''));const node=make('input');
+  node.type='number';node.value=String(current);
+  node.dataset.rackControlKey=controlKey(action);
+  node.step=meta.type==='integer'?'1':'any';
+  if(meta.minimum!==undefined)node.min=String(meta.minimum);
+  if(meta.maximum!==undefined)node.max=String(meta.maximum);
+  // Match the saved contract's *exclusive* lower bounds. A plain HTML min
+  // attribute is inclusive and otherwise permits a value the backend rejects.
+  node.addEventListener('input',()=>node.setCustomValidity(''));
+  node.addEventListener('change',()=>{
+    node.setCustomValidity('');
+    const value=Number(node.value);
+    const unit=meta.unit?' '+meta.unit:'';
+    // Empty number inputs are not required by HTML unless explicitly marked
+    // so; treating an empty control as a no-op leaves an invalid, apparently
+    // edited sonic field with no explanation. Never coerce empty to zero.
+    if(node.value===''||!Number.isFinite(value)){
+      node.setCustomValidity(label+' requires a finite numeric value'+unit+'.');
+    }else if(meta.type==='integer'&&!Number.isInteger(value)){
+      node.setCustomValidity(label+' requires a whole number'+unit+'.');
+    }else if(meta.exclusiveMinimum!==undefined&&value<=meta.exclusiveMinimum){
+      node.setCustomValidity(label+' must be greater than '+meta.exclusiveMinimum+unit+'.');
+    }else if(meta.exclusiveMaximum!==undefined&&value>=meta.exclusiveMaximum){
+      node.setCustomValidity(label+' must be less than '+meta.exclusiveMaximum+unit+'.');
+    }else if(meta.minimum!==undefined&&value<meta.minimum){
+      node.setCustomValidity(label+' must be at least '+meta.minimum+unit+'.');
+    }else if(meta.maximum!==undefined&&value>meta.maximum){
+      node.setCustomValidity(label+' must be at most '+meta.maximum+unit+'.');
+    }
+    if(!node.reportValidity())return;
+    apply({...action,value});
+  });
+  wrapper.append(node);parent.append(wrapper);
+}
+// Specialist add forms are draft controls, not saved revisions. Unlike HTML
+// number inputs, blank drafts are optional by default; reject them with a
+// field-specific explanation rather than silently ignoring an Add click.
+function requiredDraftInteger(node,label,minimum,maximum){
+  node.setCustomValidity('');
+  const value=Number(node.value);
+  if(node.value===''||!Number.isSafeInteger(value)){
+    node.setCustomValidity(label+' requires a whole number.');
+  }else if(value<minimum||value>maximum){
+    node.setCustomValidity(label+' must be between '+minimum+' and '+maximum+'.');
+  }
+  return node.reportValidity()?value:null;
+}
+function requiredCombTeeth(node,maxHz){
+  node.setCustomValidity('');
+  const parts=node.value.split(',').map(value=>value.trim());
+  const teeth=parts.map(value=>Number(value));
+  const valid=parts.length>=1&&parts.length<=128&&
+    parts.every(value=>value!=='')&&
+    teeth.every((value,index)=>Number.isFinite(value)&&value>0&&
+      value<=maxHz&&(index===0||value>teeth[index-1]));
+  if(!valid)node.setCustomValidity(
+    'Manual comb requires 1–128 strictly increasing positive finite frequencies '+
+    'in Hz, no greater than Nyquist ('+maxHz+' Hz).');
+  return node.reportValidity()?teeth:null;
+}
+function choice(parent,label,current,values,action,apply){
+  const wrapper=make('label',label);const node=make('select');
+  // The select's explicit accessible name is independent of its nested
+  // option labels, even after a validated editor redraw.
+  node.setAttribute('aria-label',label);
+  for(const value of values)node.append(new Option(value,value));
+  node.value=current;node.dataset.rackControlKey=controlKey(action);
+  node.addEventListener('change',()=>apply({...action,value:node.value}));
+  wrapper.append(node);parent.append(wrapper);
+}
+function flag(parent,label,current,action,apply){
+  const wrapper=make('label');wrapper.className='check';
+  const node=make('input');node.type='checkbox';node.checked=Boolean(current);
+  node.dataset.rackControlKey=controlKey(action);
+  node.addEventListener('change',()=>apply({...action,value:node.checked}));
+  wrapper.append(node,document.createTextNode(label));parent.append(wrapper);
+}
+function set(scope,id,field){return {kind:'set',scope,id,field};}
+const mix={type:'number',minimum:0,maximum:1,unit:'0–1'};
+export function renderRack(host,state,apply,tools={}){
+  // Only an authoritative redraw within the SAME root-project ancestry may
+  // restore transient UI state. The stable control/insert IDs are reusable in
+  // another project: carrying their focus or expanded panels over would
+  // incorrectly bind an unrelated source's authoring context to this view.
+  const oldPreset=host.querySelector('.rack-presets');
+  const sameProject=Boolean(oldPreset&&state?.working_context&&
+    oldPreset.dataset.workingContext===state.working_context);
+  const focused=sameProject&&host.contains(document.activeElement)
+    ?document.activeElement.dataset.rackControlKey:null;
+  const openSpectral=sameProject?new Set(Array.from(
+    host.querySelectorAll('.rack-spectral[open][data-insert-id]'),
+    node=>node.dataset.insertId)):new Set();
+  // Preset/authoring drafts also remain local to this immutable ancestry.
+  const presetDraft=sameProject
+    ?{name:oldPreset.querySelector('[data-preset-field="name"]')?.value,
+      id:oldPreset.querySelector('[data-preset-field="id"]')?.value,
+      selected:oldPreset.querySelector('[data-preset-field="selected"]')?.value}
+    :null;
+  // Specialist add forms are not yet authoritative processing state. Retain
+  // typed values across unrelated validated rack edits, but never carry them
+  // into another source/project or onto a different stable insert identity.
+  const openChordness=sameProject?new Set(Array.from(
+    host.querySelectorAll('.rack-chordness-create[open][data-band-id]'),
+    node=>node.dataset.bandId)):new Set();
+  const chordDrafts=new Map();
+  if(sameProject)for(const panel of host.querySelectorAll(
+    '.rack-chordness-create[data-band-id]')){
+    chordDrafts.set(panel.dataset.bandId,{
+      teeth:panel.querySelector('[data-chord-draft="teeth"]')?.value,
+      label:panel.querySelector('[data-chord-draft="label"]')?.value,
+    });
+  }
+  const spectralDrafts=new Map();
+  if(sameProject)for(const panel of host.querySelectorAll('.rack-spectral[data-insert-id]')){
+    const get=key=>panel.querySelector('[data-rack-draft="'+key+'"]')?.value;
+    spectralDrafts.set(panel.dataset.insertId,{
+      voiceCount:Number(panel.dataset.voiceCount),
+      segmentCount:Number(panel.dataset.segmentCount),
+      voiceDegree:get('voice-degree'),voiceLabel:get('voice-label'),
+      segmentStart:get('segment-start'),segmentLabel:get('segment-label'),
+      combTeeth:get('comb-teeth'),combLabel:get('comb-label'),
+    });
+  }
+  host.replaceChildren();
+  if(!state){host.append(make('p','Rack metadata is unavailable; refresh the validated revision.'));return;}
+  const top=group(host);
+  if(!state.present){
+    top.append(make('p','No rack is installed in this project. Legacy audio and source presets remain unchanged.'));
+    button(top,'Enable four-band rack',{kind:'enable'},apply);
+    renderPresetTools(host,state,apply,tools,presetDraft);
+    restoreControlFocus(host,focused);
+    return;
+  }
+  const rack=state.value;
+  const about=make('p','Bus: '+rack.placement.bus+' · '+rack.placement.after+
+    ' · no extra final master · '+rack.sample_rate_hz+' Hz · '+rack.channels+' channel(s).');
+  about.className='hint';host.append(about);
+  flag(top,'Bypass rack',rack.bypass,set('rack','rack','bypass'),apply);
+  number(top,'Rack wet',rack.wet,mix,set('rack','rack','wet'),apply);
+  button(top,'Remove rack (dry)',{kind:'reset'},apply);
+  const crossings=group(host);
+  const crossovers=rack.crossovers.frequencies_hz;
+  crossovers.forEach((frequency,index)=>{
+    // The executable rack accepts 20 <= low < mid < high < 0.49*Fs.
+    // HTML min/max are inclusive. Reject equality with either neighbor
+    // before submitting an authoritative rack-edit proposal; never clamp.
+    const upper=index===crossovers.length-1
+      ?0.49*rack.sample_rate_hz:crossovers[index+1];
+    number(crossings,'Crossover '+(index+1),frequency,
+      {type:'number',minimum:20,maximum:upper,
+        exclusiveMinimum:index===0?undefined:crossovers[index-1],
+        exclusiveMaximum:upper,unit:'Hz'},
+      set('crossover',index,'frequency_hz'),apply);
+  });
+  for(const band of rack.bands){
+    const panel=group(host,'rack-band');
+    panel.setAttribute('role','group');
+    panel.setAttribute('aria-label',band.band+' processing band');
+    panel.append(make('h3',band.band.toUpperCase()));
+    const controls=group(panel);
+    flag(controls,'Bypass band',band.bypass,set('band',band.id,'bypass'),apply);
+    flag(controls,'Confine delta',band.confine_delta,set('band',band.id,'confine_delta'),apply);
+    number(controls,'Band wet',band.wet,mix,set('band',band.id,'wet'),apply);
+    const additions=group(panel);
+    for(const typeId of Object.keys(state.parameters)){
+      if(band.inserts.some(i=>i.type_id===typeId))continue;
+      button(additions,'Add '+typeId.slice(3),{kind:'add',band:band.id,type_id:typeId},apply);
+    }
+    if(!band.inserts.some(stage=>stage.type_id==='zg.spectral')){
+      const chord=make('details');chord.className='rack-chordness-create';
+      chord.dataset.bandId=band.id;chord.open=openChordness.has(band.id);
+      additions.append(chord);
+      chord.append(make('summary','Create manual Chordness stage'));
+      chord.append(make('p','Enter real positive target comb frequencies in Hz. '+
+        'The new stage starts in Off mode; explicitly choose reweight, retune or hybrid '+
+        'to change the sound. Source tuning is never rewritten.'));
+      const draft=chordDrafts.get(band.id);
+      const teethLabel=make('label','Manual comb teeth (Hz, comma-separated)');
+      const teeth=make('input');teeth.type='text';
+      teeth.placeholder='110, 220, 330';
+      teeth.dataset.chordDraft='teeth';
+      teeth.dataset.rackControlKey=controlKey({kind:'chord_draft',id:band.id,field:'teeth'});
+      teeth.value=draft?.teeth??'';
+      teeth.addEventListener('input',()=>teeth.setCustomValidity(''));
+      teethLabel.append(teeth);chord.append(teethLabel);
+      const nameLabel=make('label','Manual comb label');
+      const name=make('input');name.maxLength=128;name.value=draft?.label??'Manual comb';
+      name.dataset.chordDraft='label';
+      name.dataset.rackControlKey=controlKey({kind:'chord_draft',id:band.id,field:'label'});
+      nameLabel.append(name);chord.append(nameLabel);
+      const create=make('button','Add manual Chordness (off)');
+      create.type='button';
+      create.dataset.rackControlKey=controlKey({kind:'add_chordness',band:band.id});
+      create.addEventListener('click',()=>{
+        const values=requiredCombTeeth(teeth,rack.sample_rate_hz/2);
+        if(values===null)return;
+        apply({kind:'add_chordness',band:band.id,teeth_hz:values,label:name.value});
+      });
+      chord.append(create);
+    }
+    if(!band.inserts.length)panel.append(make('p','No active stages. This band is unchanged.'));
+    band.inserts.forEach((stage,index)=>{
+      const block=group(panel,'rack-stage');
+      block.setAttribute('role','group');
+      block.setAttribute('aria-label',band.band+' '+stage.type_id+' '+stage.id);
+      block.append(make('h4',stage.type_id.replace('zg.','')));
+      const identity=make('div',stage.id);identity.className='rack-stage-id';block.append(identity);
+      const buttons=group(block);
+      button(buttons,'Move up',{kind:'move',band:band.id,id:stage.id,step:-1},apply,index===0);
+      button(buttons,'Move down',{kind:'move',band:band.id,id:stage.id,step:1},apply,index===band.inserts.length-1);
+      if(state.parameters[stage.type_id]){
+        if(stage.type_id!=='zg.spectral')
+          button(buttons,'Reset parameters',{kind:'reset_insert_params',band:band.id,id:stage.id},apply);
+        button(buttons,'Remove insert',{kind:'remove',band:band.id,id:stage.id},apply);
+      }
+      flag(buttons,'Bypass insert',stage.bypass,set('insert',band.id+'/'+stage.id,'bypass'),apply);
+      number(buttons,'Insert wet',stage.wet,mix,set('insert',band.id+'/'+stage.id,'wet'),apply);
+      const params=state.parameters[stage.type_id];
+      if(!params||stage.params===null){
+        block.append(make('p',stage.type_id==='zg.spectral'&&stage.params===null
+          ? 'No spectral request installed. Remove this stage and explicitly add spectral to initialize a source-bound retune request.'
+          : params
+          ? 'No active parameter request; use Reset parameters to initialize the supported built-in defaults.'
+          : 'Stored unsupported processor state preserved; no edit or execution controls are available.'));
+        return;
+      }
+      if(stage.type_id==='zg.spectral'){
+        const request=stage.params;
+        const retune=request.kind==='SpectralRetuneRequest';
+        const chordness=request.kind==='ChordnessRequest';
+        if(!retune&&!chordness){
+          block.append(make('p','Unknown spectral request; saved state retained without editable controls.'));
+          return;
+        }
+        const details=make('details');details.className='rack-spectral';
+        details.dataset.insertId=stage.id;
+        details.dataset.voiceCount=String(request.voices?.length??0);
+        details.dataset.segmentCount=String(request.segments?.length??0);
+        const draft=spectralDrafts.get(stage.id);
+        details.open=openSpectral.has(stage.id);
+        block.append(details);
+        details.append(make('summary',retune
+          ?'Internal spectral retune · target & confidence'
+          :'Internal Chordness · selection, gains & confidence'));
+        const fields=group(details);
+        const definition=state.parameters['zg.spectral'][retune?'retune':'chordness'];
+        for(const [key,meta] of Object.entries(definition)){
+          const label=key.replaceAll('_',' ');
+          const action=set('spectral',band.id+'/'+stage.id,key);
+          if('enum' in meta)choice(fields,label,request[key],meta.enum,action,apply);
+          else if(meta.type==='boolean')flag(fields,label,request[key],action,apply);
+          else if('const' in meta)fields.append(make('span',label+': '+String(request[key])+' (fixed policy)'));
+          else number(fields,label,request[key],
+            key==='max_hz'?{...meta,maximum:Math.min(meta.maximum,rack.sample_rate_hz/2)}:meta,
+            action,apply);
+        }
+        if(retune){
+          const target=group(details);
+          target.append(make('p','Saved source tuning is fixed. Voice and timed-segment edits change only the target lattice. New segments inherit the preceding target voices; start times use integer source samples, not beats.'));
+          const first=request.voices?.[0];
+          if(first)number(target,'Primary target degree',first.degree,
+            {type:'integer',minimum:-4096,maximum:4096,unit:'tuning steps'},
+            set('spectral_voice',band.id+'/'+stage.id,'degree'),apply);
+          const voices=group(details,'rack-target-voices');
+          request.voices.forEach((voice,index)=>{
+            const panel=group(voices,'rack-target-voice');
+            panel.setAttribute('role','group');
+            panel.setAttribute('aria-label','Retune target voice '+(index+1));
+            panel.append(make('h5','Voice '+(index+1)+' · '+(voice.label||'Unlabelled')));
+            const action=(field,value)=>apply({kind:'edit_spectral_voice',
+              band:band.id,id:stage.id,voice_index:index,expected_voice:voice,field,value});
+            if(index>0)number(panel,'Voice '+(index+1)+' degree',voice.degree,
+              {type:'integer',minimum:-4096,maximum:4096,unit:'tuning steps'},
+              {kind:'edit_spectral_voice',band:band.id,id:stage.id,
+               voice_index:index,expected_voice:voice,field:'degree'},apply);
+            const named=make('label','Voice '+(index+1)+' label');
+            const label=make('input');label.maxLength=64;label.value=voice.label;
+            label.dataset.rackControlKey=controlKey({kind:'edit_spectral_voice',
+              band:band.id,id:stage.id,voice_index:index,field:'label'});
+            label.addEventListener('change',()=>action('label',label.value));
+            named.append(label);panel.append(named);
+            const ratioLabel=make('label','Voice '+(index+1)+' partial ratios (comma-separated)');
+            const ratios=make('input');ratios.type='text';
+            ratios.value=voice.partial_ratios.join(', ');
+            ratios.dataset.rackControlKey=controlKey({kind:'edit_spectral_voice',
+              band:band.id,id:stage.id,voice_index:index,field:'partial_ratios'});
+            ratios.addEventListener('input',()=>ratios.setCustomValidity(''));
+            ratios.addEventListener('change',()=>{
+              const parts=ratios.value.split(',').map(v=>v.trim());
+              const values=parts.map(v=>Number(v));
+              const valid=parts.length>=1&&parts.length<=128&&
+                parts.every(s=>s!=='')&&values.every((v,i)=>Number.isFinite(v)&&
+                  v>0&&(i===0||v>values[i-1]));
+              if(!valid){
+                ratios.setCustomValidity('Enter 1–128 strictly increasing positive finite ratios, separated by commas.');
+                ratios.reportValidity();return;
+              }
+              ratios.setCustomValidity('');action('partial_ratios',values);
+            });
+            ratioLabel.append(ratios);panel.append(ratioLabel);
+            if(request.voices.length>1)
+              button(panel,'Remove voice '+(index+1),{kind:'remove_spectral_voice',
+                band:band.id,id:stage.id,voice_index:index,expected_voice:voice},apply);
+          });
+          const adding=group(details);
+          const degreeLabel=make('label','Additional target degree');
+          const newDegree=make('input');newDegree.type='number';newDegree.step='1';
+          newDegree.min='-4096';newDegree.max='4096';
+          newDegree.addEventListener('input',()=>newDegree.setCustomValidity(''));
+          newDegree.dataset.rackDraft='voice-degree';
+          newDegree.dataset.rackControlKey=controlKey({kind:'spectral_draft',
+            id:stage.id,field:'voice-degree'});
+          newDegree.value=draft?.voiceCount===request.voices.length
+            ?(draft.voiceDegree??'0'):'0';
+          degreeLabel.append(newDegree);adding.append(degreeLabel);
+          const nameLabel=make('label','Additional voice label');
+          const newName=make('input');newName.maxLength=64;
+          newName.dataset.rackDraft='voice-label';
+          newName.dataset.rackControlKey=controlKey({kind:'spectral_draft',
+            id:stage.id,field:'voice-label'});
+          newName.value=draft?.voiceCount===request.voices.length
+            ?(draft.voiceLabel??'Additional target'):'Additional target';
+          nameLabel.append(newName);adding.append(nameLabel);
+          const addVoice=make('button','Add retune voice');addVoice.type='button';
+          addVoice.disabled=request.voices.length>=32;
+          addVoice.addEventListener('click',()=>{
+            const degree=requiredDraftInteger(newDegree,'Additional target degree',-4096,4096);
+            if(degree===null)return;
+            apply({kind:'add_spectral_voice',band:band.id,id:stage.id,
+              degree,label:newName.value,expected_voices:request.voices});
+          });
+          adding.append(addVoice);
+          const schedule=group(details,'rack-target-segments');
+          schedule.append(make('h5','Timed retune target segments'));
+          schedule.append(make('p','Schedule positions are absolute source-sample offsets from the start of the full phrase. Each change-point replaces the previous target lattice; removing it never edits the source.'));
+          request.segments.forEach((segment,index)=>{
+            const panel=group(schedule,'rack-target-segment');
+            panel.setAttribute('role','group');
+            panel.setAttribute('aria-label','Retune target segment '+(index+1));
+            panel.append(make('h5','Segment '+(index+1)+' · '+(segment.label||'Unlabelled')));
+            const base={band:band.id,id:stage.id,segment_index:index,expected_segment:segment};
+            number(panel,'Segment '+(index+1)+' start sample',segment.start_sample,
+              {type:'integer',minimum:1,maximum:691200000,unit:'samples'},
+              {kind:'edit_spectral_segment',...base,field:'start_sample'},apply);
+            const named=make('label','Segment '+(index+1)+' label');
+            const name=make('input');name.maxLength=64;name.value=segment.label;
+            name.dataset.rackControlKey=controlKey({kind:'edit_spectral_segment',
+              band:band.id,id:stage.id,segment_index:index,field:'label'});
+            name.addEventListener('change',()=>apply({
+              kind:'edit_spectral_segment',...base,field:'label',value:name.value}));
+            named.append(name);panel.append(named);
+            segment.voices.forEach((voice,voiceIndex)=>{
+              number(panel,'Segment '+(index+1)+' voice '+(voiceIndex+1)+' degree',
+                voice.degree,{type:'integer',minimum:-4096,maximum:4096,unit:'tuning steps'},
+                {kind:'edit_spectral_segment_voice',...base,voice_index:voiceIndex},apply);
+            });
+            button(panel,'Remove segment '+(index+1),
+              {kind:'remove_spectral_segment',...base},apply);
+          });
+          const segmentAdd=group(schedule);
+          const startLabel=make('label','New segment start sample');
+          const lastSegment=request.segments.at(-1);
+          // Change points must advance strictly in physical source samples.
+          // Reflect the actual saved predecessor, not a generic positive min;
+          // otherwise a duplicate/earlier start looks locally admissible.
+          const minimumStart=(lastSegment?.start_sample??0)+1;
+          const hasStartRoom=minimumStart<=691200000;
+          const startInput=make('input');startInput.type='number';
+          startInput.min=String(minimumStart);startInput.max='691200000';startInput.step='1';
+          startInput.addEventListener('input',()=>startInput.setCustomValidity(''));
+          startInput.dataset.rackDraft='segment-start';
+          startInput.dataset.rackControlKey=controlKey({kind:'spectral_draft',
+            id:stage.id,field:'segment-start'});
+          startInput.value=draft?.segmentCount===request.segments.length
+            ?(draft.segmentStart??''):String(Math.min(691200000,
+              (lastSegment?.start_sample||0)+Math.max(1,Math.round(rack.sample_rate_hz/4))));
+          if(startInput.value==='')startInput.value=String(Math.min(691200000,
+            (lastSegment?.start_sample||0)+Math.max(1,Math.round(rack.sample_rate_hz/4))));
+          startLabel.append(startInput);segmentAdd.append(startLabel);
+          const segmentNameLabel=make('label','New segment label');
+          const segmentName=make('input');segmentName.maxLength=64;
+          segmentName.dataset.rackDraft='segment-label';
+          segmentName.dataset.rackControlKey=controlKey({kind:'spectral_draft',
+            id:stage.id,field:'segment-label'});
+          segmentName.value=draft?.segmentCount===request.segments.length
+            ?(draft.segmentLabel??'Target change'):'Target change';
+          segmentNameLabel.append(segmentName);
+          segmentAdd.append(segmentNameLabel);
+          const addSegment=make('button','Add retune segment');
+          addSegment.type='button';
+          addSegment.disabled=request.segments.length>=64||!hasStartRoom;
+          if(!hasStartRoom)segmentAdd.append(make('p',
+            'No remaining source-sample position for a later retune segment.'));
+          addSegment.addEventListener('click',()=>{
+            const start=requiredDraftInteger(startInput,'New segment start sample',
+              minimumStart,691200000);
+            if(start===null)return;
+            apply({kind:'add_spectral_segment',band:band.id,id:stage.id,
+              start_sample:start,label:segmentName.value,
+              expected_segments:request.segments});
+          });
+          segmentAdd.append(addSegment);
+          schedule.append(make('p','Scheduled changes: '+request.segments.length+
+            ' / 64 · bounded by the full retune target lattice and memory admission.'));
+          target.append(make('p','Voices: '+request.voices.length+' / 32 · target segments: '+request.segments.length+' · no implicit tuning conversion.'));
+        }else{
+          const selector=group(details);
+          selector.append(make('p','Manual template selection is bounded by the saved max selected templates. Changing selection never rewrites comb teeth.'));
+          // Selection and editing share one authoritative inventory below.
+
+          const inventory=group(details,'rack-chordness-inventory');
+          inventory.append(make('h5','Saved Chordness comb templates · '+request.templates.length+' / 32'));
+          inventory.append(make('p','Only user-authored combs can be edited. Imported templates and source metadata remain unchanged. Newly added combs are initially unselected; use max selected templates and selection controls to activate them.'));
+          for(const template of request.templates){
+            const templatePanel=group(inventory,'rack-chordness-template');
+            templatePanel.setAttribute('role','group');
+            templatePanel.setAttribute('aria-label','Comb template '+template.id);
+            templatePanel.append(make('h5',template.label+' · '+template.id));
+            flag(templatePanel,'Select template '+template.label+' ('+template.id+')',
+              request.selected_template_ids.includes(template.id),
+              {kind:'select_spectral_template',band:band.id,id:stage.id,template_id:template.id},apply);
+            const owned=template.source?.method==='manual'&&
+              template.source?.origin==='compose-mbr003';
+            if(!owned){
+              templatePanel.append(make('p','Preserved imported template · read-only'));
+              continue;
+            }
+            const labelField=make('label','Template '+template.id+' label');
+            const labelInput=make('input');labelInput.value=template.label;labelInput.maxLength=128;
+            labelInput.dataset.rackControlKey=controlKey({kind:'edit_chordness_template',
+              id:stage.id,template_id:template.id,field:'label'});
+            labelInput.addEventListener('change',()=>apply({
+              kind:'edit_chordness_template',band:band.id,id:stage.id,
+              template_id:template.id,expected_template:template,
+              field:'label',value:labelInput.value}));
+            labelField.append(labelInput);templatePanel.append(labelField);
+            const hzField=make('label','Template '+template.id+' teeth (Hz, comma-separated)');
+            const hzInput=make('input');hzInput.value=template.teeth_hz.join(', ');
+            hzInput.dataset.rackControlKey=controlKey({kind:'edit_chordness_template',
+              id:stage.id,template_id:template.id,field:'teeth_hz'});
+            hzInput.addEventListener('input',()=>hzInput.setCustomValidity(''));
+            hzInput.addEventListener('change',()=>{
+              const teeth=requiredCombTeeth(hzInput,rack.sample_rate_hz/2);
+              if(teeth!==null)apply({kind:'edit_chordness_template',band:band.id,
+                id:stage.id,template_id:template.id,expected_template:template,
+                field:'teeth_hz',value:teeth});
+            });
+            hzField.append(hzInput);templatePanel.append(hzField);
+            number(templatePanel,'Template '+template.id+' tooth capacity',template.tooth_capacity,
+              {type:'integer',minimum:1,maximum:16,unit:'partials/tooth'},
+              {kind:'edit_chordness_template',band:band.id,id:stage.id,
+               template_id:template.id,expected_template:template,field:'tooth_capacity'},apply);
+            button(templatePanel,'Remove template '+template.id,{
+              kind:'remove_chordness_template',band:band.id,id:stage.id,
+              template_id:template.id,expected_template:template},apply,
+              request.templates.length===1);
+          }
+          if(request.templates.length<32){
+            const creation=group(details,'rack-chordness-template-create');
+            creation.append(make('h5','Add a separate manual comb'));
+            const draft=spectralDrafts.get(stage.id);
+            const hzLabel=make('label','New Chordness template teeth (Hz, comma-separated)');
+            const hz=make('input');hz.type='text';hz.placeholder='150, 300, 450';
+            hz.dataset.rackDraft='comb-teeth';
+            hz.dataset.rackControlKey=controlKey({kind:'chord_draft',id:stage.id,field:'comb-teeth'});
+            hz.value=draft?.combTeeth??'';
+            hz.addEventListener('input',()=>hz.setCustomValidity(''));
+            hzLabel.append(hz);creation.append(hzLabel);
+            const titleLabel=make('label','New Chordness template label');
+            const titleInput=make('input');titleInput.maxLength=128;
+            titleInput.dataset.rackDraft='comb-label';
+            titleInput.dataset.rackControlKey=controlKey({kind:'chord_draft',id:stage.id,field:'comb-label'});
+            titleInput.value=draft?.combLabel??'Second comb';
+            titleLabel.append(titleInput);creation.append(titleLabel);
+            const add=make('button','Add Chordness template (unselected)');add.type='button';
+            add.addEventListener('click',()=>{
+              const teeth=requiredCombTeeth(hz,rack.sample_rate_hz/2);
+              if(teeth===null)return;
+              apply({kind:'add_chordness_template',band:band.id,id:stage.id,
+                teeth_hz:teeth,label:titleInput.value,expected_templates:request.templates});
+            });
+            creation.append(add);
+          }
+          const coeff=group(details);
+          coeff.append(make('h5','Chordness objective weights'));
+          for(const [key,meta] of Object.entries(state.spectral_coefficients||{})){
+            number(coeff,key.replaceAll('_',' '),request.coefficients[key],meta,
+              set('chordness_coefficient',band.id+'/'+stage.id,key),apply);
+          }
+        }
+        return;
+      }
+      const fields=group(block);
+      for(const [key,meta] of Object.entries(params)){
+        if('const' in meta||'enum' in meta||meta.type==='boolean'){
+          const fixed=make('span',key+': '+String(stage.params[key])+' (fixed policy)');
+          fixed.className='rack-fixed';fields.append(fixed);continue;
+        }
+        number(fields,key.replaceAll('_',' '),stage.params[key],meta,
+          set('parameter',band.id+'/'+stage.id,key),apply);
+      }
+    });
+  }
+  renderPresetTools(host,state,apply,tools,presetDraft);
+  restoreControlFocus(host,focused);
+}
+
+function renderPresetTools(host,state,apply,tools,draft=null){
+  const presets=group(host,'rack-controls rack-presets');
+  presets.dataset.workingContext=state.working_context||'';
+  presets.append(make('h3','User rack presets (stored in the saved project)'));
+  const named=make('label','Preset name');const name=make('input');
+  name.value=draft?.name??'My rack';name.maxLength=128;
+  name.dataset.presetField='name';
+  name.dataset.rackControlKey=controlKey({kind:'preset_draft',field:'name'});
+  named.append(name);presets.append(named);
+  const keyed=make('label','Preset ID (a–z, digits, dots, dashes)');const id=make('input');
+  id.value=draft?.id??'user.myrack';id.maxLength=64;
+  id.dataset.presetField='id';
+  id.dataset.rackControlKey=controlKey({kind:'preset_draft',field:'id'});
+  keyed.append(id);presets.append(keyed);
+  const save=make('button','Save new preset');save.type='button';
+  save.addEventListener('click',()=>apply({kind:'save_preset',id:id.value,name:name.value}));
+  presets.append(save);
+  const saved=make('label','Load saved preset');const select=make('select');
+  select.append(new Option('Select saved preset',''));
+  for(const item of state.presets)select.append(new Option(item.name+' ('+item.id+')',item.id));
+  select.dataset.presetField='selected';
+  select.dataset.rackControlKey=controlKey({kind:'preset_draft',field:'selected'});
+  if(state.presets.some(item=>item.id===draft?.selected))select.value=draft.selected;
+  saved.append(select);presets.append(saved);
+  const load=make('button','Load');load.type='button';load.disabled=!state.presets.length;
+  load.addEventListener('click',()=>{if(select.value)apply({kind:'load_preset',id:select.value});});
+  presets.append(load);
+  const replace=make('button','Replace selected preset');replace.type='button';replace.disabled=true;
+  replace.title='Explicitly replace only this user preset with the current rack.';
+  replace.addEventListener('click',()=>{if(select.value)apply({kind:'replace_preset',id:select.value,name:name.value});});
+  presets.append(replace);
+  const rename=make('button','Rename selected preset');rename.type='button';rename.disabled=true;
+  rename.title='Rename user preset without changing its saved processing or source.';
+  rename.addEventListener('click',()=>{if(select.value)apply({kind:'rename_preset',id:select.value,name:name.value});});
+  presets.append(rename);
+  const exported=make('button','Export selected preset');exported.type='button';exported.disabled=true;
+  exported.title='Download exact source-bound preset; does not change the project.';
+  exported.addEventListener('click',()=>{if(select.value)tools.exportPreset?.(select.value);});
+  presets.append(exported);
+  const remove=make('button','Delete selected preset');remove.type='button';remove.disabled=true;
+  remove.title='Delete only this saved user preset; do not change the active rack or factory source.';
+  remove.addEventListener('click',()=>{
+    const selected=state.presets.find(item=>item.id===select.value);
+    if(selected&&window.confirm('Delete user rack preset "'+selected.name+'" ('+selected.id+
+      ')? Current rack and source will remain unchanged.')){
+      apply({kind:'delete_preset',id:selected.id});
+    }
+  });
+  presets.append(remove);
+  const imported=make('label','Import rack preset file');
+  const file=make('input');file.type='file';file.accept='.zgrack.json,.json,application/json';
+  file.addEventListener('change',async()=>{
+    const chosen=file.files?.[0];file.value='';
+    if(chosen)await tools.importPreset?.(chosen);
+  });
+  imported.append(file);presets.append(imported);
+  presets.append(make('p','Portable imports require the matching source; modified hashes and duplicate IDs are rejected.'));
+  const refreshSelection=({fromChange=false}={})=>{
+    const selected=state.presets.find(item=>item.id===select.value);
+    replace.disabled=rename.disabled=exported.disabled=remove.disabled=!selected;
+    if(fromChange&&selected)name.value=selected.name;
+  };
+  select.addEventListener('change',()=>refreshSelection({fromChange:true}));
+  refreshSelection();
+}
+
+function levelText(value){
+  if(typeof value!=='number'||!Number.isFinite(value)||value<0)return 'not measured';
+  return value===0?'−∞ dBFS':(20*Math.log10(value)).toFixed(1)+' dBFS';
+}
+function measuredLevels(row){
+  if(!row||typeof row!=='object')return 'not measured';
+  return 'peak '+levelText(row.peak)+' · RMS '+levelText(row.rms);
+}
+function validCount(value){return Number.isSafeInteger(value)&&value>=0?String(value):'not measured';}
+
+/** Display only measurements attached to an accepted, completed RenderArtifact.
+ * The caller clears this surface on every edit or publication invalidation.
+ * Never infer meters from current controls, browser playback, or stale jobs.
+ */
+export function renderRackMeters(host,artifact){
+  host.replaceChildren();
+  if(!artifact){
+    host.append(make('p','No current completed render. Render the validated revision for measurements.'));
+    return;
+  }
+  const diagnostics=artifact.scopes?.diagnostics?.rack;
+  if(!diagnostics){
+    host.append(make('p','This completed render used the dry source path; no rack measurements exist.'));
+    return;
+  }
+  if(!Array.isArray(diagnostics.bands)||diagnostics.bands.length!==4){
+    host.append(make('p','Rack measurements unavailable or incomplete for this render.'));
+    return;
+  }
+  const note=make('p','Measured completed render · revision '+artifact.revision_id+
+    ' · '+(diagnostics.meter_context==='complete-input-context'
+      ?'full phrase context (including for region previews)':'context unspecified')+
+    ' · no automatic level compensation.');
+  note.className='hint';host.append(note);
+  const overall=make('p','Rack input '+measuredLevels(diagnostics.input)+
+    ' · rack output '+measuredLevels(diagnostics.output));
+  host.append(overall);
+  for(const band of diagnostics.bands){
+    const section=group(host,'rack-meter-band');
+    section.append(make('h4',String(band.band??band.id).toUpperCase()+
+      (band.active?' · processed':' · identity / bypass')));
+    section.append(make('p','Band input '+measuredLevels(band.input)+
+      ' · post-band wet '+measuredLevels(band.output)+
+      ' · routed output '+measuredLevels(band.routed_output)));
+    if(band.meter_unavailable_reason){
+      section.append(make('p','Meter unavailable: '+band.meter_unavailable_reason));
+    }
+    for(const stage of (Array.isArray(band.stages)?band.stages:[])){
+      const item=make('p',String(stage.type_id??'processor')+' ['+
+        String(stage.id??'unidentified')+'] · ');
+      if(stage.executed!==true){
+        item.textContent+='not executed'+(stage.reason?' ('+stage.reason+')':'');
+      }else if(stage.type_id==='zg.compression'){
+        const reduction=stage.processor?.diagnostics?.max_gain_reduction_db;
+        item.textContent+='max gain reduction '+
+          (typeof reduction==='number'&&Number.isFinite(reduction)&&reduction>=0
+            ?reduction.toFixed(2)+' dB':'not measured')+
+          ' (processor-internal, before insert wet)';
+      }else if(stage.type_id==='zg.spectral'){
+        const changed=stage.processor?.diagnostics?.changed_frames;
+        const reasons=stage.processor?.decision_counts_by_reason;
+        item.textContent+='changed frames '+validCount(changed);
+        if(reasons&&typeof reasons==='object'&&!Array.isArray(reasons)){
+          item.textContent+=' · decision reasons: '+Object.entries(reasons).map(([key,count])=>
+            key+' '+validCount(count)).join(', ');
+        }
+      }else{
+        item.textContent+='executed · stage output '+measuredLevels(stage.output);
+      }
+      section.append(item);
+    }
+  }
+}

@@ -11,10 +11,12 @@ import numpy as np
 from scipy.io import wavfile
 from zaaggenz_contracts import digest
 from zaaggenz_contracts.music import beat_to_sample
+from zaaggenz_project import Project
 from zaaggenz_jobs import JobScheduler, SchedulerLimits, JobClass, RenderArtifact, JobError, JobCancelled
 from zaaggenz_melody import MelodicRenderSpec, make_render_executor
 from zaaggenz_melody.render import melodic_cache_key
 from .model import (TimelineDocument,apply_source_preset,source_preset_catalogue,compile_recipe,render_region,memory_estimate,text,describe,default_document)
+from .rack_edit import edit_rack, editor_state
 
 
 def scheduler_limits():
@@ -22,6 +24,35 @@ def scheduler_limits():
     return SchedulerLimits(interactive_workers=1, background_workers=1,
                            max_queued_jobs=8, max_background_queued_jobs=4,
                            max_history_jobs=16)
+
+
+def _post_master_band_monitor(full, band, mode, crossovers, cache_key, ctx):
+    """Filtered final-mix listening only; never change the rack or export."""
+    from zaaggenz_dsp.band_router import BAND_NAMES, FILTER_POLICY
+    from zaaggenz_dsp.multiband import split_bands
+    if len(full.audio_bytes) < 8 * 4:
+        raise JobError('band monitoring requires at least eight frames')
+    ctx.check_cancelled()
+    original = np.frombuffer(full.audio_bytes, dtype='<f4')
+    selected = split_bands(original, full.asset['sample_rate_hz'], crossovers)[BAND_NAMES.index(band)]
+    ctx.check_cancelled()
+    result = selected if mode == 'solo' else original.astype(np.float64) - selected
+    if not np.isfinite(result).all():
+        raise JobError('band monitor produced nonfinite audio')
+    pcm = np.asarray(result, dtype='<f4').tobytes()
+    asset = {**full.asset, 'content_sha256': hashlib.sha256(pcm).hexdigest()}
+    audio = np.frombuffer(pcm, dtype='<f4')
+    bins = max(1, min(360, len(audio)))
+    edges = np.linspace(0, len(audio), bins + 1, dtype=int)
+    waveform = [float(np.max(np.abs(audio[edges[i]:edges[i+1]]), initial=0)) for i in range(bins)]
+    scopes = {'waveform': waveform, 'events': full.scopes.get('events', []),
+              'diagnostics': {'master_peak': float(np.max(np.abs(audio), initial=0)),
+                'monitor': {'policy':'post-master filtering; non-authoritative listening only',
+                            'band':band, 'mode':mode, 'filter_method':FILTER_POLICY,
+                            'crossovers_hz':list(crossovers)}}}
+    ctx.check_cancelled()
+    return RenderArtifact(full.revision_id, full.recipe_sha256, 'synth',
+                          cache_key, pcm, asset, scopes)
 
 
 def region_cache_key(recipe, region):
@@ -86,6 +117,9 @@ class TimelineService:
         self.scheduler = JobScheduler(scheduler_limits()) if scheduler is None else scheduler
         self._jobs = OrderedDict()
         self._jobs_lock = threading.RLock()
+        # Per-editor high-water marks prevent a slow old Compose validation
+        # from adopting after a newer edit, including out-of-order HTTP arrival.
+        self._validation_tickets = {}
         self._closed = False
 
     @property
@@ -169,6 +203,22 @@ class TimelineService:
     def presets(self):
         return source_preset_catalogue()
 
+    def propose_source_preset(self, data, preset_id):
+        """Admit a source change without adopting a possibly stale UI response.
+
+        The browser checks its edit epoch and sends the winning document through
+        /validate. A late source-preset HTTP response must not roll back the
+        shared RuntimeSession or revoke a more recent rack/render revision.
+        """
+        document = apply_source_preset(TimelineDocument(data), preset_id)
+        recipe = compile_recipe(document)
+        estimate = self._admit_recipe(recipe)
+        return {'document': document.to_dict(), **describe(document),
+                'recipe_sha256': recipe.sha256,
+                'estimated_memory_bytes': estimate,
+                'proposal_policy': 'detached; validate to adopt',
+                'rack_editor': editor_state(document)}
+
     def apply_preset(self,data,preset_id):
         document=apply_source_preset(TimelineDocument(data),preset_id)
         recipe=compile_recipe(document)
@@ -176,18 +226,58 @@ class TimelineService:
         with self._jobs_lock:
             session = self._accept_locked(document)
         return {'document':document.to_dict(),**describe(document),'recipe_sha256':recipe.sha256,
-                'estimated_memory_bytes':estimate,'session':session}
+                'estimated_memory_bytes':estimate,'session':session, 'rack_editor':editor_state(document)}
 
-    def validate(self, data):
+    def validate(self, data, *, edit_ticket=None):
+        """Reject stale ordered Compose edits before *and* after slow compile.
+
+        Legacy API clients may omit the optional ticket; current Compose
+        sends a unique per-editor identity and monotonically increasing
+        sequence. The bounded registry never silently evicts a live fence.
+        """
+        identity = None
+        if edit_ticket is not None:
+            if type(edit_ticket) is not dict or set(edit_ticket) != {'client_id', 'sequence'}:
+                raise ValueError('invalid timeline validation ticket fields')
+            identity, sequence = edit_ticket['client_id'], edit_ticket['sequence']
+            if (type(identity) is not str or len(identity) != 32 or
+                    any(c not in '0123456789abcdef' for c in identity) or
+                    type(sequence) is not int or not 1 <= sequence <= 9007199254740991):
+                raise ValueError('invalid timeline validation ticket')
+            with self._jobs_lock:
+                previous = self._validation_tickets.get(identity)
+                if previous is not None and sequence <= previous:
+                    raise JobError('timeline validation superseded by newer edit sequence')
+                if previous is None and len(self._validation_tickets) >= 128:
+                    raise JobError('timeline editor identity capacity exceeded')
+                self._validation_tickets[identity] = sequence
         document = TimelineDocument(data)
         recipe = compile_recipe(document)
         estimate = self._admit_recipe(recipe)
         with self._jobs_lock:
+            if identity is not None and self._validation_tickets[identity] != sequence:
+                raise JobError('timeline validation superseded by newer edit sequence')
             session = self._accept_locked(document)
         return {**describe(document), 'recipe_sha256': recipe.sha256,
-                'estimated_memory_bytes': estimate, 'session': session}
+                'estimated_memory_bytes': estimate, 'session': session,
+                'rack_editor': editor_state(document)}
 
-    def submit(self, data, region=None, name='Render', *, authoritative=True):
+    def propose_rack_edit(self, data, action):
+        """Return a validated, memory-admitted proposal without changing session.
+
+        The browser must adopt the resulting document through the ordinary
+        /validate route; a delayed rack response cannot publish stale state.
+        """
+        document = edit_rack(TimelineDocument(data), action)
+        recipe = compile_recipe(document)
+        estimate = self._admit_recipe(recipe)
+        return {'document': document.to_dict(), **describe(document),
+                'recipe_sha256': recipe.sha256,
+                'estimated_memory_bytes': estimate,
+                'rack_editor': editor_state(document)}
+
+    def submit(self, data, region=None, name='Render', *, authoritative=True,
+               band_monitor=None, expected_session=None):
         """Same exact executor for Compose preview, saved rerender and WAV export.
 
         A sidecar may explicitly request a non-authoritative proposal; that job
@@ -199,14 +289,54 @@ class TimelineService:
         text(name, 'render name')
         document = TimelineDocument(data)
         revision = document.revision_id
+        # Compose-only optimistic session guard. Legacy authenticated callers
+        # may omit it; detached monitor/Vocal paths cannot claim authority.
+        if expected_session is not None:
+            if (not authoritative or type(expected_session) is not dict or
+                    set(expected_session) != {'generation', 'timeline_revision_id'} or
+                    type(expected_session['generation']) is not int or
+                    not 0 <= expected_session['generation'] <= 9007199254740991 or
+                    type(expected_session['timeline_revision_id']) is not str or
+                    expected_session['timeline_revision_id'] != revision):
+                raise ValueError('invalid expected render session')
         recipe = compile_recipe(document)
         region = render_region(recipe, region)
         estimate = self._admit_recipe(recipe)  # never discount selected context
         key = region_cache_key(recipe, region)
+        if band_monitor is not None:
+            from zaaggenz_dsp.band_router import BAND_NAMES, FILTER_POLICY
+            if (authoritative or type(band_monitor) is not tuple or len(band_monitor) != 2
+                    or type(band_monitor[0]) is not str or band_monitor[0] not in BAND_NAMES
+                    or type(band_monitor[1]) is not str or band_monitor[1] not in ('solo', 'mute')
+                    or region != render_region(recipe, None)):
+                raise JobError('band monitor requires a full non-authoritative render and valid band/mode')
+            rack = recipe.to_dict().get('rack')
+            if rack is None or rack['crossovers']['method'] != FILTER_POLICY:
+                raise JobError('band monitor requires a supported installed rack')
+            tm = recipe.to_dict()['time_map']
+            frames = beat_to_sample(tm, recipe.to_dict()['phrase']['end_beat']) - beat_to_sample(tm, '0/1')
+            # Account for all zero-phase filter/intermediate float64 buffers
+            # beyond the full processed render before job admission.
+            estimate += frames * 128
+            if estimate > self.scheduler.limits.max_job_memory_bytes:
+                raise JobError('post-master band monitor exceeds job memory bound')
+            key = digest({'domain':'zaaggenz.post-master-band-monitor-v1',
+                          'full_key':key, 'band':band_monitor[0], 'mode':band_monitor[1],
+                          'filter_method':FILTER_POLICY,
+                          'crossovers_hz':rack['crossovers']['frequencies_hz']})
         request_key = digest({'domain':'zaaggenz.timeline-owned-request-v1',
                               'owner':self._cache_namespace, 'revision':revision,
                               'recipe':recipe.sha256, 'cache_key':key, 'authoritative':authoritative})
-        canonical = region_executor(recipe, revision, region)
+        if band_monitor is None:
+            canonical = region_executor(recipe, revision, region)
+        else:
+            complete = make_render_executor(recipe, MelodicRenderSpec(), revision)
+            selected_band, monitor_mode = band_monitor
+            crossovers = tuple(recipe.to_dict()['rack']['crossovers']['frequencies_hz'])
+            def canonical(ctx):
+                original = complete(ctx)
+                return _post_master_band_monitor(original, selected_band, monitor_mode,
+                                                 crossovers, key, ctx)
         expected = (revision, recipe.sha256, key, 'synth')
         response = {'revision_id':revision, 'recipe_sha256':recipe.sha256,
                     'cache_key':key, 'region':region, 'name':name,
@@ -214,6 +344,11 @@ class TimelineService:
                     'context_policy':'whole-phrase-then-crop'}
         with self._jobs_lock:
             if self._closed:raise JobError('timeline service is closed')
+            # Compare immediately before scheduler submission and session
+            # adoption, not merely when the browser eventually sees a response.
+            if expected_session is not None and self.session.current_identity() != (
+                    expected_session['generation'], expected_session['timeline_revision_id']):
+                raise JobError('timeline render superseded by newer session revision')
             # Identical pending requests adopt the same computation. Named full
             # and region outputs of one revision may coexist; a new document
             # supersedes obsolete revisions, not other workspaces' jobs.
@@ -268,6 +403,49 @@ class TimelineService:
             binding['generation'] = session['generation']
             self._remember_job(job_id, binding)
             return {**response, 'job_id':job_id, 'adopted':False, 'session':session}
+
+    def submit_dry_monitor(self, data):
+        """Render a detached dry comparison without changing the working project.
+
+        A/B uses the existing bounded scheduler, per-session generation and
+        exact-artifact guards. Only the current validated processed revision
+        may request a source-bound comparison.
+        """
+        document = TimelineDocument(data)
+        project = Project.from_document(document.to_dict()['project'])
+        if project.rack is None:
+            raise JobError('raw/dry monitoring requires an installed rack')
+        with self._jobs_lock:
+            if document.revision_id != self.session.current_revision_id():
+                raise JobError('raw/dry monitoring requires the current Compose revision')
+            project.reset_rack()
+            proposal = document.to_dict()
+            proposal['project'] = project.to_document()
+            dry_document = TimelineDocument(proposal)
+            result = self.submit(dry_document.to_dict(), region=None,
+                                 name='Raw/dry A/B monitoring', authoritative=False)
+            return {**result, 'monitor_source_revision_id': document.revision_id,
+                    'monitor_policy': 'non-authoritative dry; no export slot'}
+
+    def submit_band_monitor(self, data, band, mode):
+        """Only a detached, exact-current full phrase may be band-monitored."""
+        from zaaggenz_dsp.band_router import BAND_NAMES
+        if type(band) is not str or band not in BAND_NAMES:
+            raise JobError('unknown monitoring band')
+        if type(mode) is not str or mode not in ('solo', 'mute'):
+            raise JobError('unknown band-monitor mode')
+        document = TimelineDocument(data)
+        if Project.from_document(document.to_dict()['project']).rack is None:
+            raise JobError('band monitoring requires an installed rack')
+        with self._jobs_lock:
+            if document.revision_id != self.session.current_revision_id():
+                raise JobError('band monitoring requires the current Compose revision')
+            result = self.submit(document.to_dict(), region=None,
+                name='Post-master '+band+' '+mode+' monitor',
+                authoritative=False, band_monitor=(band, mode))
+            return {**result, 'monitor_source_revision_id':document.revision_id,
+                    'monitor_policy':'non-authoritative post-master band; no export slot',
+                    'monitor_band':band, 'monitor_mode':mode}
 
     def status(self, job_id):
         with self._jobs_lock:

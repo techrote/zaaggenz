@@ -99,6 +99,7 @@ class Handler(webapp.Handler):
                          '/timeline/': ('index.html', 'text/html; charset=utf-8'),
                          '/timeline/app.mjs': ('app.mjs', 'text/javascript; charset=utf-8'),
                          '/timeline/editor.mjs': ('editor.mjs', 'text/javascript; charset=utf-8'),
+                         '/timeline/rack-ui.mjs': ('rack-ui.mjs', 'text/javascript; charset=utf-8'),
                          '/timeline/style.css': ('style.css', 'text/css; charset=utf-8')}
             if path in resources:
                 filename, mime = resources[path]
@@ -134,22 +135,48 @@ class Handler(webapp.Handler):
             if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
                 raise ValueError('application/json required')
             data = loads(self._read_body(limit=2_000_000))
-            if path == '/api/timeline/preset':
+            if path in ('/api/timeline/preset', '/api/timeline/preset-proposal'):
                 exact(data, {'document','preset_id'}, 'preset request')
                 if type(data['preset_id']) is not str:
                     raise ValueError('preset_id must be text')
-                result=self.server.timeline.apply_preset(data['document'],data['preset_id'])
+                # Preserve the existing authoritative API for its callers.
+                # Ordinary Compose uses the detached route and explicitly
+                # adopts only its still-current proposal through /validate.
+                if path == '/api/timeline/preset-proposal':
+                    result=self.server.timeline.propose_source_preset(
+                        data['document'],data['preset_id'])
+                else:
+                    result=self.server.timeline.apply_preset(
+                        data['document'],data['preset_id'])
                 return self._json(result)
+            if path == '/api/timeline/rack-edit':
+                exact(data, {'document', 'action'}, 'rack edit request')
+                return self._json(self.server.timeline.propose_rack_edit(
+                    data['document'], data['action']))
             if path == '/api/timeline/validate':
-                exact(data, {'document'}, 'validation request')
-                result = self.server.timeline.validate(data['document'])
+                if type(data) is not dict or set(data) not in (
+                        {'document'}, {'document', 'edit_ticket'}):
+                    raise ValueError('validation request: missing or unknown fields')
+                result = self.server.timeline.validate(
+                    data['document'], edit_ticket=data.get('edit_ticket'))
                 return self._json(result)
+            if path == '/api/timeline/monitor-dry':
+                exact(data, {'document'}, 'raw/dry monitoring request')
+                return self._json(self.server.timeline.submit_dry_monitor(data['document']), 202)
+            if path == '/api/timeline/monitor-band':
+                exact(data, {'document', 'band', 'mode'}, 'band monitoring request')
+                return self._json(self.server.timeline.submit_band_monitor(
+                    data['document'], data['band'], data['mode']), 202)
             if path == '/api/timeline/render':
-                exact(data, {'document', 'region', 'name'}, 'render request')
+                if type(data) is not dict or set(data) not in (
+                        {'document', 'region', 'name'},
+                        {'document', 'region', 'name', 'expected_session'}):
+                    raise ValueError('render request: missing or unknown fields')
                 # A Vocal proposal is derived state, never implicit Compose apply.
                 proposal = self.headers.get(RELEASE_HEADER) == self._release('vocal').release_id
                 result = self.server.timeline.submit(data['document'], data['region'], data['name'],
-                                                     authoritative=not proposal)
+                                                     authoritative=not proposal,
+                                                     expected_session=data.get('expected_session'))
                 return self._json(result, 202)
             if path == '/api/timeline/cancel':
                 exact(data, {'job_id'}, 'cancellation request')

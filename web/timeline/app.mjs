@@ -1,28 +1,109 @@
 import {Editor,copy,rational,value,snap,add} from './editor.mjs';
 import {RenderTransport} from './jobs_transport.mjs';
+import {renderRack,renderRackMeters} from './rack-ui.mjs';
 const $=id=>document.getElementById(id),transport=new RenderTransport();
-let editor,token,selected=null,validation=null,epoch=0,validationSequence=0,job=null,slots=[],activeSlot=null,presetCatalogue=null;
+let editor,token,selected=null,validation=null,epoch=0,validationSequence=0,job=null,slots=[],activeSlot=null,presetCatalogue=null,rackEditing=false;
+// A late validation must not update RuntimeSession, not merely lose its UI
+// response. Each editor uses an opaque source-free identity and edit sequence.
+const validationClientId=crypto.randomUUID().replaceAll('-','');
+const validationTicket=()=>({client_id:validationClientId,sequence:++validationSequence});
+const rackEditQueue=[],MAX_QUEUED_RACK_EDITS=16;
+let dryMonitor=null,dryJob=null,dryRequestSequence=0;
+let bandMonitor=null,bandJob=null,bandRequestSequence=0;
 const status=(message,error=false)=>{ $('status').textContent=message;$('status').classList.toggle('error',error); };
 async function api(path,payload){
   const response=await fetch('/api/timeline/'+path,payload===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Zaaggenz-Token':token},body:JSON.stringify(payload)});
   const data=await response.json();if(!response.ok)throw Error(data.error??`HTTP ${response.status}`);return data;
 }
 function quietCancel(id){if(id)api('cancel',{job_id:id}).catch(()=>{});}
+// Peak data comes only from actual completed post-master render artifacts.
+function monitorPeaks(){
+  const processed=activeSlot?.artifact?.scopes?.diagnostics?.master_peak;
+  const dry=dryMonitor?.masterPeak;
+  return Number.isFinite(processed)&&processed>0&&Number.isFinite(dry)&&dry>0
+    ?{processed,dry}:null;
+}
+function applyMonitorVolume(which){
+  const peaks=monitorPeaks();
+  const matched=$('audio').dataset.monitorKind!=='band'&&
+    $('peak-match').checked&&peaks&&
+    dryMonitor?.slotId===activeSlot?.id&&
+    validation?.revision_id===activeSlot?.revision;
+  const volume=matched?Math.min(1,Math.min(peaks.processed,peaks.dry)/peaks[which]):1;
+  $('audio').volume=volume;
+  $('peak-match-status').textContent=matched
+    ?'Peak-matched '+which+' monitor: playback volume '+volume.toFixed(4)+
+      ' (attenuation only; not loudness matching; processed WAV unchanged).'
+    :'Peak-match disabled · original playback levels; processed WAV unchanged.';
+}
+function updateDryControls(){
+  const current=!!validation&&!!activeSlot&&!rackEditing&&!rackEditQueue.length&&
+    validation.revision_id===activeSlot.revision&&
+    JSON.stringify(editor.document)===JSON.stringify(activeSlot.document);
+  const rackReady=current&&!!validation?.rack_editor?.present;
+  $('prepare-dry').disabled=!rackReady||!!dryMonitor||!!dryJob;
+  $('prepare-band').disabled=!rackReady||!!bandMonitor||!!bandJob;
+  const dryReady=current&&!!dryMonitor&&dryMonitor.slotId===activeSlot.id;
+  const bandReady=current&&!!bandMonitor&&bandMonitor.slotId===activeSlot.id;
+  $('hear-dry').disabled=!dryReady;
+  $('hear-band').disabled=!bandReady;
+  $('hear-processed').disabled=!(dryReady||bandReady);
+  const matching=dryReady&&$('audio').dataset.monitorKind!=='band'&&!!monitorPeaks();
+  $('peak-match').disabled=!matching;
+  if(!matching)$('peak-match').checked=false;
+}
+function discardBandMonitor(){
+  bandRequestSequence++;
+  if(bandJob)quietCancel(bandJob);
+  bandJob=null;
+  if(bandMonitor)URL.revokeObjectURL(bandMonitor.url);
+  bandMonitor=null;
+  $('hear-band').dataset.jobId='';
+  $('hear-band').disabled=true;
+}
+function discardDryMonitor(){
+  discardBandMonitor();
+  dryRequestSequence++;
+  if(dryJob)quietCancel(dryJob);
+  dryJob=null;
+  if(dryMonitor)URL.revokeObjectURL(dryMonitor.url);
+  dryMonitor=null;
+  $('audio').volume=1;
+  $('peak-match').checked=false;$('peak-match').disabled=true;
+  $('peak-match-status').textContent='Peak-match disabled · original playback levels; processed WAV unchanged.';
+  $('hear-dry').dataset.jobId='';
+  $('monitor-mode').textContent='Processed output · no raw/dry comparison prepared.';
+  $('prepare-dry').disabled=true;$('hear-dry').disabled=true;$('hear-processed').disabled=true;
+  $('prepare-band').disabled=true;$('hear-band').disabled=true;
+}
 function clearPlayback(){
+  discardDryMonitor();
   transport.stop('timeline');activeSlot=null;$('audio').pause();$('audio').removeAttribute('src');$('audio').dataset.revision='';$('audio').load();
   $('play').disabled=true;$('playback-revision').textContent='—';$('waveform').dataset.revision='';
   $('waveform').getContext('2d').clearRect(0,0,1200,140);
   $('download').removeAttribute('href');$('download').classList.add('disabled');$('download').setAttribute('aria-disabled','true');
+  renderRackMeters($('rack-meters'),null);
 }
-function invalidate(){epoch++;quietCancel(job);job=null;validation=null;clearPlayback();$('render').disabled=true;$('render-region').disabled=true;}
-function afterEdit(){invalidate();paint();if(selected)select(selected);validateLatest();}
+function invalidate(preserveRackQueue=false){
+  // Any non-rack edit supersedes outstanding proposals; only the current
+  // rack worker may carry queued commands across successive revisions.
+  if(!preserveRackQueue)rackEditQueue.length=0;
+  epoch++;quietCancel(job);job=null;validation=null;clearPlayback();
+  $('render').disabled=true;$('render-region').disabled=true;$('save').disabled=true;
+}
+function afterEdit(preserveRackQueue=false){
+  invalidate(preserveRackQueue);paint();if(selected)select(selected);
+  // Intermediate rack commands are detached proposals. Only the last
+  // document may enter the authoritative RuntimeSession through /validate.
+  if(!preserveRackQueue)void validateLatest();
+}
 function safe(action){try{action();}catch(e){status(e.message,true);}}
 function mutate(action){safe(()=>{action();afterEdit();});}
 async function validateLatest(){
-  const seq=++validationSequence,serialized=JSON.stringify(editor.document);
+  const edit_ticket=validationTicket(),seq=edit_ticket.sequence,serialized=JSON.stringify(editor.document);
   $('revision').textContent='Validating…';
   try{
-    const result=await api('validate',{document:JSON.parse(serialized)});
+    const result=await api('validate',{document:JSON.parse(serialized),edit_ticket});
     if(seq!==validationSequence||JSON.stringify(editor.document)!==serialized)return;
     validation=result;$('revision').textContent=result.revision_id;
     const preset=result.source_preset_id;
@@ -30,9 +111,103 @@ async function validateLatest(){
     if(preset)$('source-preset').value=preset;
     const presetLabel=$('source-preset').selectedOptions[0]?.textContent??preset;
     $('pitch-context').textContent=`${presetLabel} · source ${result.source_hz.toFixed(2)} Hz · ${result.tuning.id} · source-preserving melody`;
-    $('render').disabled=false;$('render-region').disabled=false;
-    updateTarget();status(`Ready · ${editor.document.notes.length} events · estimated render admission ${(result.estimated_memory_bytes/1048576).toFixed(1)} MiB`);
+    // A validation response can race another accepted rack proposal. Do not
+    // admit stale saves/renders while source-bound edits remain outstanding.
+    if(!rackEditing&&!rackEditQueue.length){
+      $('render').disabled=false;$('render-region').disabled=false;$('save').disabled=false;
+    }
+    updateTarget();renderRack($('rack-editor'),result.rack_editor,editRack,{exportPreset,importPreset});updateDryControls();status(`Ready · ${editor.document.notes.length} events · estimated render admission ${(result.estimated_memory_bytes/1048576).toFixed(1)} MiB`);
   }catch(e){if(seq===validationSequence){validation=null;$('revision').textContent='Invalid editing revision';status(e.message,true);}}
+}
+function exportPreset(identifier){
+  try{
+    if(!validation||rackEditing||rackEditQueue.length)throw Error('Finish validating pending edits before exporting a rack preset.');
+    const item=editor.document?.project?.rack_presets?.[identifier];
+    if(!item||item.id!==identifier)throw Error('Select an existing rack preset to export.');
+    const record={format:'zaaggenz-rack-preset',version:'1.0.0',
+      id:item.id,name:item.name,rack:item.rack,
+      rack_sha256:item.rack_sha256,sonic_sha256:item.sonic_sha256};
+    const url=URL.createObjectURL(new Blob([JSON.stringify(record,null,2)+'\n'],{type:'application/json'}));
+    const link=document.createElement('a');link.href=url;
+    link.download=identifier.replace(/[^a-zA-Z0-9_.-]/g,'_')+'.zgrack.json';
+    link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+    status('Source-bound portable rack preset exported.');
+  }catch(e){status(e.message,true);}
+}
+async function importPreset(file){
+  if(!validation||rackEditing||rackEditQueue.length){
+    status('Finish validating pending edits before importing a rack preset.',true);return;
+  }
+  const before=JSON.stringify(editor.document),beforeEpoch=epoch;
+  try{
+    if(file.size<1||file.size>262144)throw Error('Rack preset file must be 1–262144 bytes.');
+    const record=JSON.parse(await file.text());
+    if(beforeEpoch!==epoch||JSON.stringify(editor.document)!==before)
+      throw Error('Rack preset import superseded by a project edit; retry on the current source.');
+    editRack({kind:'import_preset',record});
+  }catch(e){status(e.message,true);}
+}
+function editRack(action){
+  // A network-bound editor must not silently drop a second quick user edit.
+  // Commands are applied in arrival order to the newest validated document;
+  // no two rack proposals run against the same stale source snapshot.
+  if(rackEditQueue.length>=MAX_QUEUED_RACK_EDITS){
+    status('Rack edit queue is full (16); wait for the pending changes.',true);
+    return;
+  }
+  rackEditQueue.push(action);
+  if(rackEditing){
+    status(`Rack edit queued · ${rackEditQueue.length} more change(s)`);
+    return;
+  }
+  void drainRackEdits();
+}
+async function drainRackEdits(){
+  rackEditing=true;
+  let superseded=false,failedMessage=null;
+  try{
+    while(rackEditQueue.length){
+      const action=rackEditQueue.shift();
+      const before=editor.document,identity=JSON.stringify(before);
+      // Invalidate synchronously, before a request can race a render/save.
+      validationSequence++;
+      invalidate(true);
+      const editEpoch=epoch;
+      $('revision').textContent='Rack edit pending…';
+      status(`Validating rack edit… · ${rackEditQueue.length} queued`);
+      try{
+        const result=await api('rack-edit',{document:before,action});
+        // Non-rack edits, imports and output selection supersede this queue.
+        if(editEpoch!==epoch||JSON.stringify(editor.document)!==identity){
+          superseded=true;
+          rackEditQueue.length=0;
+          return;
+        }
+        editor.replace(result.document);
+        afterEdit(true);
+      }catch(error){
+        const discarded=rackEditQueue.length;
+        rackEditQueue.length=0;
+        if(editEpoch===epoch&&JSON.stringify(editor.document)===identity){
+          const message=error.message.includes('rack full-context memory estimate exceeds working-memory bound')
+             ?error.message+' · Shorten the phrase before enabling this spectral stage; region previews still process the full phrase.'
+             :error.message;
+           failedMessage=message+(discarded?` · ${discarded} queued edit(s) not applied`:'');
+        }else superseded=true;
+        return;
+      }
+    }
+  }finally{
+    rackEditing=false;
+    // An older validator may have completed while rackEditing was still true.
+    // Revalidate once after draining to restore save/render admission only at
+    // the final exact revision. An external import/edit owns its own gate.
+    if(!superseded){
+      const finalEpoch=epoch;
+      await validateLatest();
+      if(failedMessage&&finalEpoch===epoch)status(failedMessage,true);
+    }
+  }
 }
 function rowFromForm(){return {beat:rational($('beat').value),duration_beats:rational($('duration').value),
   degree:$('rest').checked?null:Number($('degree').value),detune_cents:Number($('detune').value),gain_db:Number($('gain').value),
@@ -96,19 +271,178 @@ function publish(slot){
   const generation=transport.begin('timeline',slot.revision,artifact.recipe_sha256,artifact.cache_key,artifact.product);
   if(!transport.accept('timeline',{accepted:true,state:'completed',generation,revision_id:slot.revision,artifact,audio:slot.url}))throw Error('Stale audio rejected.');
   const snapshot=transport.current('timeline');activeSlot=slot;
-  $('audio').src=snapshot.audio;$('audio').dataset.revision=snapshot.revisionId;$('play').disabled=false;
+  $('audio').src=snapshot.audio;$('audio').dataset.revision=snapshot.revisionId;
+  $('audio').dataset.monitorKind='processed';$('play').disabled=false;
   $('playback-revision').textContent=snapshot.revisionId;$('waveform').dataset.revision=snapshot.revisionId;
+  renderRackMeters($('rack-meters'),artifact);
   $('revision').textContent=snapshot.revisionId;$('outputs').value=slot.id;
   const ctx=$('waveform').getContext('2d');ctx.clearRect(0,0,1200,140);ctx.fillStyle='#95b097';
   const points=snapshot.scopes.waveform;for(let i=0;i<points.length;i++){const h=Math.min(66,points[i]*66);ctx.fillRect(i*1200/points.length,70-h,Math.max(1,1200/points.length),Math.max(1,2*h));}
   $('download').href=slot.url;$('download').download=`${slot.name.replace(/[^a-zA-Z0-9_-]/g,'_')}.wav`;
   $('download').classList.remove('disabled');$('download').setAttribute('aria-disabled','false');
+  updateDryControls();
+  applyMonitorVolume('processed');
+}
+async function prepareDryMonitor(){
+  if(!validation||!activeSlot||!validation.rack_editor?.present||rackEditing||
+     rackEditQueue.length||dryJob||dryMonitor){
+    status('Select a completed processed rack render with no pending edits for raw/dry A/B.',true);return;
+  }
+  const slot=activeSlot,source=copy(editor.document),sourceEpoch=epoch,sequence=++dryRequestSequence;
+  const current=()=>sequence===dryRequestSequence&&epoch===sourceEpoch&&
+    activeSlot===slot&&JSON.stringify(editor.document)===JSON.stringify(source);
+  $('prepare-dry').disabled=true;
+  $('monitor-mode').textContent='Rendering source without the rack for monitoring only…';
+  try{
+    const request=await api('monitor-dry',{document:source});
+    if(!current()){quietCancel(request.job_id);return;}
+    if(request.monitor_source_revision_id!==slot.revision||
+       request.monitor_policy!=='non-authoritative dry; no export slot')
+      throw Error('Raw/dry comparison source identity mismatch.');
+    dryJob=request.job_id;
+    for(;;){
+      const result=await api('jobs/'+request.job_id);
+      if(!current())return;
+      if(['failed','cancelled','stale'].includes(result.state))
+        throw Error(result.error||'Raw/dry comparison '+result.state);
+      if(result.state==='completed'){
+        if(result.revision_id!==request.revision_id||
+           result.artifact?.revision_id!==request.revision_id||
+           result.artifact.recipe_sha256!==request.recipe_sha256)
+          throw Error('Raw/dry comparison artifact identity mismatch.');
+        const response=await fetch('/api/timeline/jobs/'+request.job_id+'/audio');
+        if(!response.ok||response.headers.get('X-Timeline-Revision')!==request.revision_id)
+          throw Error('Raw/dry comparison audio identity mismatch.');
+        const blob=await response.blob();
+        if(!current())return;
+        const dryPeak=result.artifact?.scopes?.diagnostics?.master_peak;
+        dryMonitor={slotId:slot.id,revision:request.revision_id,url:URL.createObjectURL(blob),
+          masterPeak:Number.isFinite(dryPeak)&&dryPeak>0?dryPeak:null};
+        $('hear-dry').dataset.jobId=request.job_id;
+        $('monitor-mode').textContent='Raw/dry comparison ready · monitoring only; Download processed WAV is unchanged.';
+        status('Raw/dry source rendered separately; no rack or project state was changed.');
+        return;
+      }
+      await new Promise(resolve=>setTimeout(resolve,120));
+    }
+  }catch(e){
+    if(current()){
+      $('monitor-mode').textContent='Raw/dry comparison unavailable; processed output remains selected.';
+      status(e.message,true);
+    }
+  }finally{
+    if(sequence===dryRequestSequence){dryJob=null;updateDryControls();}
+  }
+}
+function hearDryMonitor(){
+  if(!dryMonitor||!activeSlot||dryMonitor.slotId!==activeSlot.id||
+     !validation||validation.revision_id!==activeSlot.revision)return;
+  $('audio').pause();$('audio').src=dryMonitor.url;
+  $('audio').dataset.revision=dryMonitor.revision;
+  $('audio').dataset.monitorKind='dry';$('audio').load();
+  $('playback-revision').textContent=dryMonitor.revision+' · DRY MONITOR ONLY';
+  $('waveform').getContext('2d').clearRect(0,0,1200,140);
+  $('waveform').dataset.revision='';
+  renderRackMeters($('rack-meters'),null);
+  $('monitor-mode').textContent='Hearing raw/dry source. Waveform/meters are hidden; Download processed WAV still exports the processed selection.';
+  applyMonitorVolume('dry');
+  updateDryControls();
+  $('play').disabled=false;
+}
+async function prepareBandMonitor(){
+  if(!validation||!activeSlot||!validation.rack_editor?.present||rackEditing||
+      rackEditQueue.length||bandJob||bandMonitor){
+    status('Select an exact current processed rack render before band monitoring.',true);return;
+  }
+  const band=$('monitor-band').value,mode=$('monitor-action').value;
+  if(!['sub','lowmid','highmid','air'].includes(band)||!['solo','mute'].includes(mode))return;
+  const slot=activeSlot,source=copy(editor.document),sourceEpoch=epoch,sequence=++bandRequestSequence;
+  const current=()=>sequence===bandRequestSequence&&epoch===sourceEpoch&&
+    activeSlot===slot&&$('monitor-band').value===band&&$('monitor-action').value===mode&&
+    JSON.stringify(editor.document)===JSON.stringify(source);
+  $('prepare-band').disabled=true;
+  $('monitor-mode').textContent='Rendering '+mode+' '+band+' from the completed full processed mix…';
+  try{
+    const request=await api('monitor-band',{document:source,band,mode});
+    if(!current()){quietCancel(request.job_id);return;}
+    if(request.monitor_source_revision_id!==slot.revision||
+       request.monitor_policy!=='non-authoritative post-master band; no export slot'||
+       request.monitor_band!==band||request.monitor_mode!==mode)
+      throw Error('Band monitor source or mode identity mismatch.');
+    bandJob=request.job_id;
+    for(;;){
+      const result=await api('jobs/'+request.job_id);
+      if(!current())return;
+      if(['failed','cancelled','stale'].includes(result.state))
+        throw Error(result.error||'Band monitor '+result.state);
+      if(result.state==='completed'){
+        const evidence=result.artifact?.scopes?.diagnostics?.monitor;
+        if(result.revision_id!==request.revision_id||
+           result.artifact?.revision_id!==request.revision_id||
+           result.artifact?.recipe_sha256!==request.recipe_sha256||
+           result.artifact?.cache_key!==request.cache_key||
+           evidence?.band!==band||evidence?.mode!==mode||
+           evidence?.policy!=='post-master filtering; non-authoritative listening only')
+          throw Error('Band monitor artifact identity/policy mismatch.');
+        const response=await fetch('/api/timeline/jobs/'+request.job_id+'/audio');
+        if(!response.ok||response.headers.get('X-Timeline-Revision')!==request.revision_id)
+          throw Error('Band monitor audio identity mismatch.');
+        const blob=await response.blob();
+        if(!current())return;
+        bandMonitor={slotId:slot.id,revision:request.revision_id,url:URL.createObjectURL(blob),
+          band,mode};
+        $('hear-band').dataset.jobId=request.job_id;
+        $('monitor-mode').textContent='Band '+band+' '+mode+' ready · post-master filter audition only; processed WAV unchanged.';
+        status('Monitoring job ready; authoritative session and exported PCM were not modified.');
+        return;
+      }
+      await new Promise(resolve=>setTimeout(resolve,120));
+    }
+  }catch(e){
+    if(current()){
+      $('monitor-mode').textContent='Band audition unavailable; processed output remains selected.';
+      status(e.message,true);
+    }
+  }finally{
+    if(sequence===bandRequestSequence){bandJob=null;updateDryControls();}
+  }
+}
+function hearBandMonitor(){
+  if(!bandMonitor||!activeSlot||bandMonitor.slotId!==activeSlot.id||
+      !validation||validation.revision_id!==activeSlot.revision)return;
+  $('audio').pause();$('audio').src=bandMonitor.url;
+  $('audio').dataset.revision=bandMonitor.revision;
+  $('audio').dataset.monitorKind='band';$('audio').load();
+  $('audio').volume=1;$('peak-match').checked=false;
+  $('peak-match-status').textContent='Post-master band audition at original monitor level; processed WAV unchanged.';
+  $('playback-revision').textContent=bandMonitor.revision+' · BAND '+bandMonitor.band.toUpperCase()+
+    ' '+bandMonitor.mode.toUpperCase()+' MONITOR ONLY';
+  $('waveform').getContext('2d').clearRect(0,0,1200,140);
+  $('waveform').dataset.revision='';
+  renderRackMeters($('rack-meters'),null);
+  $('monitor-mode').textContent='Hearing post-master '+bandMonitor.band+' '+bandMonitor.mode+
+    ' filter audition; not the pre-rack band stem. Download processed WAV is unchanged.';
+  updateDryControls();$('play').disabled=false;
+}
+function hearProcessedMonitor(){
+  if((!dryMonitor&&!bandMonitor)||!activeSlot||!validation||
+     validation.revision_id!==activeSlot.revision)return;
+  publish(activeSlot);
+  $('monitor-mode').textContent='Hearing processed source · monitoring alternatives available. Download processed WAV is unchanged.';
 }
 async function render(region){
-  if(!validation)return;const data=editor.document,revision=validation.revision_id,requestEpoch=++epoch;
+  if(!validation||rackEditing||rackEditQueue.length)return;
+  const data=editor.document,revision=validation.revision_id;
+  const expected_session={generation:validation.session?.generation,
+    timeline_revision_id:validation.session?.timeline_revision_id};
+  if(!Number.isSafeInteger(expected_session.generation)||
+      expected_session.timeline_revision_id!==revision){
+    status('Render requires a current validated Compose session.',true);return;
+  }
+  const requestEpoch=++epoch;
   quietCancel(job);job=null;clearPlayback();const name=$('output-name').value;
   try{
-    const submitted=await api('render',{document:data,region,name});
+    const submitted=await api('render',{document:data,region,name,expected_session});
     if(requestEpoch!==epoch){quietCancel(submitted.job_id);return;}
     if(submitted.revision_id!==revision)throw Error('Server returned a different render revision.');
     job=submitted.job_id;
@@ -142,32 +476,71 @@ function bind(){
   $('project-name').onchange=()=>mutate(()=>editor.commit(s=>s.name=$('project-name').value));
   $('source-preset').onchange=async()=>{
     const presetId=$('source-preset').value;if(!presetId||presetId==='custom')return;
-    invalidate();$('source-preset').disabled=true;status('Applying source preset…');
+    // Source selection is a detached, memory-admitted proposal. A newer
+    // Compose/rack edit must win even if this HTTP response arrives last.
+    invalidate();
+    const proposalEpoch=epoch,sourceSnapshot=editor.document;
+    $('source-preset').disabled=true;status('Preparing source preset proposal…');
     try{
-      const result=await api('preset',{document:editor.document,preset_id:presetId});
+      const result=await api('preset-proposal',{document:sourceSnapshot,preset_id:presetId});
+      if(result.proposal_policy!=='detached; validate to adopt')
+        throw Error('Source preset endpoint did not return a detached proposal.');
+      if(proposalEpoch!==epoch||JSON.stringify(editor.document)!==JSON.stringify(sourceSnapshot)){
+        status('Source preset proposal superseded by another edit; current project retained.');
+        return;
+      }
       editor.replace(result.document);selected=null;afterEdit();
-    }catch(e){status(e.message,true);validateLatest();}
-    finally{$('source-preset').disabled=false;}
+    }catch(e){
+      if(proposalEpoch===epoch&&JSON.stringify(editor.document)===JSON.stringify(sourceSnapshot)){
+        status(e.message,true);void validateLatest();
+      }
+    }finally{$('source-preset').disabled=false;}
   };
   $('set-length').onclick=()=>mutate(()=>editor.commit(s=>s.end_beat=rational($('length').value)));
   $('master').onchange=()=>mutate(()=>editor.commit(s=>s.master_gain_db=Number($('master').value)));
   $('add-clip').onclick=()=>mutate(()=>editor.clip($('clip-name').value,$('region-start').value,$('region-end').value));
   $('duplicate-clip').onclick=()=>mutate(()=>editor.duplicateClip($('clips').value));
   $('clips').onchange=()=>{const clip=editor.document.clips.find(c=>c.id===$('clips').value);if(clip){$('region-start').value=clip.start_beat;$('region-end').value=clip.end_beat;}};
+  $('prepare-dry').onclick=()=>void prepareDryMonitor();
+  $('hear-dry').onclick=()=>hearDryMonitor();
+  $('prepare-band').onclick=()=>void prepareBandMonitor();
+  $('hear-band').onclick=()=>hearBandMonitor();
+  for(const id of ['monitor-band','monitor-action'])$(id).onchange=()=>{
+    // Always invalidate the request generation, including while the POST
+    // creating a job is still unresolved. Otherwise an A→B→A selection can
+    // make an old in-flight result appear current (ABA), even though its
+    // chosen input was superseded. Known jobs are cancelled; late responses
+    // are rejected and cancelled by prepareBandMonitor's identity guard.
+    const hearingBand=$('audio').dataset.monitorKind==='band';
+    discardBandMonitor();
+    if(hearingBand&&activeSlot){
+      $('audio').pause();
+      publish(activeSlot);
+    }
+    $('monitor-mode').textContent='Band selection changed; prepare a fresh monitored result. Processed WAV unchanged.';
+    updateDryControls();
+  };
+  $('hear-processed').onclick=()=>hearProcessedMonitor();
+  $('peak-match').onchange=()=>applyMonitorVolume(
+    $('audio').dataset.monitorKind==='dry'?'dry':'processed');
   $('render').onclick=()=>render(null);
   $('render-region').onclick=()=>safe(()=>render({start_beat:rational($('region-start').value),end_beat:rational($('region-end').value)}));
-  $('cancel').onclick=()=>{epoch++;quietCancel(job);job=null;status('Render cancelled; editing state is unchanged.');};
+  $('cancel').onclick=()=>{epoch++;quietCancel(job);job=null;discardDryMonitor();status('Render cancelled; editing state is unchanged.');};
   $('stop').onclick=()=>{epoch++;quietCancel(job);job=null;clearPlayback();status('Playback stopped. Select a named output to reload it.');};
   $('play').onclick=async()=>{try{if(!activeSlot||editor.document&&JSON.stringify(editor.document)!==JSON.stringify(activeSlot.document))throw Error('Playback revision no longer matches editing state.');await $('audio').play();}catch(e){status(e.message,true);}};
   $('outputs').onchange=()=>{const slot=slots.find(s=>s.id===$('outputs').value);if(!slot)return;
     safe(()=>{editor.replace(slot.document);invalidate();paint();publish(slot);validateLatest();});};
-  $('save').onclick=()=>safe(()=>{if(!validation)throw Error('Correct invalid editing state before saving.');
+  $('save').onclick=()=>safe(()=>{if(!validation||rackEditing||rackEditQueue.length)throw Error('Finish validating pending edits before saving.');
     const url=URL.createObjectURL(new Blob([JSON.stringify(editor.document,null,2)],{type:'application/json'}));
     const link=document.createElement('a');link.href=url;link.download='zaaggenz-timeline.zgtimeline.json';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);});
-  $('open').onchange=async()=>{const file=$('open').files[0];if(!file)return;const openEpoch=++epoch;quietCancel(job);job=null;
+  $('open').onchange=async()=>{const file=$('open').files[0];if(!file)return;
+    // Reading a file and verifying it with the backend are asynchronous. An
+    // old ready render must not remain enabled while the import is in flight.
+    validationSequence++;invalidate();const openEpoch=epoch;
+    $('revision').textContent='Opening project…';status('Validating imported project…');
     try{if(file.size>2000000)throw Error('Project exceeds the 2 MB authoring limit.');const input=JSON.parse(await file.text());
-      await api('validate',{document:input});if(openEpoch!==epoch)return;editor.replace(input);selected=null;afterEdit();
-    }catch(e){if(openEpoch===epoch)status(e.message,true);}finally{$('open').value='';}};
+      await api('validate',{document:input,edit_ticket:validationTicket()});if(openEpoch!==epoch)return;editor.replace(input);selected=null;afterEdit();
+    }catch(e){if(openEpoch===epoch){await validateLatest();status(e.message,true);}}finally{$('open').value='';}};
   $('roll').ondblclick=e=>{if(e.target.closest('[data-id]'))return;const bounds=$('roll').getBoundingClientRect(),x=(e.clientX-bounds.left)*1200/bounds.width;
     $('beat').value=snap(Math.max(0,(x-48)/1140*value(editor.document.end_beat)).toFixed(6),$('snap').value);
     mutate(()=>{selected=editor.add(rowFromForm(),$('snap').value);});};
