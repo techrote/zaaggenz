@@ -8,11 +8,13 @@ This comparison alone is not an analytic oracle or proof of correctness.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import math
 from fractions import Fraction
 
 import numpy as np
 
+from zaaggenz_contracts import digest
 from zaaggenz_contracts.nyquismic import (
     MAX_EVALUATION_HZ, MAX_REFERENCE_PASSES, ResourceBudget, _Record,
     hash_value, integer, record, require,
@@ -283,3 +285,89 @@ def evaluate_local_convergence(
             'product_export_verified': False,
         },
     )
+
+
+def evaluate_sampler_convergence(
+    source, sonic, *, policy: FrozenConvergencePolicy = FrozenConvergencePolicy(),
+    budget: ResourceBudget = ResourceBudget(), cancelled=None,
+) -> LocalConvergenceResult:
+    """Execute the real physical-event sampler for every local comparator.
+
+    No external NYQ-004 clock modulation or product graph/export integration.
+    Freeze the original PCM and verify *actual* exact event roots, including
+    reset epoch and crossing, rather than trusting a callback's declared hash.
+    """
+    from zaaggenz_contracts.nyquismic import SonicSpec
+    from .nyquismic import FrozenInput, SamplerPlan, sampler_evaluation
+
+    require(type(source) is FrozenInput, 'convergence requires immutable source PCM')
+    record(sonic, SonicSpec, 'convergence sonic spec')
+    record(policy, FrozenConvergencePolicy, 'convergence policy')
+    record(budget, ResourceBudget, 'convergence budget')
+    require(cancelled is None or callable(cancelled),
+            'convergence cancellation hook must be callable')
+    require(sonic.mode == 'sampler', 'local convergence cannot execute warp/cascade')
+    require(not sonic.clock.routes and sonic.clock.quantizer.policy == 'none'
+            and sonic.clock.jitter.model == 'none',
+            'unadapted NYQ-004 virtual-clock controls are not executable')
+    asset = source.asset.to_dict()
+    require(asset['channels'] == sonic.channels, 'source/channel mismatch')
+    require(len(policy.rates_hz) <= budget.max_reference_passes,
+            'convergence pass budget exceeded')
+    # Align complete physical extent at every declared numerical rate.
+    # No silent frame rounding and no discounted region/frame admission.
+    frames_by_rate = {}
+    for rate in policy.rates_hz:
+        frames = Fraction(asset['frame_count'] * rate, source.sample_rate_hz)
+        require(frames.denominator == 1,
+                'sampler convergence requires integral numerical extents')
+        require(frames.numerator * sonic.channels <= budget.max_frames,
+                'sampler convergence numerical frame budget exceeded')
+        frames_by_rate[rate] = frames.numerator
+
+    hashes = (source.asset.sha256, sonic.sonic_sha256, sonic.clock.sha256)
+    random_hash = digest({'domain': 'nyq003.no-external-control-v1',
+                          'clock_sha256': hashes[2]})
+    ledgers, counts, pcm_hashes = [], [], []
+
+    def actual_candidate(rate):
+        if cancelled is not None and cancelled():
+            raise ClockCancelled('sampler convergence cancelled before pass')
+        plan = SamplerPlan.prepare(
+            source, sonic, sampler_evaluation(rate, budget),
+            frame_count=frames_by_rate[rate], cancelled=cancelled)
+        # Event float timestamps are diagnostic only. Use the unrounded
+        # Fraction/Decimal80 coordinate as the custody identity.
+        ledger = hashlib.sha256(b'nyq003.physical-events.v1\n')
+        for i, event in enumerate(plan.events):
+            if i % 256 == 0 and cancelled is not None and cancelled():
+                raise ClockCancelled('sampler convergence cancelled in event ledger')
+            root = plan.clock.event_coordinate(i)
+            ledger.update(f'{event.index}|{event.epoch}|{event.crossing}|{root}\n'.encode('ascii'))
+        event_hash = ledger.hexdigest()
+        require(not ledgers or event_hash == ledgers[0],
+                'physical event ledger changed with numerical evaluation rate')
+        ledgers.append(event_hash)
+        counts.append(len(plan.events))
+        numeric = plan.render(cancelled=cancelled)
+        pcm_hashes.append(numeric.diagnostics['pcm_sha256'])
+        return NumericalCandidate(rate, numeric.audio, *hashes, random_hash)
+
+    result = evaluate_local_convergence(
+        actual_candidate, source_sha256=hashes[0], sonic_sha256=hashes[1],
+        clock_sha256=hashes[2], random_control_sha256=random_hash,
+        delivery_rate_hz=source.sample_rate_hz, policy=policy,
+        budget=budget, cancelled=cancelled)
+    diagnostics = {
+        **result.diagnostics,
+        'sampler_bridge': 'nyq003.physical-event-frozen-convergence.v1',
+        'exact_event_ledger_sha256': ledgers[0],
+        'event_ledger_sha256_by_rate': ledgers,
+        'event_counts_by_rate': counts,
+        'numerical_pcm_sha256_by_rate': pcm_hashes,
+        'frozen_source_pcm_sha256': asset['content_sha256'],
+        'physical_event_geometry_equal': True,
+        'nyq004_adapter_qualified': False,
+    }
+    return LocalConvergenceResult(result.status, result.policy,
+                                  diagnostics, result.selected_audio)

@@ -79,3 +79,25 @@ evidence, failure cases, final-head CI and owner-dependent gates.
 
 Focused test:
 `python -m unittest discover -s tests/dsp -p 'test_nyquismic_convergence.py' -v`.
+
+## Real physical-event sampler convergence bridge — 9 November 2026
+
+The opt-in `evaluate_sampler_convergence` executes NYQ-002's actual immutable
+source capture and reconstruction separately at every frozen numerical rate.
+It verifies exact Fraction/Decimal80 virtual-event coordinates with epoch and
+crossing against the first pass, rather than accepting only a caller-supplied
+clock hash. Original input PCM, per-pass numerical PCM and final delivered PCM
+identities are included in the diagnostic record. The downstream comparator's
+existing RMS, spectral and transient thresholds and inconclusive/null policies
+remain unchanged.
+
+Unsupported external NYQ-004 control adapters and warp/cascade refuse.
+Source extent must align to integral frames at **all** evaluated rates;
+frame/tap/reference budgets and cancellation are enforced before publication.
+The current sampler still binds the delivery rate to the immutable source rate.
+This is local numerical evaluation, not product-export, analytic-oracle,
+quality-default, or human listening admission. Nothing alters the existing
+sampler, clock, renderer, graph or default sound.
+
+Focused command:
+`python -m unittest discover -s tests/dsp -p 'test_nyquismic_sampler_convergence.py' -v`
