@@ -151,3 +151,78 @@ def convert_numerical_to_delivery(
         },
         policy=policy,
     )
+
+
+@dataclass(frozen=True)
+class SamplerDeliveryResult:
+    """Actual opt-in local PCM, not product export or quality certification."""
+    audio: np.ndarray
+    diagnostics: dict
+    policy: DeliveryConversionPolicy
+
+
+def render_sampler_to_delivery(source, sonic, *, numerical_rate_hz: int,
+                               delivery_rate_hz: int | None = None,
+                               policy: DeliveryConversionPolicy = DeliveryConversionPolicy(),
+                               budget: ResourceBudget = ResourceBudget(),
+                               cancelled=None) -> SamplerDeliveryResult:
+    """Atomically compose physical-time capture/reconstruction and final FIR.
+
+    The current sampler identity binds delivery to the input source rate.
+    Other delivery rates or fractional numerical extents must refuse rather
+    than publish samples under an incompatible identity or truncated timeline.
+    """
+    from zaaggenz_contracts.nyquismic import SonicSpec
+    from .nyquismic import FrozenInput, SamplerPlan, sampler_evaluation
+
+    require(type(source) is FrozenInput, 'expected immutable sampler source')
+    record(sonic, SonicSpec, 'sampler delivery sonic spec')
+    record(policy, DeliveryConversionPolicy, 'sampler delivery conversion policy')
+    record(budget, ResourceBudget, 'sampler delivery budget')
+    require(cancelled is None or callable(cancelled), 'invalid cancellation hook')
+    if cancelled is not None and cancelled():
+        raise ClockCancelled('sampler delivery cancelled before preparation')
+    if delivery_rate_hz is None:
+        delivery_rate_hz = source.sample_rate_hz
+    integer(delivery_rate_hz, 'delivery rate Hz', 8000, 192000)
+    require(delivery_rate_hz == source.sample_rate_hz,
+            'sampler identity binds delivery to original source rate')
+    integer(numerical_rate_hz, 'numerical evaluation rate Hz', 8000, MAX_EVALUATION_HZ)
+    require(numerical_rate_hz >= delivery_rate_hz,
+            'sampler delivery requires numerical rate >= delivery rate')
+    asset = source.asset.to_dict()
+    extent = Fraction(asset['frame_count'] * numerical_rate_hz, source.sample_rate_hz)
+    require(extent.denominator == 1, 'sampler delivery requires aligned physical extent')
+    require(extent.numerator * asset['channels'] <= budget.max_frames,
+            'sampler numerical extent over admitted frame budget')
+
+    plan = SamplerPlan.prepare(source, sonic, sampler_evaluation(numerical_rate_hz, budget),
+                               frame_count=extent.numerator, cancelled=cancelled)
+    numeric = plan.render(cancelled=cancelled)
+    final = convert_numerical_to_delivery(numeric.audio, numerical_rate_hz,
+                                         delivery_rate_hz, policy=policy,
+                                         budget=budget, cancelled=cancelled)
+    require(final.audio.shape[0] == asset['frame_count'],
+            'sampler delivery physical extent changed during conversion')
+    require(final.diagnostics['source_pcm_sha256'] == numeric.diagnostics['pcm_sha256'],
+            'sampler-to-delivery numerical PCM provenance mismatch')
+    if cancelled is not None and cancelled():
+        raise ClockCancelled('sampler delivery cancelled before publication')
+    return SamplerDeliveryResult(
+        audio=final.audio, policy=final.policy,
+        diagnostics={
+            'method': 'nyq.local-physical-sampler-to-delivery.v1',
+            'source_asset_sha256': source.asset.sha256,
+            'sonic_sha256': sonic.sonic_sha256,
+            'clock_sha256': sonic.clock.sha256,
+            'sampler_render_sha256': numeric.render_sha256,
+            'event_count': len(plan.events),
+            'numerical_rate_hz': numerical_rate_hz,
+            'delivery_rate_hz': delivery_rate_hz,
+            'sampler': numeric.diagnostics,
+            'delivery': final.diagnostics,
+            'output_pcm_sha256': final.diagnostics['output_pcm_sha256'],
+            'analytic_oracle_verified': False,
+            'convergence_qualified': False,
+            'product_export_verified': False,
+        })

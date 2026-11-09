@@ -395,3 +395,31 @@ further tests cover uniform-limit correspondence, deliberate 6→2 kHz
 capture alias, stereo region/checkpoint identity, exact dry bypass, kernel
 budget and strict irregular-clock refusal of the uniform method.
 No owner listening, final product export or #252 dependency acceptance is claimed.
+
+
+## Atomic local physical-time sampler and final delivery PCM
+
+The named opt-in helper render_sampler_to_delivery in nyquismic_delivery.py
+now composes the existing physical-event sampler and the actual final polyphase
+FIR conversion into one unpublished-until-success local PCM result. The returned
+immutable PCM is accompanied by source, sonic, clock, physical-event count,
+sampler render, exact admitted numerical PCM and final PCM hashes. It does not
+claim an independently verified analytic oracle, a convergence certificate,
+ordinary Compose, saved graph, product WAV export or human audition.
+
+This deliberately requires the delivery Hz to equal the original source Hz,
+because the accepted SamplerPlan render identity binds that rate. The numerical
+grid must exactly cover the source duration in an integer number of samples,
+and both numerical and delivered buffers must fit the resource budget; unsupported
+rate/extent pairs fail before execution. The order is named source prefilter
+(if selected), fractional-time capture, sonic reconstruction and ONLY THEN final
+delivery anti-aliasing. A 6 kHz source through an 8 kHz virtual clock delivers
+the intentional 2 kHz alias at both 192 and 384 kHz numerical evaluation;
+choosing the guarded static source FIR attenuates it without changing the clock.
+Real stereo, empty signal, hash custody, cancellation and strict failure tests:
+
+    python -m unittest discover -s tests/dsp -p 'test_nyquismic_delivery.py' -v
+
+The converter remains one-shot with cancellation before/after the SciPy FIR;
+this is local DSP evidence, not a production/export admission or a new
+default sound.

@@ -222,3 +222,76 @@ class DeliveryConversionTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class SamplerDeliveryBridgeTests(unittest.TestCase):
+    """Real sampled/converted PCM; not product WAV or Compose integration."""
+
+    def test_virtual_alias_survives_actual_final_pcm_at_two_evaluation_rates(self):
+        from dataclasses import replace
+        from zaaggenz_contracts.nyquismic import (
+            ClockSpec, SonicSpec, VirtualRate, GUARDED_CLEAN_PREFILTER)
+        from zaaggenz_dsp.nyquismic import FrozenInput
+        from zaaggenz_dsp.nyquismic_delivery import render_sampler_to_delivery
+
+        t = np.arange(4800, dtype=np.float64) / 48000
+        src = FrozenInput.from_pcm(
+            np.sin(2 * np.pi * 6000 * t).astype('<f4'), 48000)
+        dirty = SonicSpec(clock=ClockSpec(rate=VirtualRate('8000/1')),
+                          prefilter='off_v1', reconstruction='hold_v1')
+        clean = replace(dirty, prefilter=GUARDED_CLEAN_PREFILTER)
+        amplitudes = []
+        for rate in (192000, 384000):
+            a = render_sampler_to_delivery(src, dirty, numerical_rate_hz=rate)
+            b = render_sampler_to_delivery(src, clean, numerical_rate_hz=rate)
+            self.assertEqual(a.audio.shape, (4800,))
+            self.assertFalse(a.audio.flags.writeable)
+            self.assertEqual(a.diagnostics['event_count'], 800)
+            self.assertEqual(a.diagnostics['clock_sha256'],
+                             b.diagnostics['clock_sha256'])
+            for out in (a, b):
+                self.assertEqual(out.diagnostics['sampler']['pcm_sha256'],
+                                 out.diagnostics['delivery']['source_pcm_sha256'])
+                self.assertEqual(out.diagnostics['output_pcm_sha256'],
+                                 hashlib.sha256(np.asarray(
+                                     out.audio, dtype='<f8').tobytes()).hexdigest())
+                self.assertFalse(out.diagnostics['product_export_verified'])
+            def fold(signal):
+                interior = signal[1200:3600]
+                return 2 * abs(np.fft.rfft(interior)[100]) / len(interior)
+            self.assertGreater(fold(a.audio), .75)
+            self.assertLess(fold(b.audio), .03)
+            amplitudes.append(fold(a.audio))
+        self.assertLess(abs(amplitudes[0] - amplitudes[1]), .02)
+
+    def test_stereo_empty_alignment_budget_and_cancellation(self):
+        from zaaggenz_contracts.nyquismic import ClockSpec, SonicSpec, VirtualRate
+        from zaaggenz_dsp.nyquismic import FrozenInput
+        from zaaggenz_dsp.nyquismic_delivery import render_sampler_to_delivery
+
+        n = np.arange(96, dtype=np.float64)
+        s = np.sin(2 * np.pi * 500 * n / 48000).astype('<f4')
+        source = FrozenInput.from_pcm(np.column_stack((s, -s)), 48000)
+        spec = SonicSpec(channels=2, clock=ClockSpec(rate=VirtualRate('12000/1')))
+        actual = render_sampler_to_delivery(source, spec, numerical_rate_hz=192000)
+        self.assertEqual(actual.audio.shape, (96, 2))
+        np.testing.assert_allclose(actual.audio[:,0], -actual.audio[:,1],
+                                   rtol=0, atol=1e-13)
+        empty = FrozenInput.from_pcm(np.zeros((0, 2), dtype='<f4'), 48000)
+        self.assertEqual(render_sampler_to_delivery(
+            empty, spec, numerical_rate_hz=192000).audio.shape, (0, 2))
+        with self.assertRaises(ContractError):
+            render_sampler_to_delivery(source, spec, numerical_rate_hz=192000,
+                                       delivery_rate_hz=44100)
+        with self.assertRaises(ContractError):
+            render_sampler_to_delivery(source, spec, numerical_rate_hz=32000)
+        with self.assertRaises(ContractError):
+            render_sampler_to_delivery(source, spec, numerical_rate_hz=192000,
+                                       budget=ResourceBudget(max_frames=100))
+        unaligned = FrozenInput.from_pcm(np.zeros(95, dtype='<f4'), 44100)
+        with self.assertRaises(ContractError):
+            render_sampler_to_delivery(unaligned, SonicSpec(clock=ClockSpec(
+                rate=VirtualRate('11025/1'))), numerical_rate_hz=192000)
+        with self.assertRaises(ClockCancelled):
+            render_sampler_to_delivery(source, spec, numerical_rate_hz=192000,
+                                       cancelled=lambda: True)
