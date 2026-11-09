@@ -72,7 +72,7 @@ With just the *explicit frozen dry-input substitution*, the **same local code** 
 
 Integration and the DSP owner should preregister a **source-specific, executable criterion** that (1) requires authenticated identical source/rack, explicit numerical environment and exact no-rack/bypass/reopen identity, (2) locates the *first* divergent input, filter, tracker frame, threshold/abstention, target choice, transformed partial, routed delta or final PCM, (3) separately evaluates allowable near-threshold decisions and audible consequences, and (4) quantifies tolerance tied to the actual algorithm, *not* the observed PCM to make a failing test pass. Earlier MBR-002 inverse projection numeric budgets are **not** whole-rack PCM policy. No silent normalization or changed defaults.
 
-**Gate B HOLD:** source-exact original-head Ubuntu/Windows stage-ledger execution, reviewer source validation and DSP-owner policy adoption are pending. **Gate A EXTERNAL PENDING:** ordinary installed-wheel Windows 11 Compose startup, edit, restart/reopen and export receipts are absent; existing issue #242 operator procedure is the entry point. #243 native VST remains blocked. Integration alone admits #242, merges, or changes programme gates. This PR changes only new diagnostic tools/tests/docs; no shared implementation source or CI.
+**Gate B HOLD:** source-exact Ubuntu/Windows normal replays have executed, but common-input tracker attribution, reviewer source validation and DSP-owner criterion remain pending. **Gate A EXTERNAL PENDING:** ordinary installed-wheel Windows 11 Compose startup, edit, restart/reopen and export receipts are absent; existing issue #242 operator procedure is the entry point. #243 native VST remains blocked. Integration alone admits #242, merges, or changes programme gates. This PR changes only new diagnostic tools/tests/docs; no shared implementation source or CI.
 
 
 ## Actual numerical tracker subledger (same commands, no counterfactual)
@@ -100,3 +100,23 @@ This ledger is a source-local diagnostic, not an adopted portability
 tolerance, DSP defect verdict, or substitute for physical Gate A. Whole-rack
 \`sosfiltfilt\` tails are noncompact. DSP owner and Integration must
 preregister an audible/algorithmic numerical criterion before Gate B.
+
+## Authenticated normal replay is distinct from common-input tracker attribution
+
+The original-source [host replay #42718441488](https://github.com/techrote/zaaggenz/actions/runs/42718441488) exercised the first real subledger on both hosts. Unlike preceding [#42713857672](https://github.com/techrote/zaaggenz/actions/runs/42713857672), **both normal replays now match their own original exported PCM exactly**, 57,600 float32 samples each. But the upstream freshly generated sources and resulting spectral analysis inputs no longer match across hosts: Ubuntu spectral analysis float32 SHA-256 `70bc5e82a9efc06e474d1213883119ca11b87e8500bfbc982f7506b1614b0815`; Windows `053c34f34243e3574e00db26bf1f90e12fe150dd5246bc656e6427dd8d1b95f9`. Hence the comparison's `different-f64-analysis-input` is the **correct fail-closed boundary**. The prior common-input run had no subledger; combining its input hash with the new host subledgers would fabricate evidence. Earlier new Ubuntu source and present new Ubuntu source also differ despite nominally identical Python/NumPy/SciPy versions; determine that upstream cause separately, not by presuming an FFT defect.
+
+The later source-exact [#42722081869](https://github.com/techrote/zaaggenz/actions/runs/42722081869), diagnostics/tests head `b315e7dc839f3bcaf9f1c1cfb53bab26488d953d`, executed **seven targeted tests per host**, each green, original ZIP digest checks, ordinary saved-order-B captures, and the original-export/routed-delta exactness controls. Its host traces now additionally carry the actual **230,400-byte float32 spectral analysis input**, encoded and SHA-bound within `subledger.stage_input_f32le_b64`. The normal production render is not fed any substituted input.
+
+**Next Integration-owned, single bounded CI amendment:** reuse the existing `.github/workflows/zg242-original-spectral-trace.yml`. Obtain the original-success Windows trace from run #42722081869 artifact **13720288381**, ZIP SHA-256 **59bad277a78a55c329f6c479415daa09dc5f9e2ce4d27efbb9da98e9ff2fbe5b**, using the same authenticated GitHub artifact API mechanism already present in the workflow. Verify that ZIP digest and extract `trace-windows.json` on **both** host runners. Then add the flag `--match-stage-from trace-windows.json` to the existing ordinary `capture` command (keep the original host-specific `--artifact` and original saved timeline, do not add the dry-WAV counterfactual). The original normal render remains intact, and the optional separate probe runs the actual v1 tracker against one byte-identical, source/rack/request-checked stage PCM buffer. The compare job already emits `matched_stage` with first weighted Hann / FFT hex difference, candidate and assignment threshold changes and anchor/frequency/action decisions when both traces carry the additional probe.
+
+The specific existing command, once the verified Windows trace has been placed alongside each original host artifact:
+
+```bash
+python tools/zg242_spectral_portability_trace.py capture \
+  --artifact original-zg009.zip \
+  --document rack-order-compression-then-spectral.zgtimeline.json \
+  --match-stage-from trace-windows.json \
+  --out "trace-${TRACE_HOST}.json"
+```
+
+This **separate matched-input tracker pass is new-execution evidence**, not a substitute for normal source synthesis, authenticated original Ubuntu internal history, original dry/bypass/save-reopen identities or a DSP-owner portability rule. No arbitrary PCM tolerance, forced agreement, source-DSP fix or VST permission follows from this fixture.
