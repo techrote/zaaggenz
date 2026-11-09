@@ -44,7 +44,7 @@ def inspected_file(raw: str, *, wav: bool = False) -> dict:
 
 
 def _read_json(path: str) -> dict:
-    obj = json.loads(Path(path).read_text(encoding="utf-8"))
+    obj = json.loads(Path(path).read_text(encoding="utf-8-sig"))
     if not isinstance(obj, dict):
         raise ValueError("expected JSON object")
     return obj
