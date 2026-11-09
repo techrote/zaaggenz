@@ -110,7 +110,7 @@ def _nearest_source_index(t: Fraction) -> int:
     return math.ceil(t - Fraction(1, 2))
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class ControlledSamplerPlan:
     """Prepared full-extent packet consumer, returned by SamplerPlan.prepare."""
     source: FrozenInput
@@ -125,6 +125,12 @@ class ControlledSamplerPlan:
     _first_frames: tuple[np.ndarray, ...]
     _origin: Fraction
     _active: bool
+
+    def __init__(self, *args, **kwargs):
+        # Dataclass freezing protects attributes only after construction.
+        # Do not let dataclasses.replace or a public constructor install
+        # captures that were never checked against the actual FrozenInput.
+        require(False, 'ControlledSamplerPlan must be constructed by prepare; unadmitted/replaced capture histories are not executable')
 
     @classmethod
     def prepare(cls, source, spec, evaluation, *, frame_count, cancelled, progress,
@@ -250,12 +256,20 @@ class ControlledSamplerPlan:
             first.append(_immutable(np.asarray(frames, dtype=np.int64)))
             captured.append(_immutable(np.asarray(values, dtype=np.float64)))
         _notify(progress, 1, cancelled)
-        result = cls(
+        # Prepare is the sole normal admission path. Every executable field
+        # comes from the verified packet, actual source and bounded capture
+        # loop above; never accept caller-supplied capture arrays here.
+        values = dict(
             source=source, spec=spec, evaluation=evaluation, identity=identity,
             packet=packet, frame_count=frame_count, events=tuple(events),
             captures=tuple(captured), _coordinates=tuple(times),
             _first_frames=tuple(first), _origin=origin, _active=active,
         )
+        require(set(values) == {field.name for field in fields(cls)},
+                'incomplete controlled sampler preparation')
+        result = object.__new__(cls)
+        for name, value in values.items():
+            object.__setattr__(result, name, value)
         _cancel(cancelled)
         return result
 
