@@ -53,3 +53,38 @@ ordinary Compose insert, generalized evaluation/delivery conversion, physical
 Windows export or accepted NYQ-004/#253 admission. NYQ-003/#266 owns sampler
 reconstruction; none of its files, shared ZG-024a ledgers, old defaults,
 factory presets, CI workflows or programme authority was modified.
+
+## Opt-in tempo-synchronised integer-octave pattern
+
+`BeatStepSource.compile_route(..., mapping='log2_ratio', depth=1.0)`
+now emits a strict octave-step `ModulationRoute` for the existing
+`nyq.exact-integer-octave-step-clock.v1` physical event compiler.
+`add_hz` remains the default and is unchanged. The original source record
+and its tempo/level/phase digest remain independent of the selected mapping;
+the compiled saved route carries the mapping, depth, ordering and sonic identity.
+
+For `log2_ratio`, **every** saved pattern level multiplied by the exact
+binary representation of the specified depth must be an integer, even if a
+short preview does not encounter that level. Otherwise compilation raises
+`UnsupportedNyquismic`; no fractional-power approximation, snapping or
+partial route is emitted. Full clock rate bounds, jitter, saved channel/group
+and phase-reset rules are still enforced by `ClockSpec` and the event
+compiler. Fractional level values are admissible when their products with
+depth are *exactly* integral (e.g. ±1/2 with depth=2.0).
+
+Independent oracle: 200 Hz base, pattern [-1,+1], half-beat steps,
+120→180 BPM at t=1/2. The resulting 100/400 Hz rate sections start at
+0, 1/4, 1/2, 2/3, 5/6 s. Integrated phase is exactly 225 cycles at 1 s;
+the half-open ledger contains 225 strictly increasing rational capture
+events, starting at 0 with the last at 99/100 s. Tempo changes only future
+steps, never the source or virtual-clock epoch.
+
+    python -m unittest discover -s tests/dsp -p 'test_nyquismic_beat_octave_pcm.py' -v
+
+This numerical source-native PCM fixture tests saved-spec replay, region
+identity, unchanged pre-tempo samples, changed post-tempo audio, the same
+event ledger across 8/16 kHz native input grids, rational crossings, zero
+depth, equivalent fractional-level patterns and explicit unsupported-mode
+refusals. It does not claim a registered production sampler adapter,
+numerical convergence, delivered WAV export or product/physical Windows
+acceptance. NYQ-003 retains exclusive ownership of sampler reconstruction.
