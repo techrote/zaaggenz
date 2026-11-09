@@ -900,7 +900,14 @@ def main():
             segment_start_existing.dispatch_event('change')
             expect(page.locator('#revision')).to_have_text(before_bad_segment)
             assert segment_start_existing.evaluate('(e)=>!e.validity.valid')
+            # Explicitly commit the restored, already-saved start before
+            # touching another numeric field. Otherwise focusing the next
+            # control can fire an implicit blur/change for this input while a
+            # different rack proposal is being submitted. That races the
+            # authoritative edit queue on slower Windows Chromium.
             segment_start_existing.fill('1200')
+            segment_start_existing.dispatch_event('change');ready()
+            expect(page.locator('#revision')).to_have_text(before_bad_segment)
             # The authored target must act on real lowmid components, not
             # merely pass source/schedule serialization. Use declared bounded
             # DSP controls; any processor abstention below must fail closed.
