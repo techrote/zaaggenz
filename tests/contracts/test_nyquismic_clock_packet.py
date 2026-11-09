@@ -18,7 +18,7 @@ from zaaggenz_contracts.nyquismic_input_envelope import (
 )
 from zaaggenz_contracts.nyquismic_clock_packet import (
     AuthenticatedRouteReceiptV1, ControlledSamplerClockV1,
-    compile_controlled_sampler_clock_v1,
+    compile_controlled_sampler_clock_v1, event_fraction, event_text,
 )
 from zaaggenz_dsp.nyquismic import FrozenInput
 from zaaggenz_dsp.nyquismic_controlled_audio_proof import render_controlled_audio_proof
@@ -136,6 +136,22 @@ class PacketTests(unittest.TestCase):
             replace(packet, event_ledger_sha256=ONE)
         with self.assertRaises(ContractError):
             replace(packet, live_graph_authorized=True)
+        # Rehashing a truncated event ledger must not forge complete membership.
+        from zaaggenz_contracts.nyquismic_clock_packet import _ledger_sha256
+        shortened = replace(packet.channels[0],
+                            events=packet.channels[0].events[:-1])
+        forged_channels = (shortened,)
+        forged = replace(packet, channels=forged_channels,
+                         event_ledger_sha256=_ledger_sha256(forged_channels))
+        with self.assertRaises(ContractError):
+            forged.require_claims(
+                spec, full_end_s='1/1',
+                input_asset_sha256=frozen_fixture().asset.sha256,
+                source_revision_sha256=ONE, graph_revision_sha256=THREE)
+        self.assertEqual(event_fraction(event_text(Fraction(123456789, 2**64))),
+                         Fraction(123456789, 2**64))
+        with self.assertRaises(ContractError):
+            event_fraction('h:02/4')
 
     def test_feature_must_have_snapshot_ancestry_and_full_support(self):
         spec = spec_for_six()

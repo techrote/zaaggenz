@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from fractions import Fraction
+import re
 
 from .model import digest
 from .nyquismic import (
@@ -25,6 +26,43 @@ RECEIPT_VERSION = 'nyq.control-route-receipt.v1'
 EVENT_VERSION = 'nyq.controlled-event.v1'
 CHANNEL_VERSION = 'nyq.controlled-channel.v1'
 LEDGER_METHOD = 'nyq.controlled-physical-event-ledger.v1'
+MAX_EVENT_BITS = 32768
+
+
+def event_fraction(value: str) -> Fraction:
+    """Strict decoder for bounded physical-event fractions including big roots.
+
+    Saved controls use intentionally small decimal p/q caps. Exact rational
+    jitter crossings can exceed those caps. The h:NUM/DEN hex encoding stays
+    canonical and bit-bounded, never a binary64 approximation.
+    """
+    require(type(value) is str, 'controlled event fraction must be text')
+    if value.startswith('h:'):
+        match = re.fullmatch(r'h:(0|[1-9a-f][0-9a-f]*)/([1-9a-f][0-9a-f]*)', value)
+        require(match is not None and len(match.group(1)) <= MAX_EVENT_BITS // 4
+                and len(match.group(2)) <= MAX_EVENT_BITS // 4,
+                'controlled event hex fraction encoding/budget')
+        n, d = int(match.group(1), 16), int(match.group(2), 16)
+        require(n.bit_length() <= MAX_EVENT_BITS and d.bit_length() <= MAX_EVENT_BITS,
+                'controlled event hex fraction bit budget')
+        fraction = Fraction(n, d)
+        require(fraction.numerator == n and fraction.denominator == d,
+                'controlled event hex fraction must be reduced')
+        return fraction
+    return rational_value(value, 'controlled event decimal fraction', 0, MAX_TIME_S)
+
+
+def event_text(value: Fraction) -> str:
+    require(type(value) is Fraction and 0 <= value <= MAX_TIME_S,
+            'controlled event fraction range')
+    if (value.numerator <= 9_999_999_999_999 and
+            value.denominator <= 999_999_999):
+        return qtext(value)
+    require(value.numerator.bit_length() <= MAX_EVENT_BITS and
+            value.denominator.bit_length() <= MAX_EVENT_BITS,
+            'controlled event fraction bit budget')
+    return f'h:{value.numerator:x}/{value.denominator:x}'
+
 
 
 @dataclass(frozen=True)
@@ -93,8 +131,13 @@ class ControlledClockEventV1(_Record):
         integer(self.epoch, 'controlled event epoch', 0, MAX_RESETS)
         integer(self.crossing, 'controlled event crossing', 0,
                 int(MAX_RATE_HZ) * MAX_TIME_S + 1)
-        normalized(self, 'coordinate_s', 0, MAX_TIME_S)
-        normalized(self, 'coordinate_error_bound_s', 0, Fraction(1, 10**18))
+        stamp = event_fraction(self.coordinate_s)
+        error = event_fraction(self.coordinate_error_bound_s)
+        require(stamp <= MAX_TIME_S and error <= Fraction(1, 10**18),
+                'controlled event timestamp/uncertainty bounds')
+        require(event_text(stamp) == self.coordinate_s and
+                event_text(error) == self.coordinate_error_bound_s,
+                'controlled event fraction must be canonical')
 
 
 @dataclass(frozen=True)
@@ -196,8 +239,8 @@ class ControlledSamplerClockV1(_Record):
             previous_crossing = -1
             for i, event in enumerate(channel.events):
                 require(event.index == i, 'controlled event index gap/reordering')
-                t = Fraction(event.coordinate_s)
-                error = Fraction(event.coordinate_error_bound_s)
+                t = event_fraction(event.coordinate_s)
+                error = event_fraction(event.coordinate_error_bound_s)
                 require(t >= error and t + error < end,
                         'controlled event uncertainty escapes half-open extent')
                 if previous is not None:
@@ -245,6 +288,21 @@ class ControlledSamplerClockV1(_Record):
         require(tuple((r.route_id, r.route_sha256) for r in self.route_receipts) ==
                 tuple((r.id, r.sha256) for r in sonic.clock.routes),
                 'controlled packet route mismatch')
+        # A self-consistent rehashed packet can still omit or forge events.
+        # Recompute physical crossings from the separately frozen spec.
+        # The consuming sampler must additionally bind actual PCM and graph.
+        for channel in self.channels:
+            expected = compile_step_clock_events(
+                sonic, self.full_end_s, channel=channel.channel,
+                budget=ResourceBudget(max_events=self.budget_max_events))
+            require(tuple((
+                e.index, e.epoch, e.crossing, event_text(e.coordinate_s),
+                event_text(e.coordinate_error_bound_s),
+            ) for e in expected) == tuple((
+                e.index, e.epoch, e.crossing, e.coordinate_s,
+                e.coordinate_error_bound_s,
+            ) for e in channel.events),
+                'controlled packet event membership/uncertainty differs from source clock')
 
 
 def compile_controlled_sampler_clock_v1(
@@ -327,8 +385,8 @@ def compile_controlled_sampler_clock_v1(
             channel=channel, seed_identity_sha256=seed,
             events=tuple(ControlledClockEventV1(
                 index=e.index, epoch=e.epoch, crossing=e.crossing,
-                coordinate_s=qtext(e.coordinate_s),
-                coordinate_error_bound_s=qtext(e.coordinate_error_bound_s),
+                coordinate_s=event_text(e.coordinate_s),
+                coordinate_error_bound_s=event_text(e.coordinate_error_bound_s),
             ) for e in events),
         ))
     if cancelled is not None and cancelled():
