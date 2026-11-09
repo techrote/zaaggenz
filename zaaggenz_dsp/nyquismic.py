@@ -406,6 +406,13 @@ class SamplerPlan:
                     'local-time Shepard Hann reconstruction exceeds admitted kernel support')
         if spec.prefilter in STATIC_FIR_PREFILTER_POLICIES:
             require(not spec.clock.points_hz, 'static FIR prefilter rejects modulated virtual rate')
+            if spec.prefilter == GUARDED_CLEAN_PREFILTER:
+                # A phase reset breaks the uniform capture lattice even if the
+                # configured Hz is constant. Keep the clean *comparison* strict;
+                # dirty capture and static-cutoff artistic FIRs may deliberately
+                # operate across a discontinuous clock.
+                require(not spec.clock.resets,
+                        'guarded clean FIR requires an uninterrupted uniform virtual clock')
             require(spec.clock.rate.hz < source.sample_rate_hz,
                     'static FIR prefilter requires virtual rate below source rate')
             taps = 129 if spec.prefilter == GUARDED_CLEAN_PREFILTER else 33

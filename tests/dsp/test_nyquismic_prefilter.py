@@ -291,5 +291,36 @@ class StaticFIRPrefilterTests(unittest.TestCase):
 
 
 
+    def test_guarded_clean_refuses_phase_reset_but_dirty_sampler_executes_it(self):
+        # An 8 kHz saved rate with a nonzero-phase reset is not an
+        # uninterrupted uniform event lattice. Exercise actual numeric PCM.
+        from zaaggenz_contracts.nyquismic import (
+            GUARDED_CLEAN_PREFILTER, Reset,
+        )
+        t = np.arange(4800, dtype=np.float64) / 48000
+        source = FrozenInput.from_pcm(
+            np.sin(2 * np.pi * 6000 * t).astype(np.float32), 48000)
+        reset_clock = ClockSpec(rate=VirtualRate('8000/1'),
+                                resets=(Reset('1/200', '1/2'),))
+        original_clock = ClockSpec(rate=VirtualRate('8000/1'))
+        dirty = SonicSpec(clock=reset_clock, prefilter='off_v1')
+        unreset = SonicSpec(clock=original_clock, prefilter='off_v1')
+        dirty_plan = SamplerPlan.prepare(
+            source, dirty, sampler_evaluation(48000))
+        uniform_plan = SamplerPlan.prepare(
+            source, unreset, sampler_evaluation(48000))
+        self.assertNotEqual(dirty_plan._coordinates, uniform_plan._coordinates)
+        self.assertGreater(float(np.max(np.abs(
+            dirty_plan.render().audio - uniform_plan.render().audio))), .01)
+        # Withholding a clean claim must not disable deliberate dirty resets.
+        with self.assertRaisesRegex(
+                ContractError, 'uninterrupted uniform virtual clock'):
+            SamplerPlan.prepare(
+                source, SonicSpec(clock=reset_clock,
+                                  prefilter=GUARDED_CLEAN_PREFILTER),
+                sampler_evaluation(48000))
+        self.assertEqual(SonicSpec().prefilter, 'off_v1')
+
+
 if __name__ == '__main__':
     unittest.main()

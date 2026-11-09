@@ -231,7 +231,13 @@ policy. It admits **static-only** virtual rates from `source_rate/8` through
 `source_rate/2`, with at least 129 available filter taps, and rejects
 modulated rate points, out-of-range source/clock ratios and insufficient
 budgets before preparing captures. Dynamic/irregular clean sampling and
-measured convergence still belong to NYQ-003.
+measured convergence still belong to NYQ-003. A phase reset is **not**
+an uninterrupted uniform lattice even if the base Hz remains unchanged.
+The guarded-clean comparison now refuses reset-bearing clocks before source
+filtering; the unfiltered dirty sampler retains its physical reset events,
+and ordinary static-cutoff artistic FIR choices retain their previous
+reset behavior. A 48 kHz, 6 kHz tone with an 8 kHz virtual rate and a
+half-phase reset at 5 ms numerically exercises this boundary.
 
 The exact symmetric kernel has 64 source-frame lookbehind/lookahead,
 zero phase, and explicit `zero_pad` or `edge_hold` padding at asset
