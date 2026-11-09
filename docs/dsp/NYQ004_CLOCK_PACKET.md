@@ -18,8 +18,17 @@ is compiled once in **physical seconds**, not in evaluation-frame indices.
 Strict half-open event geometry, certified enclosure, minimum spacing,
 per-channel and combined event budgets, cancellation and packet digest
 validation are mandatory. The ledger SHA is independent of any numerical
-evaluation rate. `require_claims` compares consumer-side source/spec/revision
-*claims*, not the live session.
+evaluation rate. The per-channel `seed_identity_sha256` is a *packet context
+receipt* derived from the saved root seed, stream, full clock SHA, instance or
+clock-group scope, ungrouped band and linked/independent channel. The producer
+and `require_claims` derive it using the same deterministic function, so an
+otherwise valid/rehashed packet with forged mono or stereo seed receipts
+refuses. It is **not** the actual counter-addressed jitter draw namespace:
+accepted `clock_cell_value` uses root seed/stream, instance-or-group, physical
+cell index and effective channel, without whole-clock SHA or band. Changing
+this receipt validation does not change any jitter draws, event positions or
+the packet v1 encoding. `require_claims` compares consumer-side
+source/spec/revision *claims*, not the live session.
 
 Each compiled route needs an `AuthenticatedRouteReceiptV1` with exact
 compiled route SHA and saved source SHA/method. For source-derived features,

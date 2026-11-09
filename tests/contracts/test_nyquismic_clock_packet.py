@@ -211,6 +211,71 @@ class PacketTests(unittest.TestCase):
             replace(independent_packet, channels=tuple(reversed(
                 independent_packet.channels)))
 
+    def test_seed_receipt_tamper_refuses_mono_linked_and_independent(self):
+        """Rehashed/unchanged physical ledgers cannot launder forged seeds."""
+        source = frozen_fixture()
+        mono = spec_for_six()
+        original = packet_for(mono, asset=source)
+        forged_seed = 'f' * 64
+        self.assertNotEqual(original.channels[0].seed_identity_sha256,
+                            forged_seed)
+        mono_forged = replace(original, channels=(replace(
+            original.channels[0], seed_identity_sha256=forged_seed),))
+        # A ledger hash covering only physical event coordinates still matches.
+        self.assertEqual(mono_forged.event_ledger_sha256,
+                         original.event_ledger_sha256)
+        with self.assertRaisesRegex(ContractError, 'seed receipt'):
+            mono_forged.require_claims(
+                mono, full_end_s='1/1',
+                input_asset_sha256=source.asset.sha256,
+                source_revision_sha256=ONE, graph_revision_sha256=THREE)
+
+        jitter = JitterSpec(
+            model='uniform_frequency_cells_v1', amount=0.1,
+            cell_s='1/8', seed='71', stream='packet')
+        linked = spec_for_six(2, jitter=jitter)
+        linked_source = frozen_fixture(2)
+        linked_packet = packet_for(linked, asset=linked_source)
+        self.assertEqual(linked_packet.channels[0].seed_identity_sha256,
+                         linked_packet.channels[1].seed_identity_sha256)
+        self.assertNotEqual(linked_packet.channels[0].seed_identity_sha256,
+                            forged_seed)
+        # Forge BOTH linked seeds equally: structural stereo equality passes.
+        linked_forged = replace(linked_packet, channels=tuple(
+            replace(c, seed_identity_sha256=forged_seed)
+            for c in linked_packet.channels))
+        self.assertEqual(linked_forged.event_ledger_sha256,
+                         linked_packet.event_ledger_sha256)
+        with self.assertRaisesRegex(ContractError, 'seed receipt'):
+            linked_forged.require_claims(
+                linked, full_end_s='1/1',
+                input_asset_sha256=linked_source.asset.sha256,
+                source_revision_sha256=ONE, graph_revision_sha256=THREE)
+        # Untampered packet retains successful deterministic admission.
+        linked_packet.require_claims(
+            linked, full_end_s='1/1',
+            input_asset_sha256=linked_source.asset.sha256,
+            source_revision_sha256=ONE, graph_revision_sha256=THREE)
+
+        independent = replace(linked, stereo_link='independent')
+        independent_packet = packet_for(independent, asset=linked_source)
+        self.assertNotEqual(independent_packet.channels[0].seed_identity_sha256,
+                            independent_packet.channels[1].seed_identity_sha256)
+        independent_packet.require_claims(
+            independent, full_end_s='1/1',
+            input_asset_sha256=linked_source.asset.sha256,
+            source_revision_sha256=ONE, graph_revision_sha256=THREE)
+        # Swapping two valid-but-foreign per-channel seed receipts is refused.
+        a, b = independent_packet.channels
+        swapped = replace(independent_packet, channels=(
+            replace(a, seed_identity_sha256=b.seed_identity_sha256),
+            replace(b, seed_identity_sha256=a.seed_identity_sha256)))
+        with self.assertRaisesRegex(ContractError, 'seed receipt'):
+            swapped.require_claims(
+                independent, full_end_s='1/1',
+                input_asset_sha256=linked_source.asset.sha256,
+                source_revision_sha256=ONE, graph_revision_sha256=THREE)
+
     def test_budget_cancellation_and_legacy_absence(self):
         spec = spec_for_six()
         with self.assertRaises(ContractError):
