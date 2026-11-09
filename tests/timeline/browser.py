@@ -522,6 +522,38 @@ def main():
             # The requested mode is a specifically named, accessible select;
             # do not infer identity from a generic select ordinal or from the
             # separate selection_mode policy field.
+
+            # A second manual comb is created and edited from this same
+            # ordinary Compose session; it is not an imported JSON-only stub.
+            new_teeth=chord_panel.get_by_label(
+                'New Chordness template teeth (Hz, comma-separated)')
+            new_teeth.fill('110, 110')
+            chord_panel.get_by_role(
+                'button',name='Add Chordness template (unselected)').click()
+            assert new_teeth.evaluate('(e)=>e.validity.customError')
+            new_teeth.fill('150, 300, 450')
+            chord_panel.get_by_label('New Chordness template label').fill('Second comb')
+            chord_panel.get_by_role(
+                'button',name='Add Chordness template (unselected)').click();ready()
+            multi=saved('rack-chordness-two-templates.zgtimeline.json')
+            params=json.loads(multi['project']['revisions'][-1]['recipe_json'])[
+                'rack']['bands'][2]['inserts'][0]['params']
+            assert len(params['templates'])==2
+            assert params['templates'][1]['id']=='user.manual.2'
+            assert params['templates'][1]['teeth_hz']==[150.,300.,450.]
+            assert params['selected_template_ids']==['user.manual']
+            # Changing this template is an intentional saved sonic edit.
+            edited_teeth=chord_panel.get_by_label(
+                'Template user.manual.2 teeth (Hz, comma-separated)')
+            edited_teeth.fill('165, 330, 495')
+            edited_teeth.press('Tab');ready()
+            changed=saved('rack-chordness-edited-template.zgtimeline.json')
+            params=json.loads(changed['project']['revisions'][-1]['recipe_json'])[
+                'rack']['bands'][2]['inserts'][0]['params']
+            assert params['templates'][1]['teeth_hz']==[165.,330.,495.]
+            cap=chord_panel.get_by_label('max selected templates',exact=False)
+            cap.fill('2');cap.press('Tab');ready()
+            chord_panel.get_by_label('Select template Second comb (user.manual.2)').check();ready()
             chord_panel.get_by_role('combobox',name='mode',exact=True).select_option('reweight');ready()
             activated=saved('rack-chordness-active.zgtimeline.json')
             activated_rack=json.loads(activated['project']['revisions'][-1]['recipe_json'])['rack']

@@ -281,3 +281,8 @@ different source ancestry clears the unsaved form selection instead of
 carrying it into another project. The ancestry key is presentation-only; it
 is neither a project format change nor a source/authorization token. Saved
 preset identity, export and audible rack processing are unchanged.
+
+
+### MBR-003 Compose Chordness template editing
+
+Ordinary Compose can add a manually specified 1–128-tooth strictly increasing positive-Hz comb to an installed Chordness stage, and can explicitly edit its label, tooth capacity (1–16) and physical frequencies. New combs get stable `user.manual.N` IDs and are **unselected** by default; use the existing maximum-selected and per-template selection controls before activating them. All commands require the exact displayed prior template snapshot, validate the entire source-bound rack and obey the sample-rate Nyquist limit; stale double-submissions and invalid drafts refuse without changing the current project. Only templates whose provenance records `method: manual` and `origin: compose-mbr003` can be edited or removed. External/imported templates remain readable and untouched. Removing the final template or the final active manual selection is refused. Changes survive project and named rack-preset save/reopen, and use the existing full-context numerical render/export path; this is not a plug-in host or a new source-tuning policy.

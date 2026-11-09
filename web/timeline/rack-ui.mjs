@@ -142,6 +142,7 @@ export function renderRack(host,state,apply,tools={}){
       segmentCount:Number(panel.dataset.segmentCount),
       voiceDegree:get('voice-degree'),voiceLabel:get('voice-label'),
       segmentStart:get('segment-start'),segmentLabel:get('segment-label'),
+      combTeeth:get('comb-teeth'),combLabel:get('comb-label'),
     });
   }
   host.replaceChildren();
@@ -429,10 +430,80 @@ export function renderRack(host,state,apply,tools={}){
         }else{
           const selector=group(details);
           selector.append(make('p','Manual template selection is bounded by the saved max selected templates. Changing selection never rewrites comb teeth.'));
+          // Selection and editing share one authoritative inventory below.
+
+          const inventory=group(details,'rack-chordness-inventory');
+          inventory.append(make('h5','Saved Chordness comb templates · '+request.templates.length+' / 32'));
+          inventory.append(make('p','Only user-authored combs can be edited. Imported templates and source metadata remain unchanged. Newly added combs are initially unselected; use max selected templates and selection controls to activate them.'));
           for(const template of request.templates){
-            flag(selector,'Select template '+template.label+' ('+template.id+')',
+            const templatePanel=group(inventory,'rack-chordness-template');
+            templatePanel.setAttribute('role','group');
+            templatePanel.setAttribute('aria-label','Comb template '+template.id);
+            templatePanel.append(make('h5',template.label+' · '+template.id));
+            flag(templatePanel,'Select template '+template.label+' ('+template.id+')',
               request.selected_template_ids.includes(template.id),
               {kind:'select_spectral_template',band:band.id,id:stage.id,template_id:template.id},apply);
+            const owned=template.source?.method==='manual'&&
+              template.source?.origin==='compose-mbr003';
+            if(!owned){
+              templatePanel.append(make('p','Preserved imported template · read-only'));
+              continue;
+            }
+            const labelField=make('label','Template '+template.id+' label');
+            const labelInput=make('input');labelInput.value=template.label;labelInput.maxLength=128;
+            labelInput.dataset.rackControlKey=controlKey({kind:'edit_chordness_template',
+              id:stage.id,template_id:template.id,field:'label'});
+            labelInput.addEventListener('change',()=>apply({
+              kind:'edit_chordness_template',band:band.id,id:stage.id,
+              template_id:template.id,expected_template:template,
+              field:'label',value:labelInput.value}));
+            labelField.append(labelInput);templatePanel.append(labelField);
+            const hzField=make('label','Template '+template.id+' teeth (Hz, comma-separated)');
+            const hzInput=make('input');hzInput.value=template.teeth_hz.join(', ');
+            hzInput.dataset.rackControlKey=controlKey({kind:'edit_chordness_template',
+              id:stage.id,template_id:template.id,field:'teeth_hz'});
+            hzInput.addEventListener('input',()=>hzInput.setCustomValidity(''));
+            hzInput.addEventListener('change',()=>{
+              const teeth=requiredCombTeeth(hzInput,rack.sample_rate_hz/2);
+              if(teeth!==null)apply({kind:'edit_chordness_template',band:band.id,
+                id:stage.id,template_id:template.id,expected_template:template,
+                field:'teeth_hz',value:teeth});
+            });
+            hzField.append(hzInput);templatePanel.append(hzField);
+            number(templatePanel,'Template '+template.id+' tooth capacity',template.tooth_capacity,
+              {type:'integer',minimum:1,maximum:16,unit:'partials/tooth'},
+              {kind:'edit_chordness_template',band:band.id,id:stage.id,
+               template_id:template.id,expected_template:template,field:'tooth_capacity'},apply);
+            button(templatePanel,'Remove template '+template.id,{
+              kind:'remove_chordness_template',band:band.id,id:stage.id,
+              template_id:template.id,expected_template:template},apply,
+              request.templates.length===1);
+          }
+          if(request.templates.length<32){
+            const creation=group(details,'rack-chordness-template-create');
+            creation.append(make('h5','Add a separate manual comb'));
+            const draft=spectralDrafts.get(stage.id);
+            const hzLabel=make('label','New Chordness template teeth (Hz, comma-separated)');
+            const hz=make('input');hz.type='text';hz.placeholder='150, 300, 450';
+            hz.dataset.rackDraft='comb-teeth';
+            hz.dataset.rackControlKey=controlKey({kind:'chord_draft',id:stage.id,field:'comb-teeth'});
+            hz.value=draft?.combTeeth??'';
+            hz.addEventListener('input',()=>hz.setCustomValidity(''));
+            hzLabel.append(hz);creation.append(hzLabel);
+            const titleLabel=make('label','New Chordness template label');
+            const titleInput=make('input');titleInput.maxLength=128;
+            titleInput.dataset.rackDraft='comb-label';
+            titleInput.dataset.rackControlKey=controlKey({kind:'chord_draft',id:stage.id,field:'comb-label'});
+            titleInput.value=draft?.combLabel??'Second comb';
+            titleLabel.append(titleInput);creation.append(titleLabel);
+            const add=make('button','Add Chordness template (unselected)');add.type='button';
+            add.addEventListener('click',()=>{
+              const teeth=requiredCombTeeth(hz,rack.sample_rate_hz/2);
+              if(teeth===null)return;
+              apply({kind:'add_chordness_template',band:band.id,id:stage.id,
+                teeth_hz:teeth,label:titleInput.value,expected_templates:request.templates});
+            });
+            creation.append(add);
           }
           const coeff=group(details);
           coeff.append(make('h5','Chordness objective weights'));

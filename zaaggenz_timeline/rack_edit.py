@@ -291,6 +291,87 @@ def _update(project, action):
                 segment["voices"][voice_index]["degree"] = action["value"]
         # Never modify source tuning, unrelated segments, or export policy.
         # The RackRecipe below validates the complete candidate atomically.
+
+    elif kind in ("add_chordness_template", "edit_chordness_template",
+                  "remove_chordness_template"):
+        if kind == "add_chordness_template":
+            exact(action, {"kind", "band", "id", "expected_templates",
+                           "teeth_hz", "label"}, "add Chordness template")
+        elif kind == "edit_chordness_template":
+            exact(action, {"kind", "band", "id", "template_id",
+                           "expected_template", "field", "value"},
+                  "edit Chordness template")
+        else:
+            exact(action, {"kind", "band", "id", "template_id",
+                           "expected_template"}, "remove Chordness template")
+        stage = _insert(_band(rack, action["band"]), action["id"])
+        if (stage["type_id"] != SPECTRAL or type(stage["params"]) is not dict or
+                stage["params"].get("kind") != "ChordnessRequest"):
+            raise TimelineError("template editing requires an installed Chordness request")
+        params = stage["params"]
+        templates = params["templates"]
+        if kind == "add_chordness_template":
+            if (type(action["expected_templates"]) is not list or
+                    action["expected_templates"] != templates):
+                raise TimelineError("Chordness inventory changed; refresh before adding")
+            if len(templates) >= 32:
+                raise TimelineError("Chordness inventory already has 32 templates")
+            used = {item["id"] for item in templates}
+            serial = 2
+            while "user.manual." + str(serial) in used:
+                serial += 1
+            teeth = action["teeth_hz"]
+            if (type(teeth) is not list or not 1 <= len(teeth) <= 128 or
+                    any(type(value) not in (int, float) for value in teeth)):
+                raise TimelineError("manual template needs 1..128 numeric Hz teeth")
+            template = CombTemplate(
+                "user.manual." + str(serial), tuple(teeth), 1, action["label"],
+                {"method": "manual", "origin": "compose-mbr003"})
+            templates.append(template.to_dict())
+            # Leave mode, original selection and max_selected_templates intact.
+            # The explicit existing controls govern activation of the new comb.
+        else:
+            index = next((i for i, item in enumerate(templates)
+                          if item["id"] == action["template_id"]), None)
+            if index is None:
+                raise TimelineError("unknown Chordness template")
+            old = templates[index]
+            if (type(action["expected_template"]) is not dict or
+                    action["expected_template"] != old):
+                raise TimelineError("Chordness template changed; refresh before editing")
+            # External/imported templates retain their original provenance and
+            # remain read-only. Only explicitly user-authored combs are mutable.
+            if old["source"] != {"method": "manual", "origin": "compose-mbr003"}:
+                raise TimelineError("only Compose-authored combs can be edited or removed")
+            if kind == "edit_chordness_template":
+                field = action["field"]
+                if field not in ("label", "teeth_hz", "tooth_capacity"):
+                    raise TimelineError("unsupported Chordness template field")
+                updated = {**old, field: action["value"]}
+                teeth = updated["teeth_hz"]
+                if (type(teeth) is not list or not 1 <= len(teeth) <= 128 or
+                        any(type(value) not in (int, float) for value in teeth)):
+                    raise TimelineError("manual template needs 1..128 numeric Hz teeth")
+                templates[index] = CombTemplate(
+                    old["id"], tuple(teeth), updated["tooth_capacity"],
+                    updated["label"], old["source"]).to_dict()
+            else:
+                if len(templates) <= 1:
+                    raise TimelineError("cannot remove the final Chordness template")
+                remaining_selected = [key for key in params["selected_template_ids"]
+                                      if key != old["id"]]
+                if (params["mode"] != "off" and
+                        params["selection_mode"] == "manual" and
+                        not remaining_selected):
+                    raise TimelineError("select another comb or turn Chordness off before removing")
+                templates.pop(index)
+                params["selected_template_ids"] = remaining_selected
+                # A deleted template may reduce the stored capacity, never
+                # silently change other selections, mode or source provenance.
+                params["max_selected_templates"] = min(
+                    params["max_selected_templates"], len(templates))
+        # RackRecipe independently checks Nyquist, counts, actual selected
+        # IDs, modes and the entire source-bound project before adoption.
     elif kind == "select_spectral_template":
         exact(action, {"kind", "band", "id", "template_id", "value"},
               "select spectral template")
@@ -413,7 +494,9 @@ def edit_rack(document, action):
         # Project proves retained no-rack ancestry and exact source binding.
         project.save_rack_preset(record["id"], record["name"], imported)
     elif kind in ("set", "add", "add_chordness", "move", "remove", "reset_insert_params",
-                  "select_spectral_template", "add_spectral_voice",
+                  "select_spectral_template", "add_chordness_template",
+                  "edit_chordness_template", "remove_chordness_template",
+                  "add_spectral_voice",
                   "edit_spectral_voice", "remove_spectral_voice",
                   "add_spectral_segment", "edit_spectral_segment",
                   "remove_spectral_segment", "edit_spectral_segment_voice"):

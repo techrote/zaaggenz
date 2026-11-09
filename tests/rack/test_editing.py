@@ -596,6 +596,81 @@ class RackEditorTests(unittest.TestCase):
                 self.assertEqual(compile_recipe(recalled).to_dict(),
                                  compile_recipe(active).to_dict())
 
+
+    def test_manual_chordness_inventory_add_edit_remove_atomic_and_reopen(self):
+        dry = default_document(48000)
+        enabled = edit_rack(dry, {"kind": "enable"})
+        band = editor_state(enabled)["value"]["bands"][2]["id"]
+        active = edit_rack(enabled, {"kind": "add_chordness",
+            "band": band, "label": "First", "teeth_hz": [110., 220., 330.]})
+        stage = editor_state(active)["value"]["bands"][2]["inserts"][0]
+        sid = stage["id"]
+        baseline = deepcopy(stage["params"]["templates"])
+        add = {"kind": "add_chordness_template", "band": band, "id": sid,
+               "expected_templates": baseline, "label": "Second",
+               "teeth_hz": [150., 300., 450.]}
+        for invalid in (
+            {**add, "teeth_hz": [True, 300.]},
+            {**add, "teeth_hz": ["150", 300.]},
+            {**add, "teeth_hz": [150., 150.]},
+            {**add, "teeth_hz": [150., 25000.]},
+            {**add, "extra": 1},
+            {key: value for key, value in add.items() if key != "expected_templates"},
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                edit_rack(active, invalid)
+        added = edit_rack(active, add)
+        templates = editor_state(added)["value"]["bands"][2]["inserts"][0]["params"]["templates"]
+        self.assertEqual([row["id"] for row in templates],
+                         ["user.manual", "user.manual.2"])
+        self.assertEqual(templates[0], baseline[0])
+        self.assertEqual(templates[1]["source"],
+                         {"method": "manual", "origin": "compose-mbr003"})
+        with self.assertRaisesRegex(ValueError, "inventory changed"):
+            edit_rack(added, add)  # replayed queued Add must not duplicate
+        edit = {"kind": "edit_chordness_template", "band": band, "id": sid,
+                "template_id": "user.manual.2", "expected_template": templates[1],
+                "field": "teeth_hz", "value": [165., 330., 495.]}
+        edited = edit_rack(added, edit)
+        after = editor_state(edited)["value"]["bands"][2]["inserts"][0]["params"]
+        self.assertEqual(after["templates"][1]["teeth_hz"], [165., 330., 495.])
+        with self.assertRaisesRegex(ValueError, "template changed"):
+            edit_rack(edited, edit)
+        cap = edit_rack(edited, {"kind": "set", "scope": "spectral",
+            "id": band + "/" + sid, "field": "max_selected_templates", "value": 2})
+        both = edit_rack(cap, {"kind": "select_spectral_template", "band": band,
+            "id": sid, "template_id": "user.manual.2", "value": True})
+        live = edit_rack(both, {"kind": "set", "scope": "spectral",
+            "id": band + "/" + sid, "field": "mode", "value": "reweight"})
+        reopened = type(live).from_json(json.dumps(live.to_dict()))
+        self.assertEqual(compile_recipe(reopened).to_dict(),
+                         compile_recipe(live).to_dict())
+        saved = edit_rack(reopened, {"kind": "save_preset",
+                                   "id": "user.two-combs", "name": "Two combs"})
+        self.assertEqual(editor_state(saved)["value"]["bands"][2]["inserts"][0]
+                         ["params"]["templates"][1]["teeth_hz"], [165., 330., 495.])
+        current = editor_state(saved)["value"]["bands"][2]["inserts"][0]["params"]
+        remove = {"kind": "remove_chordness_template", "band": band, "id": sid,
+                  "template_id": "user.manual.2", "expected_template": current["templates"][1]}
+        reduced = edit_rack(saved, remove)
+        remaining = editor_state(reduced)["value"]["bands"][2]["inserts"][0]["params"]
+        self.assertEqual(len(remaining["templates"]), 1)
+        self.assertEqual(remaining["selected_template_ids"], ["user.manual"])
+        self.assertEqual(remaining["max_selected_templates"], 1)
+        self.assertEqual(compile_recipe(dry).to_dict()["source"],
+                         compile_recipe(reduced).to_dict()["source"])
+        for invalid in (
+            {"kind": "remove_chordness_template", "band": band, "id": sid,
+             "template_id": "user.manual", "expected_template": remaining["templates"][0]},
+            {"kind": "edit_chordness_template", "band": band, "id": sid,
+             "template_id": "user.manual", "expected_template": remaining["templates"][0],
+             "field": "source", "value": {"method": "forged"}},
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                edit_rack(reduced, invalid)
+        self.assertEqual(editor_state(reduced)["value"]["bands"][2]["inserts"][0]
+                         ["params"], remaining)
+
     def test_existing_chordness_request_preserves_templates_and_edits_scalars(self):
         self.act(kind="enable")
         project = Project.from_document(self.d.to_dict()["project"])
