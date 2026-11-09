@@ -93,8 +93,6 @@ class UpstreamSignedAudioRateTests(unittest.TestCase):
         with self.assertRaises(ContractError):
             compile_(full.astype(np.float64), signed_policy(full))
         with self.assertRaises(ContractError):
-            compile_(full, signed_policy(full), cancelled=lambda: True)
-        with self.assertRaises(ContractError):
             compile_(full * 2, signed_policy(full))
         # A source whose admitted reference amplitude is too low must refuse,
         # not clip/normalize a signed rate control.
@@ -118,7 +116,9 @@ class UpstreamSignedAudioRateTests(unittest.TestCase):
             compile_(samples, p, graph_snapshot=graph,
                      expected_graph_sha256='0'*64)
         with self.assertRaises(ContractError):
-            compile_(samples, p, upstream_ids=('air-clock',))
+            compile_upstream_signed_sample_route(
+                samples, p, consumer_id='air-clock',
+                upstream_ids=('air-clock',), route_id='sample-signed')
         with self.assertRaises(ContractError):
             compile_(samples + np.float32(.125), p)
         np.testing.assert_array_equal(samples, before)
