@@ -375,7 +375,26 @@ class SamplerPlan:
     def prepare(cls, source: FrozenInput, spec: SonicSpec, evaluation: EvaluationPolicy | None = None,
                 *, frame_count: int | None = None, cancelled=None, progress=None,
                 source_revision_sha256: str | None = None, context_sha256: str | None = None,
-                delivery_rate_hz: int | None = None):
+                delivery_rate_hz: int | None = None,
+                controlled_clock: 'ControlledSamplerClockV1 | None' = None,
+                graph_revision_sha256: str | None = None,
+                rack_revision_sha256: str | None = None):
+        if controlled_clock is not None:
+            # Separately leased packet producer lives in #267. Import it ONLY
+            # for an explicit opt-in request, leaving every legacy clock,
+            # checkpoint, identity and PCM byte path intact.
+            from zaaggenz_dsp.nyquismic_controlled_consumer import ControlledSamplerPlan
+            return ControlledSamplerPlan.prepare(
+                source, spec, evaluation, frame_count=frame_count,
+                cancelled=cancelled, progress=progress,
+                source_revision_sha256=source_revision_sha256,
+                context_sha256=context_sha256, delivery_rate_hz=delivery_rate_hz,
+                controlled_clock=controlled_clock,
+                graph_revision_sha256=graph_revision_sha256,
+                rack_revision_sha256=rack_revision_sha256,
+            )
+        require(graph_revision_sha256 is None and rack_revision_sha256 is None,
+                'graph/rack binding without controlled packet is unsupported')
         _check_hooks(cancelled, progress)
         _cancel(cancelled)
         require(cls is SamplerPlan, 'sampler plan subclasses are not an execution capability')
