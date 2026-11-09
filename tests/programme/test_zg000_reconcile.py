@@ -51,9 +51,11 @@ class FakeAPI:
         row = dict(id=run_id, workflow_id=42,
                    path=".github/workflows/zg000-ci-impact.yml",
                    event="pull_request", head_branch=self.ref,
+                   head_sha=sha if sha is not None else self.sha,
                    run_attempt=attempt,
-                   pull_requests=[{"number":self.pr,
-                                   "head":{"sha":sha if sha is not None else self.sha}}])
+                   # Real GitHub can update this linked PR snapshot after
+                   # the old workflow run. It is NOT historical run custody.
+                   pull_requests=[{"number":self.pr, "head":{"sha":self.sha}}])
         self.parent_runs[run_id] = row
         return row
 
@@ -791,7 +793,9 @@ class ZG000RegressionTests(unittest.TestCase):
 
     def test_66_older_different_source_parent_does_not_block_new_commit(self):
         api = FakeAPI()
-        api.put_parent(run_id=41691032000, sha=B)
+        old = api.put_parent(run_id=41691032000, sha=B)
+        self.assertEqual(A, old["pull_requests"][0]["head"]["sha"])
+        self.assertEqual(B, old["head_sha"])
         self.assertEqual("dispatched", make(api).dispatch()[0]["decision"])
         self.assertEqual(1, len(api.posts))
 

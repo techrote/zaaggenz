@@ -202,9 +202,12 @@ class Reconciler:
                        and link.get("number") == self.pr]
             if len(matches) != 1 or not isinstance(matches[0].get("head"), dict):
                 raise ReconcileError(f"{workflow}: parent PR provenance ambiguous")
-            source = matches[0]["head"].get("sha")
+            # Linked PR objects can reflect today's branch tip even on an
+            # older immutable workflow run. Use the RUN'S head_sha, never
+            # links[...].head.sha, to decide historical source identity.
+            source = run.get("head_sha")
             if not isinstance(source, str) or not SHA.fullmatch(source):
-                raise ReconcileError(f"{workflow}: invalid parent source SHA")
+                raise ReconcileError(f"{workflow}: invalid immutable parent run SHA")
             return source
 
         previous_ids: set[int] | None = None
