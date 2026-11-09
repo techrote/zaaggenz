@@ -226,6 +226,23 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(project.head_recipe.to_dict()['source']['id'],'zaag.upper-chop')
         self.assertEqual(source_preset_id(TimelineDocument(result['document'])),'zaag.upper-chop')
 
+    def test_detached_source_preset_proposal_does_not_adopt_session(self):
+        before = self.server.session.snapshot()
+        code, body = self.request('/api/timeline/preset-proposal',
+                                  {'document': fixture(), 'preset_id': 'zaag.upper-chop'})
+        self.assertEqual(code, 200)
+        result = json.loads(body)
+        self.assertEqual(result['proposal_policy'], 'detached; validate to adopt')
+        self.assertNotIn('session', result)
+        self.assertEqual(source_preset_id(TimelineDocument(result['document'])),
+                         'zaag.upper-chop')
+        self.assertEqual(self.server.session.snapshot(), before)
+        with self.assertRaises(HTTPError) as error:
+            self.request('/api/timeline/preset-proposal',
+                         {'document': fixture(), 'preset_id': 'nonexistent-source'})
+        self.assertEqual(error.exception.code, 400)
+        self.assertEqual(self.server.session.snapshot(), before)
+
     def test_cross_origin_and_dns_rebinding_hosts_rejected(self):
         for headers in ({'Origin':'https://foreign.invalid'},{'Host':'foreign.invalid'}):
             with self.assertRaises(HTTPError) as error:self.request('/api/timeline/bootstrap',headers=headers)

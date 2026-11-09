@@ -88,6 +88,13 @@ deleted through the built-in authoring control. A rack proposal is validated and
 admitted by the existing Timeline backend; the authoritative RuntimeSession
 changes only when the normal project validation accepts the resulting revision.
 All changes invalidate playback so stale PCM cannot masquerade as the new sound.
+Source-preset changes in ordinary Compose are also detached, memory-admitted
+proposals. A newer timeline or rack edit supersedes a delayed preset response:
+only the proposal still matching the browser's exact authoring epoch is
+adopted via the authoritative /validate route. The older /preset endpoint
+retains its explicit authoritative API semantics for existing callers;
+the browser uses /preset-proposal. Neither a superseded HTTP response nor
+its server-side validation can roll the single RuntimeSession back.
 
 Use **Render full phrase**, play/download the real WAV, then **Save project**
 to retain the complete revision lineage. New, named user rack presets are

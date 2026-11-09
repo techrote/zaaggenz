@@ -135,11 +135,19 @@ class Handler(webapp.Handler):
             if self.headers.get('Content-Type', '').split(';')[0] != 'application/json':
                 raise ValueError('application/json required')
             data = loads(self._read_body(limit=2_000_000))
-            if path == '/api/timeline/preset':
+            if path in ('/api/timeline/preset', '/api/timeline/preset-proposal'):
                 exact(data, {'document','preset_id'}, 'preset request')
                 if type(data['preset_id']) is not str:
                     raise ValueError('preset_id must be text')
-                result=self.server.timeline.apply_preset(data['document'],data['preset_id'])
+                # Preserve the existing authoritative API for its callers.
+                # Ordinary Compose uses the detached route and explicitly
+                # adopts only its still-current proposal through /validate.
+                if path == '/api/timeline/preset-proposal':
+                    result=self.server.timeline.propose_source_preset(
+                        data['document'],data['preset_id'])
+                else:
+                    result=self.server.timeline.apply_preset(
+                        data['document'],data['preset_id'])
                 return self._json(result)
             if path == '/api/timeline/rack-edit':
                 exact(data, {'document', 'action'}, 'rack edit request')

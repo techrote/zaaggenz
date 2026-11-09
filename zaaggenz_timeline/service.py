@@ -200,6 +200,22 @@ class TimelineService:
     def presets(self):
         return source_preset_catalogue()
 
+    def propose_source_preset(self, data, preset_id):
+        """Admit a source change without adopting a possibly stale UI response.
+
+        The browser checks its edit epoch and sends the winning document through
+        /validate. A late source-preset HTTP response must not roll back the
+        shared RuntimeSession or revoke a more recent rack/render revision.
+        """
+        document = apply_source_preset(TimelineDocument(data), preset_id)
+        recipe = compile_recipe(document)
+        estimate = self._admit_recipe(recipe)
+        return {'document': document.to_dict(), **describe(document),
+                'recipe_sha256': recipe.sha256,
+                'estimated_memory_bytes': estimate,
+                'proposal_policy': 'detached; validate to adopt',
+                'rack_editor': editor_state(document)}
+
     def apply_preset(self,data,preset_id):
         document=apply_source_preset(TimelineDocument(data),preset_id)
         recipe=compile_recipe(document)

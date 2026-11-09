@@ -464,12 +464,25 @@ function bind(){
   $('project-name').onchange=()=>mutate(()=>editor.commit(s=>s.name=$('project-name').value));
   $('source-preset').onchange=async()=>{
     const presetId=$('source-preset').value;if(!presetId||presetId==='custom')return;
-    invalidate();$('source-preset').disabled=true;status('Applying source preset…');
+    // Source selection is a detached, memory-admitted proposal. A newer
+    // Compose/rack edit must win even if this HTTP response arrives last.
+    invalidate();
+    const proposalEpoch=epoch,sourceSnapshot=editor.document;
+    $('source-preset').disabled=true;status('Preparing source preset proposal…');
     try{
-      const result=await api('preset',{document:editor.document,preset_id:presetId});
+      const result=await api('preset-proposal',{document:sourceSnapshot,preset_id:presetId});
+      if(result.proposal_policy!=='detached; validate to adopt')
+        throw Error('Source preset endpoint did not return a detached proposal.');
+      if(proposalEpoch!==epoch||JSON.stringify(editor.document)!==JSON.stringify(sourceSnapshot)){
+        status('Source preset proposal superseded by another edit; current project retained.');
+        return;
+      }
       editor.replace(result.document);selected=null;afterEdit();
-    }catch(e){status(e.message,true);validateLatest();}
-    finally{$('source-preset').disabled=false;}
+    }catch(e){
+      if(proposalEpoch===epoch&&JSON.stringify(editor.document)===JSON.stringify(sourceSnapshot)){
+        status(e.message,true);void validateLatest();
+      }
+    }finally{$('source-preset').disabled=false;}
   };
   $('set-length').onclick=()=>mutate(()=>editor.commit(s=>s.end_beat=rational($('length').value)));
   $('master').onchange=()=>mutate(()=>editor.commit(s=>s.master_gain_db=Number($('master').value)));

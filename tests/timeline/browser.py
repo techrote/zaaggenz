@@ -110,7 +110,43 @@ def main():
             dry_pcm=server.timeline.scheduler.result(dry_id).audio_bytes
             page.locator('#rack-meter-panel').evaluate('(e)=>e.open=true')
             expect(page.locator('#rack-meters')).to_contain_text('dry source path')
-            page.locator('#rack-editor').get_by_role('button',name='Enable four-band rack').click();ready()
+            # A delayed source preset proposal must never overwrite a newer
+            # four-band rack installation. It cannot silently roll the single
+            # RuntimeSession back after the rack has been validated either.
+            # The source proposal is held at the actual threaded HTTP service
+            # while the normal Chromium UI enables a real rack.
+            race_before=saved('rack-preset-race-before.zgtimeline.json')
+            entered=threading.Event();release_preset=threading.Event()
+            original_proposal=server.timeline.propose_source_preset
+            def held_source_proposal(*params):
+                entered.set()
+                if not release_preset.wait(20):
+                    raise RuntimeError('source preset proposal release timed out')
+                return original_proposal(*params)
+            with patch.object(server.timeline,'propose_source_preset',held_source_proposal):
+                try:
+                    with page.expect_response('**/api/timeline/preset-proposal') as response:
+                        page.locator('#source-preset').select_option('zaag.upper-chop')
+                        assert entered.wait(10),'source preset proposal did not reach the server'
+                        page.locator('#rack-editor').get_by_role(
+                            'button',name='Enable four-band rack').click()
+                        ready()
+                        release_preset.set()
+                    assert response.value.status==200
+                    expect(page.locator('#source-preset')).to_be_enabled(timeout=10000)
+                finally:
+                    release_preset.set()
+            ready()
+            race_after=saved('rack-preset-race-stale-rejected.zgtimeline.json')
+            assert race_after['notes']==race_before['notes']
+            assert race_after['master_gain_db']==race_before['master_gain_db']
+            race_recipe=json.loads(race_after['project']['revisions'][-1]['recipe_json'])
+            assert race_recipe['source']['id']=='locked_bloom'
+            assert len(race_recipe['rack']['bands'])==4
+            expect(page.locator('#source-preset')).to_have_value('locked_bloom')
+            assert server.timeline.session.current_identity()[1]==TimelineDocument(race_after).revision_id
+            race_job=rendered('rack-preset-race-preserved-rack')
+            assert server.timeline.scheduler.result(race_job).audio_bytes==dry_pcm
             # A server-validated redraw must not throw keyboard users back to
             # the document root or lose the focused editable rack control.
             # These are real DOM/async proposal transitions, not mock state.
