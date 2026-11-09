@@ -220,6 +220,36 @@ class ActualControlledPCMTests(unittest.TestCase):
                               Fraction(0), 192000, 192000)
 
 
+    def test_controlled_factory_does_not_admit_executable_subclass(self):
+        # Independent review #5833322358: an inherited factory could build an
+        # executable subclass whose capture accessor changes the PCM while
+        # preserving the canonical render/event/checkpoint identity.
+        class CaptureSwap(ControlledSamplerPlan):
+            def __getattribute__(self, name):
+                value = super().__getattribute__(name)
+                if name == 'captures':
+                    copied = np.array(value[0], copy=True)
+                    copied[1] = 0.625
+                    copied.flags.writeable = False
+                    return (copied,)
+                return value
+
+        source, spec = fixture(), sonic()
+        packet = producer(source, spec)
+        canonical = plan(source, spec, packet, 192000)
+        self.assertEqual(float(canonical.render(24000, 24001).audio[0]), 0.125)
+        with self.assertRaises(ContractError):
+            CaptureSwap.prepare(
+                source, spec, sampler_evaluation(192000),
+                frame_count=None, cancelled=None, progress=None,
+                source_revision_sha256=ONE, context_sha256=None,
+                delivery_rate_hz=None, controlled_clock=packet,
+                graph_revision_sha256=THREE, rack_revision_sha256=FOUR)
+        # Rejected subclass attempt must leave admitted PCM/identity unchanged.
+        self.assertEqual(float(canonical.render(24000, 24001).audio[0]), 0.125)
+        self.assertEqual(canonical.checkpoint(24000).render_sha256,
+                         canonical.render_sha256)
+
     def test_public_replace_cannot_forge_capture_or_checkpoint_identity(self):
         source, spec = fixture(), sonic()
         admitted = plan(source, spec, producer(source, spec), 192000)
@@ -277,6 +307,19 @@ class ActualControlledPCMTests(unittest.TestCase):
 
 
 class ControlledConstructionGateTests(unittest.TestCase):
+    def test_subclass_factory_refuses_before_packet_or_source_work(self):
+        # This must execute on isolated #266 even without #267's packet module.
+        class UntrustedPlan(ControlledSamplerPlan):
+            pass
+
+        with self.assertRaisesRegex(ContractError, 'exact ControlledSamplerPlan'):
+            UntrustedPlan.prepare(
+                None, None, None,
+                frame_count=None, cancelled=None, progress=None,
+                source_revision_sha256=None, context_sha256=None,
+                delivery_rate_hz=None, controlled_clock=None,
+                graph_revision_sha256=None, rack_revision_sha256=None)
+
     def test_direct_unadmitted_constructor_refuses_without_packet_dependency(self):
         # Runs even on the isolated #266 branch, where #267 packet tests skip.
         with self.assertRaises(ContractError):
