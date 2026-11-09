@@ -13,7 +13,8 @@ sys.path.insert(0,str(ROOT/'tools'))
 from zg242_spectral_portability_trace import (
     capture_document,compare_trace,pcm_identity,delta_metrics,
     _support_extent,TRACE_VERSION,decode_float32_wav,
-    _numerical_tensor,_first_tensor_delta,compare_subledger,_tracker_taps)
+    _numerical_tensor,_first_tensor_delta,compare_subledger,_tracker_taps,
+    _stage_pcm_bytes,_checked_stage_pcm,matched_stage_probe)
 
 
 class PortabilityTraceTests(unittest.TestCase):
@@ -99,6 +100,41 @@ class PortabilityTraceTests(unittest.TestCase):
         self.assertEqual(compare_subledger(u,{**w,'analysis_input':
             {'shape':[2],'f64le_sha256':'foreign'}})['first_boundary'],
             'different-f64-analysis-input')
+
+    def test_matched_stage_pcm_identity_and_source_admission(self):
+        x=(np.sin(2*np.pi*440*np.arange(2400)/12000)*.05).astype(np.float32)
+        packet=_stage_pcm_bytes(x)
+        np.testing.assert_array_equal(_checked_stage_pcm(packet,pcm_identity(x)),x)
+        bad={**packet,'sha256':'0'*64}
+        with self.assertRaisesRegex(ValueError,'byte identity'):
+            _checked_stage_pcm(bad,pcm_identity(x))
+        with self.assertRaisesRegex(ValueError,'foreign'):
+            _checked_stage_pcm(packet,pcm_identity(x+.01))
+        with self.assertRaisesRegex(ValueError,'non-finite'):
+            _stage_pcm_bytes(np.array([np.nan],dtype=np.float32))
+        ref={'source':{'archive_sha256':'9cbf9dbbb01dd236facc00b528c66e023c472bf7f601f99658026567dae42abc',
+                       'export_wav_sha256':'2db1913eaafe142b060bd89849bb54552a7b98907019fb5de9dca44c0e569d8f'},
+             'input_policy':'ordinary-compiled-timeline-synthline',
+             'original_export_comparison':{'nonzero_samples':0},
+             'document_revision_id':'doc','compiled_recipe_sha256':'recipe',
+             'rack_sha256':'rack','rack_sonic_sha256':'sonic',
+             'implementation_sha256':'method','sample_rate_hz':12000,
+             'spectral':[{'request':{'test':'matched'},'analysis_input':pcm_identity(x),
+                          'subledger':{'stage_input_f32le_b64':packet}}]}
+        normal={k:ref[k] for k in ('document_revision_id','compiled_recipe_sha256',
+                                  'rack_sha256','rack_sonic_sha256','implementation_sha256',
+                                  'sample_rate_hz','spectral')}
+        matched=matched_stage_probe(normal,ref)
+        self.assertEqual(matched['analysis_input']['f32le_sha256'],pcm_identity(x)['f32le_sha256'])
+        self.assertTrue(matched['subledger']['stft']['rfft']['frame_sha256'])
+        self.assertEqual(matched['input_policy'],
+                         'MATCHED-WINDOWS-STAGE-F32-NEW-EXECUTION-NOT-ORIGINAL-TRACKER')
+        with self.assertRaisesRegex(ValueError,'original Windows'):
+            matched_stage_probe(normal,{**ref,'source':{**ref['source'],'archive_sha256':'forged'}})
+        with self.assertRaisesRegex(ValueError,'foreign stage'):
+            matched_stage_probe({**normal,'rack_sha256':'foreign'},ref)
+        with self.assertRaisesRegex(ValueError,'foreign original spectral'):
+            matched_stage_probe({**normal,'spectral':[{'request':{'different':True}}]},ref)
 
     def test_live_tracker_taps_restore_native_functions(self):
         from contextlib import ExitStack
