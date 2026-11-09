@@ -154,8 +154,11 @@ class Handler(webapp.Handler):
                 return self._json(self.server.timeline.propose_rack_edit(
                     data['document'], data['action']))
             if path == '/api/timeline/validate':
-                exact(data, {'document'}, 'validation request')
-                result = self.server.timeline.validate(data['document'])
+                if type(data) is not dict or set(data) not in (
+                        {'document'}, {'document', 'edit_ticket'}):
+                    raise ValueError('validation request: missing or unknown fields')
+                result = self.server.timeline.validate(
+                    data['document'], edit_ticket=data.get('edit_ticket'))
                 return self._json(result)
             if path == '/api/timeline/monitor-dry':
                 exact(data, {'document'}, 'raw/dry monitoring request')

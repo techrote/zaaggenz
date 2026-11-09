@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 import unittest
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError
@@ -23,6 +25,7 @@ from zaaggenz_project import Project
 from zaaggenz_melody import render_phrase
 from zaaggenz_timeline.model import *
 from zaaggenz_timeline.service import TimelineService, region_executor
+from zaaggenz_timeline import service as timeline_service_module
 from zaaggenz_timeline.server import TimelineServer
 
 
@@ -159,6 +162,55 @@ class ServiceTests(unittest.TestCase):
     def setUp(self): self.service=TimelineService()
     def tearDown(self): self.service.close()
 
+    def test_delayed_old_validation_cannot_rollback_newer_pcm_revision(self):
+        old = fixture(); old['name'] = 'Held old Compose validation'
+        new = fixture(); new['name'] = 'Newer Compose validation'
+        old_id, new_id = TimelineDocument(old).revision_id, TimelineDocument(new).revision_id
+        self.assertNotEqual(old_id, new_id)
+        ticket_id = 'a' * 32
+        entered, release = threading.Event(), threading.Event()
+        compile_original = timeline_service_module.compile_recipe
+
+        def held_compile(document):
+            if document.to_dict()['name'] == old['name']:
+                entered.set()
+                if not release.wait(10):
+                    raise RuntimeError('held old validation exceeded bounded test gate')
+            return compile_original(document)
+
+        try:
+            with patch.object(timeline_service_module, 'compile_recipe', held_compile):
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    pending = executor.submit(self.service.validate, old,
+                        edit_ticket={'client_id': ticket_id, 'sequence': 1})
+                    self.assertTrue(entered.wait(5), 'old source did not enter compile')
+                    admitted = self.service.validate(new,
+                        edit_ticket={'client_id': ticket_id, 'sequence': 2})
+                    self.assertEqual(admitted['revision_id'], new_id)
+                    rendered = self.service.submit(new, name='newer numerical audio')
+                    self.assertEqual(self.service.scheduler.wait(
+                        rendered['job_id'], 20).state, 'completed')
+                    pcm_before = self.service.scheduler.result(rendered['job_id']).audio_bytes
+                    self.assertGreater(len(pcm_before), 0)
+                    release.set()
+                    with self.assertRaisesRegex(JobError, 'superseded'):
+                        pending.result(timeout=10)
+            self.assertEqual(self.service.session.current_identity()[1], new_id)
+            self.assertTrue(self.service.status(rendered['job_id'])['accepted'])
+            self.assertEqual(self.service.scheduler.result(rendered['job_id']).audio_bytes,
+                             pcm_before)
+            with self.assertRaisesRegex(JobError, 'superseded'):
+                self.service.validate(old,
+                    edit_ticket={'client_id': ticket_id, 'sequence': 1})
+            self.assertEqual(self.service.session.current_identity()[1], new_id)
+            for malformed in ({'client_id': ticket_id, 'sequence': True},
+                              {'client_id': '../invalid', 'sequence': 3},
+                              {'client_id': ticket_id, 'sequence': 3, 'extra': 1}):
+                with self.subTest(malformed=malformed), self.assertRaises(ValueError):
+                    self.service.validate(old, edit_ticket=malformed)
+        finally:
+            release.set()
+
     def test_real_async_full_and_region_are_sample_exact(self):
         data=fixture();full=self.service.submit(data,name='full')
         selected=self.service.submit(data,{'start_beat':'1/4','end_beat':'3/2'},'selection')
@@ -247,6 +299,24 @@ class HTTPTests(unittest.TestCase):
         for headers in ({'Origin':'https://foreign.invalid'},{'Host':'foreign.invalid'}):
             with self.assertRaises(HTTPError) as error:self.request('/api/timeline/bootstrap',headers=headers)
             self.assertEqual(error.exception.code,403)
+
+    def test_http_validation_ticket_replay_and_malformed_payload_refuse(self):
+        ticket = {'client_id': 'b' * 32, 'sequence': 1}
+        code, body = self.request('/api/timeline/validate',
+                                  {'document': fixture(), 'edit_ticket': ticket})
+        self.assertEqual(code, 200)
+        revision = json.loads(body)['revision_id']
+        self.assertEqual(revision, TimelineDocument(fixture()).revision_id)
+        for invalid in (ticket, {'client_id': 'b' * 32, 'sequence': 0},
+                        {'client_id': 'b' * 32, 'sequence': True}):
+            with self.subTest(ticket=invalid), self.assertRaises(HTTPError) as error:
+                self.request('/api/timeline/validate',
+                             {'document': fixture(), 'edit_ticket': invalid})
+            self.assertEqual(error.exception.code, 400)
+        self.assertEqual(self.server.session.current_identity()[1], revision)
+        # Authenticated old consumers may omit this optional fencing field.
+        self.assertEqual(self.request('/api/timeline/validate',
+                                      {'document': fixture()})[0], 200)
 
     def test_mutation_requires_session_token(self):
         with self.assertRaises(HTTPError) as error:self.request('/api/timeline/validate',{'document':fixture()},headers={'X-Zaaggenz-Token':'bad'})

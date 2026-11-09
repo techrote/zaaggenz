@@ -117,6 +117,9 @@ class TimelineService:
         self.scheduler = JobScheduler(scheduler_limits()) if scheduler is None else scheduler
         self._jobs = OrderedDict()
         self._jobs_lock = threading.RLock()
+        # Per-editor high-water marks prevent a slow old Compose validation
+        # from adopting after a newer edit, including out-of-order HTTP arrival.
+        self._validation_tickets = {}
         self._closed = False
 
     @property
@@ -225,15 +228,39 @@ class TimelineService:
         return {'document':document.to_dict(),**describe(document),'recipe_sha256':recipe.sha256,
                 'estimated_memory_bytes':estimate,'session':session, 'rack_editor':editor_state(document)}
 
-    def validate(self, data):
+    def validate(self, data, *, edit_ticket=None):
+        """Reject stale ordered Compose edits before *and* after slow compile.
+
+        Legacy API clients may omit the optional ticket; current Compose
+        sends a unique per-editor identity and monotonically increasing
+        sequence. The bounded registry never silently evicts a live fence.
+        """
+        identity = None
+        if edit_ticket is not None:
+            if type(edit_ticket) is not dict or set(edit_ticket) != {'client_id', 'sequence'}:
+                raise ValueError('invalid timeline validation ticket fields')
+            identity, sequence = edit_ticket['client_id'], edit_ticket['sequence']
+            if (type(identity) is not str or len(identity) != 32 or
+                    any(c not in '0123456789abcdef' for c in identity) or
+                    type(sequence) is not int or not 1 <= sequence <= 9007199254740991):
+                raise ValueError('invalid timeline validation ticket')
+            with self._jobs_lock:
+                previous = self._validation_tickets.get(identity)
+                if previous is not None and sequence <= previous:
+                    raise JobError('timeline validation superseded by newer edit sequence')
+                if previous is None and len(self._validation_tickets) >= 128:
+                    raise JobError('timeline editor identity capacity exceeded')
+                self._validation_tickets[identity] = sequence
         document = TimelineDocument(data)
         recipe = compile_recipe(document)
         estimate = self._admit_recipe(recipe)
         with self._jobs_lock:
+            if identity is not None and self._validation_tickets[identity] != sequence:
+                raise JobError('timeline validation superseded by newer edit sequence')
             session = self._accept_locked(document)
         return {**describe(document), 'recipe_sha256': recipe.sha256,
                 'estimated_memory_bytes': estimate, 'session': session,
-                'rack_editor': editor_state(document)}
+                'rack_editor': editor_state(document)
 
     def propose_rack_edit(self, data, action):
         """Return a validated, memory-admitted proposal without changing session.

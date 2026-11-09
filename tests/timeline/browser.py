@@ -107,6 +107,50 @@ def main():
             # MBR-003: actual Compose source-bound rack proposal, normal
             # validation/admission, numerical WAV, project/preset persistence
             # and restoration of the exact dry signal.
+            # Deliberately hold old /validate *inside the real backend*.
+            # Render a newer ordinary Compose revision before releasing it;
+            # the old response must fail closed without revoking new PCM.
+            held_validation_entered = threading.Event()
+            release_held_validation = threading.Event()
+            compile_before_hold = service_module.compile_recipe
+
+            def held_old_validation(document):
+                if document.to_dict()['name'] == 'Held old Compose validation':
+                    held_validation_entered.set()
+                    if not release_held_validation.wait(60):
+                        raise RuntimeError('stale validation test gate expired')
+                return compile_before_hold(document)
+
+            try:
+                with patch.object(service_module, 'compile_recipe', held_old_validation):
+                    project_name = page.locator('#project-name')
+                    project_name.fill('Held old Compose validation')
+                    project_name.dispatch_event('change')
+                    assert held_validation_entered.wait(10), (
+                        'the old authoritative validation did not enter real backend')
+                    expect(page.locator('#render')).to_be_disabled()
+                    project_name.fill('Newer Compose validation')
+                    project_name.dispatch_event('change')
+                    ready()
+                    newer_project = saved('rack-validation-newer-revision.zgtimeline.json')
+                    newer_revision = TimelineDocument(newer_project).revision_id
+                    newer_job = rendered('rack-validation-newer-numerical')
+                    newer_pcm = server.timeline.scheduler.result(newer_job).audio_bytes
+                    assert len(newer_pcm) > 0
+                    with page.expect_response(
+                        lambda response: response.url.endswith('/api/timeline/validate')
+                            and response.status == 400, timeout=15000) as stale:
+                        release_held_validation.set()
+                    assert 'superseded' in stale.value.json()['error']
+                    assert server.timeline.session.current_identity()[1] == newer_revision
+                    assert server.timeline.status(newer_job)['accepted']
+                    assert server.timeline.scheduler.result(newer_job).audio_bytes == newer_pcm
+                    expect(page.locator('#revision')).to_have_text(newer_revision)
+            finally:
+                release_held_validation.set()
+            # Restore the frozen example before the existing dry/rack oracles.
+            page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json')
+            ready()
             dry_id=rendered('rack-original')
             dry_pcm=server.timeline.scheduler.result(dry_id).audio_bytes
             page.locator('#rack-meter-panel').evaluate('(e)=>e.open=true')

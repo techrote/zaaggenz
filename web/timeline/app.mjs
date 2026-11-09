@@ -3,6 +3,10 @@ import {RenderTransport} from './jobs_transport.mjs';
 import {renderRack,renderRackMeters} from './rack-ui.mjs';
 const $=id=>document.getElementById(id),transport=new RenderTransport();
 let editor,token,selected=null,validation=null,epoch=0,validationSequence=0,job=null,slots=[],activeSlot=null,presetCatalogue=null,rackEditing=false;
+// A late validation must not update RuntimeSession, not merely lose its UI
+// response. Each editor uses an opaque source-free identity and edit sequence.
+const validationClientId=crypto.randomUUID().replaceAll('-','');
+const validationTicket=()=>({client_id:validationClientId,sequence:++validationSequence});
 const rackEditQueue=[],MAX_QUEUED_RACK_EDITS=16;
 let dryMonitor=null,dryJob=null,dryRequestSequence=0;
 let bandMonitor=null,bandJob=null,bandRequestSequence=0;
@@ -96,10 +100,10 @@ function afterEdit(preserveRackQueue=false){
 function safe(action){try{action();}catch(e){status(e.message,true);}}
 function mutate(action){safe(()=>{action();afterEdit();});}
 async function validateLatest(){
-  const seq=++validationSequence,serialized=JSON.stringify(editor.document);
+  const edit_ticket=validationTicket(),seq=edit_ticket.sequence,serialized=JSON.stringify(editor.document);
   $('revision').textContent='Validating…';
   try{
-    const result=await api('validate',{document:JSON.parse(serialized)});
+    const result=await api('validate',{document:JSON.parse(serialized),edit_ticket});
     if(seq!==validationSequence||JSON.stringify(editor.document)!==serialized)return;
     validation=result;$('revision').textContent=result.revision_id;
     const preset=result.source_preset_id;
@@ -527,7 +531,7 @@ function bind(){
     validationSequence++;invalidate();const openEpoch=epoch;
     $('revision').textContent='Opening project…';status('Validating imported project…');
     try{if(file.size>2000000)throw Error('Project exceeds the 2 MB authoring limit.');const input=JSON.parse(await file.text());
-      await api('validate',{document:input});if(openEpoch!==epoch)return;editor.replace(input);selected=null;afterEdit();
+      await api('validate',{document:input,edit_ticket:validationTicket()});if(openEpoch!==epoch)return;editor.replace(input);selected=null;afterEdit();
     }catch(e){if(openEpoch===epoch){await validateLatest();status(e.message,true);}}finally{$('open').value='';}};
   $('roll').ondblclick=e=>{if(e.target.closest('[data-id]'))return;const bounds=$('roll').getBoundingClientRect(),x=(e.clientX-bounds.left)*1200/bounds.width;
     $('beat').value=snap(Math.max(0,(x-48)/1140*value(editor.document.end_beat)).toFixed(6),$('snap').value);
