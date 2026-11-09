@@ -64,9 +64,10 @@ def producer(source, spec):
         upstream_route_receipts=(receipt,), budget=ResourceBudget())
 
 
-def plan(source, spec, packet, rate):
+def plan(source, spec, packet, rate, *, frame_count=None):
     return SamplerPlan.prepare(
-        source, spec, sampler_evaluation(rate), controlled_clock=packet,
+        source, spec, sampler_evaluation(rate), frame_count=frame_count,
+        controlled_clock=packet,
         source_revision_sha256=ONE, graph_revision_sha256=THREE,
         rack_revision_sha256=FOUR)
 
@@ -186,7 +187,8 @@ class ActualControlledPCMTests(unittest.TestCase):
             source = fixture(short=short, silent=silent)
             spec = sonic()
             packet = producer(source, spec)
-            admitted = plan(source, spec, packet, 192000)
+            admitted = plan(source, spec, packet, 192000,
+                            frame_count=192000)
             full = admitted.render().audio
             self.assertTrue(np.isfinite(full).all())
             self.assertEqual(full.shape, (192000,))
