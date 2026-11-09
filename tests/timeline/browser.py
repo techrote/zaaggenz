@@ -2,10 +2,8 @@
 from __future__ import annotations
 import argparse
 import hashlib
-import io
 import json
 import numpy as np
-from scipy.io import wavfile
 from fractions import Fraction
 import os
 from pathlib import Path
@@ -664,13 +662,18 @@ def main():
                 measured_order.append({
                     'spectral_changed_frames':spectrum['changed_frames'],
                     'compressor_max_gain_reduction_db':dynamics['max_gain_reduction_db']})
-            rate_a,samples_a=wavfile.read(io.BytesIO(order_a_audio))
-            rate_b,samples_b=wavfile.read(io.BytesIO(order_b_audio))
-            assert rate_a==rate_b==args.sample_rate
-            assert samples_a.dtype==samples_b.dtype and samples_a.shape==samples_b.shape
-            scale=(float(np.iinfo(samples_a.dtype).max)
-                   if samples_a.dtype.kind in 'iu' else 1.)
-            diff=(samples_a.astype(np.float64)-samples_b.astype(np.float64))/scale
+            # RenderArtifact.audio_bytes is *raw little-endian float32 PCM*.
+            # The separately downloaded .wav is the user-facing container.
+            # Compare the actual sample stream, never RIFF headers or revisions.
+            assert server.timeline.status(order_a_job)['artifact']['asset'][
+                'sample_rate_hz']==args.sample_rate
+            assert server.timeline.status(order_b_job)['artifact']['asset'][
+                'sample_rate_hz']==args.sample_rate
+            assert len(order_a_audio)==len(order_b_audio) and len(order_a_audio)%4==0
+            samples_a=np.frombuffer(order_a_audio,dtype='<f4')
+            samples_b=np.frombuffer(order_b_audio,dtype='<f4')
+            assert np.isfinite(samples_a).all() and np.isfinite(samples_b).all()
+            diff=samples_a.astype(np.float64)-samples_b.astype(np.float64)
             difference_rms=float(np.sqrt(np.mean(diff*diff)))
             assert difference_rms>1e-5, (
                 'Spectral/compressor order must change PCM measurably on this '
@@ -684,8 +687,8 @@ def main():
                 'stage_activity':measured_order,
                 'pcm_difference_rms_full_scale':difference_rms,
                 'normalization':'none',
-                'wav_sha256_a':hashlib.sha256(order_a_audio).hexdigest(),
-                'wav_sha256_b':hashlib.sha256(order_b_audio).hexdigest(),
+                'raw_pcm_sha256_a':hashlib.sha256(order_a_audio).hexdigest(),
+                'raw_pcm_sha256_b':hashlib.sha256(order_b_audio).hexdigest(),
             },sort_keys=True,indent=2)+'\n',encoding='utf-8')
             # Reopen both exact authored revisions and demand byte-identical
             # processed WAVs, not a cached monitor result. Bypassing the
