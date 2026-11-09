@@ -276,7 +276,8 @@ class TimelineService:
                 'estimated_memory_bytes': estimate,
                 'rack_editor': editor_state(document)}
 
-    def submit(self, data, region=None, name='Render', *, authoritative=True, band_monitor=None):
+    def submit(self, data, region=None, name='Render', *, authoritative=True,
+               band_monitor=None, expected_session=None):
         """Same exact executor for Compose preview, saved rerender and WAV export.
 
         A sidecar may explicitly request a non-authoritative proposal; that job
@@ -288,6 +289,16 @@ class TimelineService:
         text(name, 'render name')
         document = TimelineDocument(data)
         revision = document.revision_id
+        # Compose-only optimistic session guard. Legacy authenticated callers
+        # may omit it; detached monitor/Vocal paths cannot claim authority.
+        if expected_session is not None:
+            if (not authoritative or type(expected_session) is not dict or
+                    set(expected_session) != {'generation', 'timeline_revision_id'} or
+                    type(expected_session['generation']) is not int or
+                    not 0 <= expected_session['generation'] <= 9007199254740991 or
+                    type(expected_session['timeline_revision_id']) is not str or
+                    expected_session['timeline_revision_id'] != revision):
+                raise ValueError('invalid expected render session')
         recipe = compile_recipe(document)
         region = render_region(recipe, region)
         estimate = self._admit_recipe(recipe)  # never discount selected context
@@ -333,6 +344,11 @@ class TimelineService:
                     'context_policy':'whole-phrase-then-crop'}
         with self._jobs_lock:
             if self._closed:raise JobError('timeline service is closed')
+            # Compare immediately before scheduler submission and session
+            # adoption, not merely when the browser eventually sees a response.
+            if expected_session is not None and self.session.current_identity() != (
+                    expected_session['generation'], expected_session['timeline_revision_id']):
+                raise JobError('timeline render superseded by newer session revision')
             # Identical pending requests adopt the same computation. Named full
             # and region outputs of one revision may coexist; a new document
             # supersedes obsolete revisions, not other workspaces' jobs.

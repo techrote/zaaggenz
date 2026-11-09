@@ -168,11 +168,15 @@ class Handler(webapp.Handler):
                 return self._json(self.server.timeline.submit_band_monitor(
                     data['document'], data['band'], data['mode']), 202)
             if path == '/api/timeline/render':
-                exact(data, {'document', 'region', 'name'}, 'render request')
+                if type(data) is not dict or set(data) not in (
+                        {'document', 'region', 'name'},
+                        {'document', 'region', 'name', 'expected_session'}):
+                    raise ValueError('render request: missing or unknown fields')
                 # A Vocal proposal is derived state, never implicit Compose apply.
                 proposal = self.headers.get(RELEASE_HEADER) == self._release('vocal').release_id
                 result = self.server.timeline.submit(data['document'], data['region'], data['name'],
-                                                     authoritative=not proposal)
+                                                     authoritative=not proposal,
+                                                     expected_session=data.get('expected_session'))
                 return self._json(result, 202)
             if path == '/api/timeline/cancel':
                 exact(data, {'job_id'}, 'cancellation request')

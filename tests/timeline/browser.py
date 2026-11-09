@@ -152,6 +152,48 @@ def main():
                     expect(page.locator('#revision')).to_have_text(newer_revision)
             finally:
                 release_held_validation.set()
+            # Hold an older real /render POST before its session commit, then
+            # validate and numerically render a newer edit. The old response
+            # must fail closed server-side, not merely be ignored by Chromium.
+            held_render_entered = threading.Event()
+            release_held_render = threading.Event()
+            old_render_revision = newer_revision
+            original_region_executor = service_module.region_executor
+
+            def held_old_render(recipe, revision, region):
+                if revision == old_render_revision:
+                    held_render_entered.set()
+                    if not release_held_render.wait(60):
+                        raise RuntimeError('stale authoritative render gate expired')
+                return original_region_executor(recipe, revision, region)
+
+            try:
+                with patch.object(service_module, 'region_executor', held_old_render):
+                    with page.expect_response(
+                        lambda response: response.url.endswith('/api/timeline/render')
+                            and response.status == 400, timeout=15000) as rejected:
+                        page.locator('#render').click()
+                        assert held_render_entered.wait(10), (
+                            'old render did not enter threaded backend before commit')
+                        project_name = page.locator('#project-name')
+                        project_name.fill('Winner after stale render')
+                        project_name.press('Tab')
+                        ready()
+                        winning_doc = saved('rack-stale-render-winner.zgtimeline.json')
+                        winning_revision = TimelineDocument(winning_doc).revision_id
+                        winning_job = rendered('rack-stale-render-winner-numerical')
+                        winning_pcm = server.timeline.scheduler.result(winning_job).audio_bytes
+                        winning_identity = server.timeline.session.current_identity()
+                        assert len(winning_pcm) > 0
+                        release_held_render.set()
+                    assert 'superseded' in rejected.value.json()['error']
+                assert server.timeline.session.current_identity() == winning_identity
+                assert winning_identity[1] == winning_revision
+                assert server.timeline.status(winning_job)['accepted']
+                assert server.timeline.scheduler.result(winning_job).audio_bytes == winning_pcm
+                expect(page.locator('#revision')).to_have_text(winning_revision)
+            finally:
+                release_held_render.set()
             # Restore the frozen example before the existing dry/rack oracles.
             page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json')
             ready()

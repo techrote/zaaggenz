@@ -431,10 +431,18 @@ function hearProcessedMonitor(){
   $('monitor-mode').textContent='Hearing processed source · monitoring alternatives available. Download processed WAV is unchanged.';
 }
 async function render(region){
-  if(!validation||rackEditing||rackEditQueue.length)return;const data=editor.document,revision=validation.revision_id,requestEpoch=++epoch;
+  if(!validation||rackEditing||rackEditQueue.length)return;
+  const data=editor.document,revision=validation.revision_id;
+  const expected_session={generation:validation.session?.generation,
+    timeline_revision_id:validation.session?.timeline_revision_id};
+  if(!Number.isSafeInteger(expected_session.generation)||
+      expected_session.timeline_revision_id!==revision){
+    status('Render requires a current validated Compose session.',true);return;
+  }
+  const requestEpoch=++epoch;
   quietCancel(job);job=null;clearPlayback();const name=$('output-name').value;
   try{
-    const submitted=await api('render',{document:data,region,name});
+    const submitted=await api('render',{document:data,region,name,expected_session});
     if(requestEpoch!==epoch){quietCancel(submitted.job_id);return;}
     if(submitted.revision_id!==revision)throw Error('Server returned a different render revision.');
     job=submitted.job_id;
