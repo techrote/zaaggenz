@@ -143,7 +143,7 @@ class OctaveStepClockPcmTests(unittest.TestCase):
                                     initial='1/2', depth=1.),)))
         # Inspector supports an irrational instantaneous rate. The physical
         # clock must not approximate its exponential phase as constant Hz.
-        with self.assertRaisesRegex(ContractError, 'integral log2 exponent'):
+        with self.assertRaisesRegex(UnsupportedNyquismic, 'integral log2 exponent'):
             compile_step_clock_events(fractional, '1/4')
         ramp = SonicSpec(clock=ClockSpec(rate=VirtualRate('200/1'),
             routes=(ModulationRoute(id='ramp-octave', mapping='log2_ratio',

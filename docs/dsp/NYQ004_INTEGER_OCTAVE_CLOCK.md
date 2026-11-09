@@ -18,7 +18,7 @@ rational-Hz rate across exact cut times. All interval boundaries are
 half-open. Clock resets and event/spacing budgets still apply.
 
 **Refusals:** A noninteger `depth * control` anywhere in the
-requested time extent is a contract error, not a rounded octave. Any
+requested time extent is explicitly unsupported, not a rounded octave. Any
 time-varying linear control in the presence of a logarithmic route is
 explicitly unsupported: its exponential clock phase would require a
 different certified integration/root-isolation method. The general

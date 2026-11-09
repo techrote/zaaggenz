@@ -270,7 +270,8 @@ def _exact_integer_octave_step_rate(
         if route.mapping == 'add_hz':
             rate += exponent
         else:
-            require(exponent.denominator == 1,
+            if exponent.denominator != 1:
+                raise UnsupportedNyquismic(
                     'integer-octave clock requires exact integral log2 exponent; '
                     'fractional exponential phase is unsupported')
             rate *= Fraction(2) ** exponent.numerator
