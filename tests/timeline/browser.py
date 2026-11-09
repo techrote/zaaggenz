@@ -494,7 +494,7 @@ def main():
             # The ordinary Compose UI must actually CREATE a source-bound
             # Chordness request from manually entered comb teeth. A preloaded
             # JSON-only Chordness project is not an editable instrument.
-            lowmid=page.locator('#rack-editor .rack-band').nth(2)
+            lowmid=page.locator('#rack-editor .rack-band').nth(1)
             chord_form=lowmid.locator('.rack-chordness-create')
             chord_form.evaluate('(e)=>e.open=true')
             teeth=chord_form.get_by_label('Manual comb teeth (Hz, comma-separated)')
@@ -603,7 +603,7 @@ def main():
             # show changed component frames and PCM against a matched dry source.
             # Add the compressor through the browser, not through a preloaded
             # RackRecipe, and use one stable stage identity for both orders.
-            lowmid=page.locator('#rack-editor .rack-band').nth(2)
+            lowmid=page.locator('#rack-editor .rack-band').nth(1)
             lowmid.get_by_role('button',name='Add compression').click();ready()
             added=saved('rack-order-with-compressor.zgtimeline.json')
             added_stages=json.loads(added['project']['revisions'][-1]['recipe_json'])[
@@ -713,11 +713,11 @@ def main():
             page.get_by_label('Bypass rack').uncheck();ready()
             # Return to one Chordness insert, so the original subsequent
             # spectral-retune and legacy timeline regressions are unchanged.
-            lowmid=page.locator('#rack-editor .rack-band').nth(2)
+            lowmid=page.locator('#rack-editor .rack-band').nth(1)
             compression_panel=lowmid.locator('.rack-stage').filter(
                 has=page.locator('.rack-stage-id',has_text=compressor_id))
             compression_panel.get_by_role('button',name='Remove insert').click();ready()
-            lowmid=page.locator('#rack-editor .rack-band').nth(2)
+            lowmid=page.locator('#rack-editor .rack-band').nth(1)
             lowmid.get_by_role('button',name='Remove insert').click();ready()
             assert not json.loads(saved('rack-chordness-removed.zgtimeline.json')[
                 'project']['revisions'][-1]['recipe_json'])['rack']['bands'][1]['inserts']
