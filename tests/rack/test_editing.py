@@ -531,6 +531,71 @@ class RackEditorTests(unittest.TestCase):
         self.assertEqual(remaining[0]["voices"][0]["degree"], 7)
         self.assertEqual(compile_recipe(self.d).to_dict()["source"], original_source)
 
+    def test_compose_manual_chordness_is_explicit_off_and_source_bound(self):
+        # A complete user-authored comb can enter the ordinary Compose
+        # project without fabricating template/source provenance or converting
+        # the source's tuning. Manual Hz is distinct from tuning steps.
+        for sample_rate in (12000, 48000):
+            with self.subTest(sample_rate=sample_rate):
+                dry = default_document(sample_rate)
+                original = dry.to_dict()
+                band = editor_state(edit_rack(dry, {"kind": "enable"}))["value"]["bands"][2]["id"]
+                enabled = edit_rack(dry, {"kind": "enable"})
+                command = {"kind": "add_chordness", "band": band,
+                           "teeth_hz": [110., 220., 330.],
+                           "label": "User comb"}
+                for invalid in (
+                    {**command, "teeth_hz": []},
+                    {**command, "teeth_hz": ["110", 220.]},
+                    {**command, "teeth_hz": [True, 220.]},
+                    {**command, "teeth_hz": [110., 110.]},
+                    {**command, "teeth_hz": [220., 110.]},
+                    {**command, "teeth_hz": [110., sample_rate / 2 + 1]},
+                    {**command, "label": True},
+                    {**command, "extra": "not allowed"},
+                    {"kind": "add_chordness", "band": band, "label": "Incomplete"},
+                ):
+                    with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                        edit_rack(enabled, invalid)
+                    self.assertEqual(enabled.to_dict()["project"]["revisions"][0],
+                                     original["project"]["revisions"][0])
+                installed = edit_rack(enabled, command)
+                stage = editor_state(installed)["value"]["bands"][2]["inserts"][0]
+                self.assertEqual(stage["type_id"], "zg.spectral")
+                self.assertEqual(stage["params"]["kind"], "ChordnessRequest")
+                self.assertEqual(stage["params"]["mode"], "off")
+                self.assertEqual(stage["params"]["selected_template_ids"], ["user.manual"])
+                template = stage["params"]["templates"][0]
+                self.assertEqual(template["teeth_hz"], [110., 220., 330.])
+                self.assertEqual(template["label"], "User comb")
+                self.assertEqual(template["source"],
+                                 {"method": "manual", "origin": "compose-mbr003"})
+                self.assertEqual(installed.to_dict()["project"]["revisions"][0],
+                                 original["project"]["revisions"][0])
+                self.assertEqual(compile_recipe(installed).to_dict()["source"],
+                                 compile_recipe(dry).to_dict()["source"])
+                with self.assertRaises(ValueError):
+                    edit_rack(installed, command)  # no duplicate spectral stage
+                active = edit_rack(installed, {
+                    "kind": "set", "scope": "spectral",
+                    "id": band + "/" + stage["id"], "field": "mode",
+                    "value": "reweight"})
+                reopened = type(active).from_json(json.dumps(active.to_dict()))
+                self.assertEqual(editor_state(reopened)["value"],
+                                 editor_state(active)["value"])
+                self.assertEqual(compile_recipe(reopened).to_dict(),
+                                 compile_recipe(active).to_dict())
+                saved = edit_rack(active, {"kind": "save_preset",
+                                          "id": "user.manual-comb",
+                                          "name": "Manual Chordness"})
+                cleared = edit_rack(saved, {"kind": "reset"})
+                self.assertEqual(compile_recipe(cleared).sha256,
+                                 compile_recipe(dry).sha256)
+                recalled = edit_rack(cleared, {"kind": "load_preset",
+                                             "id": "user.manual-comb"})
+                self.assertEqual(compile_recipe(recalled).to_dict(),
+                                 compile_recipe(active).to_dict())
+
     def test_existing_chordness_request_preserves_templates_and_edits_scalars(self):
         self.act(kind="enable")
         project = Project.from_document(self.d.to_dict()["project"])
