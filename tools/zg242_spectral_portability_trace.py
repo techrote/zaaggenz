@@ -265,3 +265,157 @@ def capture_document(document, *, expected_pcm=None, provenance=None, frozen_pre
     return trace
 
 
+def compare_trace(a,b):
+    """Fail closed on source mismatch; inspect discrete frames before PCM."""
+    required=('document_revision_id','compiled_recipe_sha256','rack_sonic_sha256','sample_rate_hz')
+    for key in required:
+        if key not in a or key not in b or a[key]!=b[key]:
+            raise ValueError('foreign or mismatched source/recipe: '+key)
+    report={'trace_version':TRACE_VERSION,'identity':{k:a[k] for k in required},
+            'source_pcm_equal':a['source_pre_rack']['f32le_sha256']==b['source_pre_rack']['f32le_sha256'],
+            'rack_pcm_equal':a['rack_output']['f32le_sha256']==b['rack_output']['f32le_sha256'],
+            'final_pcm_equal':a['final_pcm']['f32le_sha256']==b['final_pcm']['f32le_sha256'],
+            'spectral':[],'stages':[]}
+    for index in range(max(len(a['spectral']),len(b['spectral']))):
+        left=a['spectral'][index] if index<len(a['spectral']) else None
+        right=b['spectral'][index] if index<len(b['spectral']) else None
+        if left is None or right is None:
+            report['spectral'].append({'index':index,'missing_host':True});continue
+        def flatten(t):
+            return {(tr['id'],frame['index']):frame for tr in t['tracked'] for frame in tr['frames']}
+        u,w=flatten(left),flatten(right)
+        decu={(d['track_id'],d['frame_index']):d for d in left['decisions']}
+        decw={(d['track_id'],d['frame_index']):d for d in right['decisions']}
+        keys=set(decu)|set(decw)
+        disagreements=[key for key in sorted(keys) if decu.get(key)!=decw.get(key)]
+        row={'index':index,'analysis_pcm_equal':left['analysis_input']['f32le_sha256']==right['analysis_input']['f32le_sha256'],
+             'tracked_frame_count':[len(u),len(w)],
+             'tracked_frame_keys_only_left':len(set(u)-set(w)),
+             'tracked_frame_keys_only_right':len(set(w)-set(u)),
+             'tracker_frame_value_mismatches':sum(u.get(k)!=w.get(k) for k in set(u)&set(w)),
+             'decision_count':[len(decu),len(decw)],
+             'decision_mismatches':len(disagreements),
+             'first_decision_mismatches':[{'key':list(k),'left':decu.get(k),'right':decw.get(k)}
+                                          for k in disagreements[:8]],
+             'changed_support_extent':[left['changed_support_extent'],right['changed_support_extent']]}
+        report['spectral'].append(row)
+    for index in range(max(len(a['stages']),len(b['stages']))):
+        left=a['stages'][index] if index<len(a['stages']) else None
+        right=b['stages'][index] if index<len(b['stages']) else None
+        report['stages'].append({'index':index,
+             'name':left['stage'] if left else (right['stage'] if right else None),
+             'input_pcm_equal':bool(left and right and left['input']['f32le_sha256']==right['input']['f32le_sha256']),
+             'output_pcm_equal':bool(left and right and left['output']['f32le_sha256']==right['output']['f32le_sha256'])})
+    return report
+
+
+def _from_artifact(path,name):
+    if not name.endswith('.zgtimeline.json') or '/' in name or '\\' in name:
+        raise ValueError('expected an artifact-local .zgtimeline.json basename')
+    with zipfile.ZipFile(path) as z:
+        document=json.loads(z.read(name))
+        raw=z.read(name)
+        wav=name.removesuffix('.zgtimeline.json')+'.wav'
+        audio=None
+        if wav in z.namelist():audio,sr=decode_float32_wav(z.read(wav))
+        else:sr=None
+        return document,audio,sr,{'archive':Path(path).name,
+            'archive_sha256':digest_bytes(Path(path).read_bytes()),
+            'saved_document_sha256':digest_bytes(raw),
+            'saved_document_name':name,'export_name':wav if audio is not None else None,
+            'export_wav_sha256':digest_bytes(z.read(wav)) if audio is not None else None}
+
+
+def original_artifact_inventory(ubuntu_path,windows_path):
+    """Original exported PCM census. Descriptive deltas, NOT an admission screen."""
+    host_paths={'ubuntu':Path(ubuntu_path),'windows':Path(windows_path)}
+    zipped={h:zipfile.ZipFile(path) for h,path in host_paths.items()}
+    try:
+        names={h:{n for n in z.namelist() if n.endswith('.wav') and '/' not in n}
+               for h,z in zipped.items()}
+        if names['ubuntu']!=names['windows']:
+            raise ValueError('the original WAV inventories differ across hosts')
+        cases=[]
+        for name in sorted(names['ubuntu']):
+            samples={};rates={};raw_hashes={}
+            for host,z in zipped.items():
+                raw=z.read(name)
+                raw_hashes[host]=digest_bytes(raw)
+                audio,sr=decode_float32_wav(raw)
+                samples[host]=audio
+                rates[host]=sr
+            if rates['ubuntu']!=rates['windows'] or samples['ubuntu'].shape!=samples['windows'].shape:
+                raise ValueError('cross-host WAV rate/layout mismatch: '+name)
+            err=delta_metrics(samples['ubuntu'],samples['windows'])
+            rms=[pcm_identity(samples[host])['rms'] for host in ('ubuntu','windows')]
+            cases.append({'name':name,'sample_rate_hz':rates['ubuntu'],
+                          'shape':list(samples['ubuntu'].shape),'wav_sha256':raw_hashes,
+                          'pcm_sha256':{h:pcm_identity(samples[h])['f32le_sha256'] for h in samples},
+                          'rms_fs':{'ubuntu':rms[0],'windows':rms[1]},
+                          'cross_host':{**err,'relative_to_smaller_output_rms':
+                              (err['rms_fs']/min(rms) if min(rms)>0 else None)}})
+        evidence={}
+        for name in ('rack-order-numerical-evidence.json','rack-retune-numerical-evidence.json'):
+            if all(name in z.namelist() for z in zipped.values()):
+                evidence[name]={h:json.loads(z.read(name)) for h,z in zipped.items()}
+        return {'trace_version':TRACE_VERSION,
+                'type':'ORIGINAL-ARTIFACT-PCM-INVENTORY-NOT-ADMISSION',
+                'source_run_id':42597270382,
+                'source_head':'f28b4db07b863653370baf55b076f34f73c6a628',
+                'artifact_zip_sha256':{h:digest_bytes(path.read_bytes()) for h,path in host_paths.items()},
+                'wav_pair_count':len(cases),
+                'rms_above_descriptive_1e_minus_6':sum(x['cross_host']['rms_fs']>1e-6 for x in cases),
+                'cases':cases,'original_browser_decisions':evidence,
+                'policy':'No gate tolerance adopted; >1e-6 is a descriptive census label only'}
+    finally:
+        for z in zipped.values():z.close()
+
+
+def main(argv=None):
+    parser=argparse.ArgumentParser(description=__doc__)
+    sub=parser.add_subparsers(dest='action',required=True)
+    capture=sub.add_parser('capture',help='rerender original saved project and capture stage-local ledgers')
+    capture.add_argument('--artifact',required=True,type=Path)
+    capture.add_argument('--document',required=True)
+    capture.add_argument('--out',required=True,type=Path)
+    capture.add_argument('--frozen-pre-rack-wav',help='OPTIONAL counterfactual artifact-local dry PCM; not original pre-rack state')
+    compare=sub.add_parser('compare',help='independent source-matched cross-host trace diff')
+    compare.add_argument('--ubuntu',required=True,type=Path)
+    compare.add_argument('--windows',required=True,type=Path)
+    compare.add_argument('--out',required=True,type=Path)
+    inventory=sub.add_parser('inventory',help='independently decode original cross-host WAVs and decision summaries')
+    inventory.add_argument('--ubuntu',required=True,type=Path)
+    inventory.add_argument('--windows',required=True,type=Path)
+    inventory.add_argument('--out',required=True,type=Path)
+    args=parser.parse_args(argv)
+    if args.action=='capture':
+        doc,expected,sr,prov=_from_artifact(args.artifact,args.document)
+        frozen=None
+        if args.frozen_pre_rack_wav:
+            name=args.frozen_pre_rack_wav
+            if '/' in name or '\\' in name or not name.endswith('.wav'):
+                raise ValueError('frozen input must be a local WAV basename')
+            with zipfile.ZipFile(args.artifact) as z:raw=z.read(name)
+            frozen,freeze_sr=decode_float32_wav(raw)
+            if sr is not None and freeze_sr!=sr:
+                raise ValueError('frozen rate does not match expected output rate')
+            prov['counterfactual_dry_wav']=name
+            prov['counterfactual_wav_sha256']=digest_bytes(raw)
+        trace=capture_document(doc,expected_pcm=expected,provenance=prov,frozen_pre_rack=frozen)
+        if sr is not None and trace.get('sample_rate_hz')!=sr:
+            raise ValueError('artifact exported rate does not match replay rate')
+        data=trace
+    elif args.action=='compare':
+        data=compare_trace(json.loads(args.ubuntu.read_text()),json.loads(args.windows.read_text()))
+    else:data=original_artifact_inventory(args.ubuntu,args.windows)
+    args.out.parent.mkdir(parents=True,exist_ok=True)
+    args.out.write_text(json.dumps(data,sort_keys=True,indent=2,allow_nan=False)+'\n',encoding='utf-8')
+    print(json.dumps({'action':args.action,'trace_version':TRACE_VERSION,
+        'out':str(args.out),'spectral_traces':len(data.get('spectral',[])),
+        'original_wav_pairs':data.get('wav_pair_count'),
+        'source_match':data.get('source_pcm_equal'),
+        'original_export_difference':data.get('original_export_comparison')},sort_keys=True))
+
+
+if __name__ == '__main__':
+    main()
