@@ -258,3 +258,124 @@ def compile_upstream_rms_route(
                      'graph_snapshot_sha256': (graph_snapshot.sha256
                                                if graph_snapshot is not None else None)},
     )
+
+
+@dataclass(frozen=True)
+class UpstreamSignedSamplePolicy(_Record):
+    """Source-bound, one-sample-per-control-step bipolar audio-rate source.
+
+    This narrow adapter shares the immutable upstream PCM/DAG admission of
+    UpstreamRmsPolicy but preserves sample *sign*, unlike RMS envelope control.
+    The 256-point ModulationRoute limit bounds one admission to a short source
+    excerpt; longer audio-rate streams are not silently decimated.
+    """
+    version: str = 'nyq.upstream-signed-sample-policy.v1'
+    source: UpstreamRmsPolicy = UpstreamRmsPolicy(window_frames=1)
+    tail: str = 'zero_after_source'
+    _children = {'source': UpstreamRmsPolicy}
+
+    def __post_init__(self):
+        require(self.version == 'nyq.upstream-signed-sample-policy.v1',
+                'unsupported signed sample control policy version')
+        record(self.source, UpstreamRmsPolicy, 'signed sample source policy')
+        require(self.source.window_frames == 1,
+                'signed sample control requires one source frame per control step')
+        require(self.tail in ('zero_after_source', 'hold_last'),
+                'unsupported signed sample control tail policy')
+
+
+@dataclass(frozen=True)
+class UpstreamSignedSampleResult:
+    policy: UpstreamSignedSamplePolicy
+    route: ModulationRoute
+    diagnostics: dict
+
+
+def compile_upstream_signed_sample_route(
+    pcm, policy: UpstreamSignedSamplePolicy, *, consumer_id: str,
+    upstream_ids: tuple[str, ...], route_id: str,
+    mapping: str = 'add_hz', depth: float = 0.0, cancelled=None,
+    graph_snapshot: UpstreamGraphSnapshot | None = None,
+    expected_graph_sha256: str | None = None,
+) -> UpstreamSignedSampleResult:
+    """Compile bounded signed f32 samples into exact-time clock rate steps.
+
+    Reuse the fully checked RMS adapter only for source, bound and DAG
+    authentication; *do not* use its sign-destroying RMS magnitudes as control.
+    A private PCM snapshot is made before authentication and is the only
+    array used thereafter (including against mutable caller-owned buffers).
+    """
+    record(policy, UpstreamSignedSamplePolicy, 'signed audio-rate policy')
+    source = policy.source
+    origin = Fraction(source.origin_s)
+    delayed = origin > 0 and source.frames > 0
+    tail_zero = policy.tail == 'zero_after_source' and source.frames > 0
+    needed = max(0, source.frames - 1) + int(delayed) + int(tail_zero)
+    require(needed <= MAX_POINTS,
+            'signed sample route exceeds 256 exact-time points; no hidden decimation')
+    # Preserve the accepted f32-only input rule. Converting an arbitrary input
+    # dtype before authentication would silently change the user's source.
+    samples = np.asarray(pcm)
+    require(samples.dtype == np.dtype('float32') and samples.ndim in (1, 2),
+            'signed sample source must be float32 mono/stereo PCM')
+    frozen = np.array(samples, dtype='<f4', order='C', copy=True)
+    checked = compile_upstream_rms_route(
+        frozen, source, consumer_id=consumer_id, upstream_ids=upstream_ids,
+        route_id=route_id, mapping='add_hz', depth=0.0, cancelled=cancelled,
+        graph_snapshot=graph_snapshot,
+        expected_graph_sha256=expected_graph_sha256,
+    )
+    chosen = frozen if frozen.ndim == 1 else frozen[:, source.channel]
+    reference = Fraction(source.reference_amplitude)
+    levels = []
+    for i, sample in enumerate(chosen):
+        if (i & 31) == 0 and cancelled is not None and cancelled():
+            raise ClockCancelled('signed sample control cancelled before route publication')
+        # Float32-to-float64 conversion is exact; division by the saved
+        # rational reference and signed bounds are checked before the one
+        # declared <=1e6 denominator control quantization.
+        value = Fraction.from_float(float(sample)) / reference
+        require(-1 <= value <= 1,
+                'signed sample exceeds explicit reference amplitude')
+        levels.append(value.limit_denominator(1_000_000))
+    points = []
+    if delayed:
+        points.append(Point(qtext(origin), qtext(levels[0])))
+    for i in range(1, len(levels)):
+        points.append(Point(
+            qtext(origin + Fraction(i, source.sample_rate_hz)),
+            qtext(levels[i]),
+        ))
+    if tail_zero:
+        points.append(Point(
+            qtext(origin + Fraction(source.frames, source.sample_rate_hz)),
+            '0/1',
+        ))
+    if cancelled is not None and cancelled():
+        raise ClockCancelled('signed sample control cancelled before route publication')
+    route = ModulationRoute(
+        id=route_id, mapping=mapping, depth=depth,
+        initial='0/1' if delayed or not levels else qtext(levels[0]),
+        points=tuple(points), interpolation='step',
+    )
+    diagnostics = {
+        'method': 'nyq.upstream-signed-sample-steps.v1',
+        'policy_sha256': policy.sha256,
+        'source_policy_sha256': source.sha256,
+        'source_id': source.source_id,
+        'source_sha256': source.source_sha256,
+        'route_sha256': route.sha256,
+        'source_frames': source.frames,
+        'sample_rate_hz': source.sample_rate_hz,
+        'channel': source.channel,
+        'origin_s': source.origin_s,
+        'tail': policy.tail,
+        'route_points': len(points),
+        'sample_quantization_denominator': 1_000_000,
+        'lookahead_s': qtext(Fraction(1, source.sample_rate_hz)),
+        'pre_origin_control': 'neutral_zero' if delayed else 'not_applicable',
+        'graph_topology': checked.diagnostics['graph_topology'],
+        'graph_snapshot_sha256': checked.diagnostics['graph_snapshot_sha256'],
+        'product_graph_registered': False,
+    }
+    return UpstreamSignedSampleResult(policy, route, diagnostics)
