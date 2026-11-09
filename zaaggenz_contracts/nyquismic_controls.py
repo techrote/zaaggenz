@@ -713,11 +713,14 @@ class TriggeredEnvelopeSource(_Record):
     def compile_route(self, end_s: str, *, route_id: str,
                       mapping: str = 'add_hz', depth: float = 0.0,
                       cancelled=None) -> ModulationRoute:
-        """Freeze each actual slope change into a standard linear route.
+        """Freeze the exact physical-time ADSR prefix into a linear route.
 
-        All gates and their tails must fit the requested extent; no clipped
-        envelope is silently published. Source + compiled route are separate
-        versioned records and must both be saved for editable provenance.
+        A short preview may finish before a gate, during attack/decay/hold,
+        or during release. Freeze the value at the requested endpoint so the
+        final partial segment has its *actual* slope; never extrapolate from a
+        future knot or require a future release to finish. The route is valid
+        only through the requested end_s; a longer render must recompile from
+        the immutable source. Source and route must both be saved.
         """
         from .nyquismic_clock import ClockCancelled
 
@@ -726,7 +729,7 @@ class TriggeredEnvelopeSource(_Record):
         if cancelled is not None and cancelled():
             raise ClockCancelled('envelope compilation cancelled')
         origin = Fraction(self.origin_s)
-        end = rational_value(end_s, 'envelope end seconds', origin, MAX_TIME_S)
+        end = rational_value(end_s, 'envelope end seconds', 0, MAX_TIME_S)
         attack, decay = Fraction(self.attack_s), Fraction(self.decay_s)
         release = Fraction(self.release_s)
         points: set[Fraction] = set()
@@ -734,19 +737,28 @@ class TriggeredEnvelopeSource(_Record):
             if cancelled is not None and cancelled():
                 raise ClockCancelled('envelope compilation cancelled')
             onset, offset = Fraction(gate.on_s), Fraction(gate.off_s)
-            require(offset + release <= end,
-                    'envelope gate/release exceeds requested control extent')
+            if onset >= end:
+                # Future gates are authenticated by the saved source, but
+                # cannot leak into a pre-onset or shorter region preview.
+                break
+            tail_end = offset + release
             for stamp in (onset, min(onset + attack, offset),
                           min(onset + attack + decay, offset),
-                          offset, offset + release):
-                # ModulationRoute.initial applies from absolute time zero,
-                # not from this source's nonzero origin. Keep an explicit
-                # zero-level onset knot even when onset == source.origin_s;
-                # otherwise the linear lane leaks a pre-onset ramp.
-                if stamp > 0:
+                          offset, tail_end):
+                # ModulationRoute.initial applies from absolute time zero.
+                # Keep delayed onsets at zero and exclude future slopes.
+                if 0 < stamp <= end:
                     points.add(stamp)
+            if tail_end > end:
+                # A short preview cuts a live affine segment. The endpoint
+                # is essential: without it a linear route extrapolates
+                # toward a later knot and changes the preview's clock phase.
+                if end > 0:
+                    points.add(end)
             require(len(points) <= MAX_POINTS,
                     'envelope compiled route exceeds point budget')
+            if tail_end > end:
+                break
         route_points = []
         for index, t in enumerate(sorted(points)):
             if index % 32 == 0 and cancelled is not None and cancelled():

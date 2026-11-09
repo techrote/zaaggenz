@@ -206,8 +206,11 @@ class TriggeredEnvelopeTests(unittest.TestCase):
             with self.subTest(params=params), self.assertRaises(ContractError):
                 TriggeredEnvelopeSource(**params)
         source = self.envelope()
-        with self.assertRaises(ContractError):
-            source.compile_route('7/8', route_id='short')
+        # A requested region may end in a still-active release. The
+        # compiler must freeze the actual endpoint level, not reject it.
+        short = source.compile_route('7/8', route_id='short')
+        self.assertEqual(short.points[-1].time_s, '7/8')
+        self.assertEqual(short.points[-1].value, '1/4')
         with self.assertRaises(ContractError):
             source.compile_route('1/1', route_id='bad', depth=float('nan'))
         with self.assertRaises(ContractError):

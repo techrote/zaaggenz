@@ -250,7 +250,14 @@ attack/decay/release seconds, rational sustain in [0, 1] and ordered
 absolute-time gates. A gate's release must finish before the next gate;
 overlapping release tails and gates that exceed the saved time extent reject.
 The compiler inserts only true physical-time slope-change points, including
-truncated attack/decay points on early note-off. The total compiled route is
+truncated attack/decay points on early note-off. A short **region preview**
+may now end before a future gate or in the middle of attack, decay, hold
+or release. The compiler emits the exact value at a cut-through endpoint;
+without this knot, the linear route would extrapolate toward a later gate
+and alter the physical sampling clock. A pre-onset preview stays neutral.
+Only the requested prefix is certified: extending the render requires
+recompilation against the same saved source rather than silently extrapolating
+the shortened route. The total compiled route is
 strictly bounded to the existing 256-point limit; excess gates reject instead
 of truncating. Optional cancellation aborts without publishing a partial
 route. Every field participates in full-snapshot JSON and source identity.
