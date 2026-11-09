@@ -9,6 +9,8 @@ from copy import deepcopy
 from zaaggenz_contracts.rack import (RackRecipe, empty_rack, processor_definition,
                                     RACK_VERSION, COEFFICIENTS)
 from zaaggenz_spectral.model import SpectralRetuneRequest, LatticeVoice
+from zaaggenz_spectral.chordness_model import CombTemplate
+from zaaggenz_spectral.chordness_request import ChordnessRequest
 from zaaggenz_project import Project
 from .model import TimelineDocument, TimelineError, exact
 
@@ -114,9 +116,17 @@ def _update(project, action):
                 raise TimelineError("unsupported processor control")
         else:
             raise TimelineError("unsupported rack control scope")
-    elif kind == "add":
-        exact(action, {"kind", "band", "type_id"}, "add insert")
-        type_id = action["type_id"]
+    elif kind in ("add", "add_chordness"):
+        if kind == "add":
+            exact(action, {"kind", "band", "type_id"}, "add insert")
+            type_id = action["type_id"]
+        else:
+            # A user-authored comb is an explicit *different* spectral
+            # processor, not an implicit conversion of the source tuning.
+            # Start it off until the operator chooses an audible mode.
+            exact(action, {"kind", "band", "label", "teeth_hz"},
+                  "add manual Chordness")
+            type_id = SPECTRAL
         if type_id not in ADDABLE:
             raise TimelineError("only supported built-in stages can be added")
         band = _band(rack, action["band"])
@@ -131,7 +141,19 @@ def _update(project, action):
         while identifier in used:
             identifier = prefix + "." + str(n)
             n += 1
-        if type_id == SPECTRAL:
+        if kind == "add_chordness":
+            teeth = action["teeth_hz"]
+            if (type(teeth) is not list or not 1 <= len(teeth) <= 128 or
+                    any(type(tooth) not in (int, float) for tooth in teeth)):
+                raise TimelineError("manual Chordness needs 1..128 numeric teeth in Hz")
+            template = CombTemplate(
+                "user.manual", tuple(teeth), 1, action["label"],
+                {"method": "manual", "origin": "compose-mbr003"})
+            params = ChordnessRequest(
+                (template,), mode="off", selection_mode="manual",
+                selected_template_ids=("user.manual",),
+                max_selected_templates=1).to_dict()
+        elif type_id == SPECTRAL:
             # An explicit, executable ZG-017 retune request tied to the
             # accepted source tuning; never invent a new tuning identity.
             # Existing Chordness snapshots remain fully preserved/editable.
@@ -390,7 +412,7 @@ def edit_rack(document, action):
             raise TimelineError("portable rack preset digest mismatch")
         # Project proves retained no-rack ancestry and exact source binding.
         project.save_rack_preset(record["id"], record["name"], imported)
-    elif kind in ("set", "add", "move", "remove", "reset_insert_params",
+    elif kind in ("set", "add", "add_chordness", "move", "remove", "reset_insert_params",
                   "select_spectral_template", "add_spectral_voice",
                   "edit_spectral_voice", "remove_spectral_voice",
                   "add_spectral_segment", "edit_spectral_segment",
