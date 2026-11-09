@@ -74,11 +74,16 @@ def convert_numerical_to_delivery(
     require(numerical_rate_hz >= delivery_rate_hz,
             'delivery converter only admits downconversion or identical rates')
 
-    samples = np.asarray(audio)
-    require(samples.ndim in (1, 2) and (samples.ndim == 1 or samples.shape[1] in (1, 2)),
+    view = np.asarray(audio)
+    require(view.ndim in (1, 2) and (view.ndim == 1 or view.shape[1] in (1, 2)),
             'delivery PCM must be mono or stereo')
-    require(samples.dtype.kind == 'f' and samples.size <= budget.max_frames,
+    require(view.dtype.kind == 'f' and view.size <= budget.max_frames,
             'delivery PCM must be bounded floating-point source')
+    # Own the admitted PCM before testing finiteness or calling external
+    # SciPy code. A caller may retain a writable view and alter it while the
+    # conversion is in flight; validation must describe the bytes processed.
+    # The full source and converted output are independently budgeted.
+    samples = np.array(view, dtype=np.float64, copy=True, order='C')
     require(np.isfinite(samples).all(), 'delivery PCM must be finite')
     frames = samples.shape[0]
     channels = 1 if samples.ndim == 1 else samples.shape[1]
@@ -90,7 +95,7 @@ def convert_numerical_to_delivery(
     # The identity path must not introduce ringing, conversion, or padding.
     if up == down:
         kernel = np.array([1.], dtype='<f8')
-        result = np.array(samples, dtype=np.float64, copy=True)
+        result = samples
     else:
         taps = 24 * max(up, down) + 1
         require(taps <= budget.max_filter_taps,
@@ -106,7 +111,7 @@ def convert_numerical_to_delivery(
             np.empty((0,) if samples.ndim == 1 else (0, channels), dtype=np.float64)
             if frames == 0 else
             resample_poly(
-                samples.astype(np.float64, copy=False), up, down,
+                samples, up, down,
                 axis=0, window=kernel, padtype='constant',
             )
         )
