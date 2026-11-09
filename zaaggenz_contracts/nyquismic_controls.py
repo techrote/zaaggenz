@@ -15,7 +15,7 @@ from fractions import Fraction
 
 from .nyquismic import (
     MAX_TIME_S, MIN_RATE_HZ, MAX_RATE_HZ, MAX_LEVELS, MAX_POINTS, Point, SonicSpec,
-    ModulationRoute, RateQuantizer, _Record, clock_cell_value, integer, record, require,
+    ModulationRoute, RateQuantizer, UnsupportedNyquismic, _Record, clock_cell_value, integer, record, require,
     rational_value, qtext,
 )
 
