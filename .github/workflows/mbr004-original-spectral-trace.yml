@@ -4,7 +4,7 @@ on:
   push:
     branches: [mbr-004/spectral-stage-oracle-20261109]
     paths:
-      - '.github/workflows/zg242-original-spectral-trace.yml'
+      - '.github/workflows/mbr004-original-spectral-trace.yml'
       - 'tools/zg242_spectral_portability_trace.py'
       - 'tests/acceptance/test_zg242_spectral_trace.py'
 
@@ -47,7 +47,7 @@ jobs:
       - name: Materialize authenticated accepted source
         run: python baseline/recovered_source/materialize_v2.py --out .
       - name: Install original numerical pins and existing requirements
-        run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
+        run: python -m pip install -c constraints/ci.txt numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
       - name: Execute read-only trace adversarial tests
         run: python -m unittest discover -s tests/acceptance -p test_zg242_spectral_trace.py -v
       - name: Retrieve exact original timeline artifact ZIP; reject wrong digest
@@ -97,7 +97,7 @@ jobs:
         with:
           python-version: '3.13'
       - name: Install matched numerical libraries
-        run: python -m pip install numpy==2.3.5 scipy==1.17.0
+        run: python -m pip install -c constraints/ci.txt numpy==2.3.5 scipy==1.17.0
       - uses: actions/download-artifact@v4
         with:
           pattern: zg242-source-trace-*
