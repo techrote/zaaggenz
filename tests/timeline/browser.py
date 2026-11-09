@@ -125,13 +125,17 @@ def main():
                 with patch.object(service_module, 'compile_recipe', held_old_validation):
                     project_name = page.locator('#project-name')
                     project_name.fill('Held old Compose validation')
-                    project_name.dispatch_event('change')
+                    # Native blur triggers exactly one DOM change; synthetic
+                    # dispatch while still focused can trigger another when
+                    # Save later receives focus, invalidating its own click.
+                    project_name.press('Tab')
                     assert held_validation_entered.wait(10), (
                         'the old authoritative validation did not enter real backend')
                     expect(page.locator('#render')).to_be_disabled()
                     project_name.fill('Newer Compose validation')
-                    project_name.dispatch_event('change')
+                    project_name.press('Tab')
                     ready()
+                    expect(page.locator('#save')).to_be_enabled()
                     newer_project = saved('rack-validation-newer-revision.zgtimeline.json')
                     newer_revision = TimelineDocument(newer_project).revision_id
                     newer_job = rendered('rack-validation-newer-numerical')
