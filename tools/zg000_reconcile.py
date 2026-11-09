@@ -173,6 +173,82 @@ class Reconciler:
             raise ReconcileError("run-ID lookup returned different run")
         return data
 
+    def guard_parent_lineage(self, workflow: str) -> None:
+        """Block a known earlier same-head orchestration before any new POST.
+
+        A counted empty child list can lag a cancelled parent's real POST.
+        Two independent parent-list observations are a bounded mitigation,
+        never an atomic reservation or proof of globally absent older runs.
+        """
+        if self.manifest["orchestrator_run_attempt"] != 1:
+            raise ReconcileError(
+                f"{workflow}: orchestration rerun cannot safely initiate a new child")
+        parent_workflow = "zg000-ci-impact.yml"
+        expected_id = self.workflow_id(parent_workflow)
+        query = urlencode({"event": "pull_request", "branch": self.ref, "per_page": 100})
+
+        def source_of(run: dict) -> str:
+            if (type(run.get("id")) is not int or run["id"] < 1
+                    or type(run.get("run_attempt")) is not int or run["run_attempt"] < 1
+                    or run.get("workflow_id") != expected_id
+                    or run.get("path") != f".github/workflows/{parent_workflow}"
+                    or run.get("event") != "pull_request"
+                    or run.get("head_branch") != self.ref):
+                raise ReconcileError(f"{workflow}: invalid orchestration identity")
+            links = run.get("pull_requests")
+            if not isinstance(links, list):
+                raise ReconcileError(f"{workflow}: parent PR provenance unavailable")
+            matches = [link for link in links if isinstance(link, dict)
+                       and link.get("number") == self.pr]
+            if len(matches) != 1 or not isinstance(matches[0].get("head"), dict):
+                raise ReconcileError(f"{workflow}: parent PR provenance ambiguous")
+            source = matches[0]["head"].get("sha")
+            if not isinstance(source, str) or not SHA.fullmatch(source):
+                raise ReconcileError(f"{workflow}: invalid parent source SHA")
+            return source
+
+        previous_ids: set[int] | None = None
+        for _ in range(2):
+            self.check_head()
+            listing = self.api.request(
+                "GET", self.api_path(f"actions/workflows/{parent_workflow}/runs?{query}"))
+            runs, total = listing.get("workflow_runs"), listing.get("total_count")
+            if (not isinstance(runs, list) or type(total) is not int
+                    or total < 0 or total > 100 or len(runs) != total
+                    or any(not isinstance(r, dict) or type(r.get("id")) is not int
+                           or r["id"] < 1 for r in runs)):
+                raise ReconcileError(f"{workflow}: incomplete orchestration-parent inventory")
+            ids = {run["id"] for run in runs}
+            if len(ids) != len(runs) or self.run_id not in ids:
+                raise ReconcileError(f"{workflow}: current parent missing or duplicate IDs")
+            if previous_ids is not None and ids != previous_ids:
+                raise ReconcileError(f"{workflow}: changing orchestration-parent inventory")
+            previous_ids = ids
+            for run in runs:
+                source = source_of(run)
+                if run["id"] == self.run_id:
+                    if (source != self.sha or
+                            run["run_attempt"] != self.manifest["orchestrator_run_attempt"]):
+                        raise ReconcileError(f"{workflow}: current parent source/attempt mismatch")
+                    continue
+                if run["id"] > self.run_id:
+                    raise ReconcileError(f"{workflow}: newer orchestration parent exists")
+                if source == self.sha:
+                    raise ReconcileError(
+                        f"{workflow}: prior same-head orchestration parent {run['id']} "
+                        "may have a still-unindexed child; dispatch blocked")
+                detail = self.get_run(run["id"])
+                if (source_of(detail) != source or
+                        detail["run_attempt"] != run["run_attempt"]):
+                    raise ReconcileError(
+                        f"{workflow}: prior parent source/attempt detail disagreement")
+            self.check_head()
+        self.manifest["decisions"].append({
+            "workflow": workflow, "decision": "parent_lineage_checked",
+            "orchestrator_run_id": self.run_id,
+            "scope": "two read-only inventories, not atomic dispatch custody",
+        })
+
     def existing(self, row: dict) -> tuple[str, dict | None]:
         workflow = row["workflow"]
         query = urlencode({"event": "workflow_dispatch", "head_sha": self.sha, "per_page": 100})
@@ -375,6 +451,8 @@ class Reconciler:
             decision, detail = self.existing(row)
             self.check_head()
             if detail is None:
+                self.guard_parent_lineage(row["workflow"])
+                self.check_head()
                 detail = self.dispatch_one(row)
                 decision = ("reconciled_ambiguous_post" if row["workflow"] in self.reconciled_workflows
                             else "dispatched")

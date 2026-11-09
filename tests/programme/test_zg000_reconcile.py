@@ -31,6 +31,11 @@ class FakeAPI:
         self.boolean_run_id = False
         self.boolean_workflow_id = False
         self.duplicate_inventory_row = False
+        self.parent_runs = {}
+        self.parent_poll = 0
+        self.parent_hide_older_until = 0
+        self.parent_omit_current = False
+        self.put_parent()
 
     def put(self, workflow=R1["workflow"], sha=None, status="completed",
             conclusion="success", attempt=1, run_id=None, ref=None, event="workflow_dispatch"):
@@ -41,6 +46,16 @@ class FakeAPI:
                    status=status, conclusion=conclusion, run_attempt=attempt)
         self.runs[run_id] = run
         return run
+
+    def put_parent(self, run_id=41691032400, sha=None, attempt=1):
+        row = dict(id=run_id, workflow_id=42,
+                   path=".github/workflows/zg000-ci-impact.yml",
+                   event="pull_request", head_branch=self.ref,
+                   run_attempt=attempt,
+                   pull_requests=[{"number":self.pr,
+                                   "head":{"sha":sha if sha is not None else self.sha}}])
+        self.parent_runs[run_id] = row
+        return row
 
     def request(self, method, path, payload=None):
         self.calls.append((method,path,payload))
@@ -73,6 +88,16 @@ class FakeAPI:
         if "/runs?" in path:
             wf, query = path.split("/actions/workflows/")[1].split("/runs?")
             params = parse_qs(query)
+            if wf == "zg000-ci-impact.yml":
+                self.parent_poll += 1
+                runs = [x for x in self.parent_runs.values()
+                        if x["event"] == params["event"][0]
+                        and x["head_branch"] == params["branch"][0]]
+                if self.parent_poll <= self.parent_hide_older_until:
+                    runs = [x for x in runs if x["id"] == 41691032400]
+                if self.parent_omit_current:
+                    runs = [x for x in runs if x["id"] != 41691032400]
+                return {"workflow_runs":runs, "total_count":len(runs)}
             runs = [x for x in self.runs.values() if x["path"] == ".github/workflows/"+wf
                     and x["event"] == params["event"][0] and x["head_sha"] == params["head_sha"][0]]
             total = self.total_count if self.total_count is not None else len(runs)
@@ -93,7 +118,8 @@ class FakeAPI:
             if self.delayed:
                 self.delayed -= 1
                 raise ReconcileError("eventually consistent")
-            return dict(self.runs[int(path.rsplit("/",1)[1])])
+            run_id = int(path.rsplit("/",1)[1])
+            return dict((self.parent_runs if run_id in self.parent_runs else self.runs)[run_id])
         raise AssertionError((method,path))
 
 
@@ -736,6 +762,76 @@ class ZG000RegressionTests(unittest.TestCase):
             rec.finalize("success")
         self.assertGreaterEqual(r1_details, 2)
         self.assertNotEqual("qualified", rec.manifest["state"])
+        self.assertEqual([], api.posts)
+
+    def test_64_stale_count_consistent_empty_child_with_prior_parent_blocks_post(self):
+        api = FakeAPI()
+        api.put_parent(run_id=41691032000, sha=A)
+        hidden = api.put(status="queued", conclusion=None)
+        original = api.request
+        def stale_child(method, path, payload=None):
+            if method == "GET" and "/actions/workflows/zg008-melody.yml/runs?" in path:
+                api.calls.append((method, path, payload))
+                return {"workflow_runs":[], "total_count":0}
+            return original(method, path, payload)
+        api.request = stale_child
+        with self.assertRaisesRegex(ReconcileError, "prior same-head orchestration"):
+            make(api).dispatch()
+        self.assertEqual("queued", hidden["status"])
+        self.assertEqual([], api.posts)
+
+    def test_65_first_parent_with_no_child_still_dispatches(self):
+        api = FakeAPI()
+        rec = make(api)
+        self.assertEqual("dispatched", rec.dispatch()[0]["decision"])
+        self.assertEqual(1, len(api.posts))
+        self.assertEqual(2, api.parent_poll)
+        self.assertIn("parent_lineage_checked",
+                      [d["decision"] for d in rec.manifest["decisions"]])
+
+    def test_66_older_different_source_parent_does_not_block_new_commit(self):
+        api = FakeAPI()
+        api.put_parent(run_id=41691032000, sha=B)
+        self.assertEqual("dispatched", make(api).dispatch()[0]["decision"])
+        self.assertEqual(1, len(api.posts))
+
+    def test_67_same_parent_rerun_refuses_new_child(self):
+        api = FakeAPI()
+        api.put_parent(attempt=2)
+        rec = Reconciler(api, REPO, 267, A, REF, [R1],
+                         41691032400, sleep=lambda _:None, run_attempt=2)
+        with self.assertRaisesRegex(ReconcileError, "orchestration rerun"):
+            rec.dispatch()
+        self.assertEqual([], api.posts)
+
+    def test_68_previous_parent_emerges_during_second_read_blocks_post(self):
+        api = FakeAPI()
+        api.put_parent(run_id=41691032000, sha=A)
+        api.parent_hide_older_until = 1
+        with self.assertRaisesRegex(ReconcileError, "prior same-head orchestration"):
+            make(api).dispatch()
+        self.assertEqual(2, api.parent_poll)
+        self.assertEqual([], api.posts)
+
+    def test_69_current_parent_unindexed_blocks_post(self):
+        api = FakeAPI()
+        api.parent_omit_current = True
+        with self.assertRaisesRegex(ReconcileError, "current parent missing"):
+            make(api).dispatch()
+        self.assertEqual([], api.posts)
+
+    def test_70_prior_parent_detail_conflict_blocks_post(self):
+        api = FakeAPI()
+        prior = api.put_parent(run_id=41691032000, sha=B)
+        original = api.request
+        def stale_parent_detail(method, path, payload=None):
+            if method == "GET" and path.endswith("/actions/runs/41691032000"):
+                api.calls.append((method, path, payload))
+                return {**prior, "run_attempt":2}
+            return original(method, path, payload)
+        api.request = stale_parent_detail
+        with self.assertRaisesRegex(ReconcileError, "prior parent source/attempt detail disagreement"):
+            make(api).dispatch()
         self.assertEqual([], api.posts)
 
 
