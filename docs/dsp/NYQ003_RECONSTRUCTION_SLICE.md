@@ -532,3 +532,30 @@ stage. Nonintegral output tails and unqualified FIR ratios refuse.
 
 This remains local numerical PCM/engineering evidence, not Compose, a
 graph-registered Nyquismic effect, a WAV exporter or human listening.
+
+## Opt-in 44.1 kHz staged final PCM conversion — 9 November 2026
+
+`DeliveryConversionPolicy(method='nyq.polyphase-delivery-44100-via-48000.v1')`
+admits 192/384/768 kHz (and other exact multiples of 48 kHz)
+numerical PCM through a 48 kHz FIR intermediate and then a **44.1 kHz**
+final FIR. Stages run **after** artistic virtual captures/reconstruction and
+any subsequent nonlinear DSP; no hidden virtual-capture antialiasing occurs.
+Each stage is independently bounded by the existing 4,096-tap maximum.
+For 192 kHz, the first stage is a 97-tap Kaiser-beta-10 `resample_poly`
+FIR; 48 kHz → 44.1 kHz uses 147/160 and a 3,841-tap FIR. Both have
+explicit symmetric zero-phase/constant-zero boundaries and finite ringing.
+This two-stage output is **not** claimed bit-identical to a theoretical
+15,361-tap direct converter. Intermediate and final frame counts must
+both be integral over exactly the source duration; unsupported combinations
+refuse before sampling. Ordered per-stage coefficient hashes, aggregate
+kernel digest, rates and saved method identity remain visible in diagnostics.
+The old direct-only converter is unchanged and continues to reject
+192 kHz → 44.1 kHz under the default filter-tap budget.
+
+The focused cross-rate DSP test executes actual immutable 96 kHz PCM →
+8 kHz dirty virtual sampling → 192/384 kHz reconstruction →
+44.1 kHz final PCM; it measures preservation of the physical 6→2 kHz
+intentional fold and checks independent SciPy FIR stage calculations,
+mono/stereo silence and strict invalid admission. This is **local**
+numerical PCM evidence, not graph/rack export, listening, accepted convergence
+or a 44.1-kHz default change.

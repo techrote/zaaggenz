@@ -9,6 +9,7 @@ from zaaggenz_contracts.nyquismic import ClockSpec, ResourceBudget, SonicSpec, V
 from zaaggenz_dsp.nyquismic import FrozenInput, SamplerPlan, sampler_evaluation
 from zaaggenz_dsp.nyquismic_convergence import evaluate_sampler_convergence
 from zaaggenz_dsp.nyquismic_delivery import (
+    STAGED_44100_METHOD, DeliveryConversionPolicy,
     convert_numerical_to_delivery, render_sampler_to_delivery,
 )
 from zaaggenz_dsp.nyquismic_sampler_convergence import evaluate_sampler_model_convergence
@@ -224,6 +225,77 @@ class IndependentDeliveryClockTests(unittest.TestCase):
         # numerical evaluation grids, without claiming bit identity.
         for values in amplitudes.values():
             self.assertLess(abs(values[0] - values[1]), .015)
+
+    def test_44100_opt_in_staged_real_alias_exact_independent_fir(self):
+        # Physical 8 kHz capture of a 6 kHz source folds to 2 kHz, even
+        # after two final anti-imaging/anti-evaluation-alias FIR stages.
+        from scipy.signal import firwin, resample_poly
+        source = source_tone()
+        sonic = SonicSpec(clock=ClockSpec(rate=VirtualRate('8000/1')))
+        policy = DeliveryConversionPolicy(method=STAGED_44100_METHOD)
+        observed = []
+        for rate in RATES[:2]:
+            actual = render_sampler_to_delivery(
+                source, sonic, numerical_rate_hz=rate,
+                delivery_rate_hz=44100, policy=policy)
+            self.assertEqual(actual.audio.shape, (4410,))
+            self.assertFalse(actual.audio.flags.writeable)
+            self.assertEqual(actual.diagnostics['event_count'], 800)
+            d = actual.diagnostics['delivery']
+            self.assertEqual(d['method'], STAGED_44100_METHOD)
+            self.assertEqual(d['window'], 'staged_kaiser_beta10_v1')
+            self.assertEqual([row['kernel_taps'] for row in d['stages']],
+                             [24 * (rate // 48000) + 1, 3841])
+            self.assertEqual(d['source_pcm_sha256'],
+                             actual.diagnostics['sampler']['pcm_sha256'])
+            amplitude = coherent_amplitude(actual.audio, 2000, 44100)
+            self.assertGreater(amplitude, .70)
+            observed.append(amplitude)
+            plan = SamplerPlan.prepare(
+                source, sonic, sampler_evaluation(rate),
+                frame_count=rate // 10, delivery_rate_hz=44100)
+            first = resample_poly(plan.render().audio, 1, rate // 48000,
+                window=firwin(24 * (rate // 48000) + 1,
+                              1. / (rate // 48000), window=('kaiser', 10.)))
+            expected = resample_poly(first, 147, 160,
+                window=firwin(3841, 1. / 160, window=('kaiser', 10.)))
+            np.testing.assert_array_equal(actual.audio, expected)
+        self.assertLess(abs(observed[0] - observed[1]), .02)
+        self.assertNotEqual(DeliveryConversionPolicy().sha256, policy.sha256)
+
+    def test_44100_staging_refuses_wrong_clock_ratio_budget_and_extent_before_capture(self):
+        source = source_tone()
+        sonic = SonicSpec(clock=ClockSpec(rate=VirtualRate('8000/1')))
+        policy = DeliveryConversionPolicy(method=STAGED_44100_METHOD)
+        with patch('zaaggenz_dsp.nyquismic.SamplerPlan.prepare',
+                   side_effect=AssertionError('failed admission must not capture')):
+            for rate, delivered, budget in (
+                (192000, 48000, ResourceBudget()),
+                (192000, 44100, ResourceBudget(max_filter_taps=3840)),
+                (200000, 44100, ResourceBudget()),
+            ):
+                with self.subTest(rate=rate, delivered=delivered), self.assertRaises(ContractError):
+                    render_sampler_to_delivery(source, sonic,
+                        numerical_rate_hz=rate, delivery_rate_hz=delivered,
+                        policy=policy, budget=budget)
+            with self.assertRaises(ContractError):
+                render_sampler_to_delivery(
+                    FrozenInput.from_pcm(np.ones(1, dtype='<f4'), SOURCE_HZ),
+                    sonic, numerical_rate_hz=192000,
+                    delivery_rate_hz=44100, policy=policy)
+            # Keep old direct converter's 15,361-tap refusal unchanged.
+            with self.assertRaises(ContractError):
+                render_sampler_to_delivery(
+                    source, sonic, numerical_rate_hz=192000,
+                    delivery_rate_hz=44100)
+        silence = np.zeros((19200, 2), dtype=np.float64)
+        converted = convert_numerical_to_delivery(
+            silence, 192000, 44100, policy=policy)
+        self.assertEqual(converted.audio.shape, (4410, 2))
+        np.testing.assert_array_equal(converted.audio, np.zeros((4410, 2)))
+        with self.assertRaises(ContractError):
+            convert_numerical_to_delivery(
+                np.zeros(3, dtype=np.float64), 192000, 44100, policy=policy)
 
 
 if __name__ == '__main__':

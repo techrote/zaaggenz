@@ -20,6 +20,7 @@ from zaaggenz_contracts.nyquismic_clock import ClockCancelled
 from .nyquismic import _immutable
 
 METHOD = 'nyq.polyphase-delivery-kaiser10-24lobes.v1'
+STAGED_44100_METHOD = 'nyq.polyphase-delivery-44100-via-48000.v1'
 
 
 @dataclass(frozen=True)
@@ -33,12 +34,50 @@ class DeliveryConversionPolicy(_Record):
     def __post_init__(self):
         require(self.version == 'nyq.delivery-conversion.v1',
                 'unsupported Nyquismic delivery conversion version')
-        require(self.method == METHOD,
+        require(self.method in (METHOD, STAGED_44100_METHOD),
                 'unsupported Nyquismic numerical conversion method')
         require(self.boundary == 'constant_zero',
                 'unsupported delivery conversion edge policy')
         require(self.clipping == 'none',
                 'Nyquismic conversion must not clip or normalize samples')
+
+
+
+def admit_delivery_stages(numerical_rate_hz: int, delivery_rate_hz: int, *,
+                          policy: DeliveryConversionPolicy = DeliveryConversionPolicy(),
+                          budget: ResourceBudget = ResourceBudget(),
+                          frames: int | None = None):
+    """Return exact (input Hz, output Hz, up, down, taps) FIR stage plan.
+
+    The explicitly selected 44.1 kHz mode routes AFTER all sonic DSP via an
+    integral 48 kHz intermediate. Direct/default conversion is unchanged.
+    """
+    record(policy, DeliveryConversionPolicy, 'delivery policy')
+    record(budget, ResourceBudget, 'delivery budget')
+    integer(numerical_rate_hz, 'numerical rate Hz', 8000, MAX_EVALUATION_HZ)
+    integer(delivery_rate_hz, 'delivery rate Hz', 8000, 192000)
+    require(numerical_rate_hz >= delivery_rate_hz,
+            'delivery converter only admits downconversion or identical rates')
+    if policy.method == STAGED_44100_METHOD:
+        require(delivery_rate_hz == 44100 and numerical_rate_hz >= 48000 and
+                numerical_rate_hz % 48000 == 0,
+                'staged 44.1 kHz delivery requires an integral 48 kHz intermediate')
+        if frames is not None:
+            require(frames * 48000 % numerical_rate_hz == 0 and
+                    frames * delivery_rate_hz % numerical_rate_hz == 0,
+                    'staged delivery requires integral intermediate/final physical extent')
+        clocks = ((numerical_rate_hz, 48000), (48000, 44100)) if numerical_rate_hz > 48000 else ((48000, 44100),)
+    else:
+        clocks = ((numerical_rate_hz, delivery_rate_hz),)
+    stages = []
+    for incoming, outgoing in clocks:
+        common = gcd(incoming, outgoing)
+        up, down = outgoing // common, incoming // common
+        taps = 1 if up == down else 24 * max(up, down) + 1
+        require(taps <= budget.max_filter_taps,
+                'delivery FIR ratio exceeds admitted kernel tap budget')
+        stages.append((incoming, outgoing, up, down, taps))
+    return tuple(stages)
 
 
 @dataclass(frozen=True)
@@ -87,37 +126,51 @@ def convert_numerical_to_delivery(
     require(np.isfinite(samples).all(), 'delivery PCM must be finite')
     frames = samples.shape[0]
     channels = 1 if samples.ndim == 1 else samples.shape[1]
+    stages = admit_delivery_stages(
+        numerical_rate_hz, delivery_rate_hz, policy=policy, budget=budget, frames=frames)
     common = gcd(numerical_rate_hz, delivery_rate_hz)
     up, down = delivery_rate_hz // common, numerical_rate_hz // common
     output_frames = (frames * up + down - 1) // down
     require(output_frames * channels <= budget.max_frames,
             'delivery output frames exceed admitted budget')
-    # The identity path must not introduce ringing, conversion, or padding.
-    if up == down:
-        kernel = np.array([1.], dtype='<f8')
-        result = samples
-    else:
-        taps = 24 * max(up, down) + 1
-        require(taps <= budget.max_filter_taps,
-                'delivery FIR ratio exceeds admitted kernel tap budget')
-        from scipy.signal import firwin, resample_poly
-        kernel = firwin(taps, 1. / max(up, down),
-                        window=('kaiser', 10.), pass_zero='lowpass')
+    result = samples
+    stage_details = []
+    for incoming, outgoing, stage_up, stage_down, taps in stages:
+        if stage_up == stage_down:
+            kernel = np.array([1.], dtype='<f8')
+        else:
+            from scipy.signal import firwin, resample_poly
+            kernel = firwin(taps, 1. / max(stage_up, stage_down),
+                            window=('kaiser', 10.), pass_zero='lowpass')
         require(len(kernel) == taps and np.isfinite(kernel).all(),
                 'delivery FIR kernel is not finite')
-        # SciPy's resample_poly rejects an empty input. An admitted empty
-        # physical extent instead maps to an empty, correctly shaped extent.
-        result = (
-            np.empty((0,) if samples.ndim == 1 else (0, channels), dtype=np.float64)
-            if frames == 0 else
-            resample_poly(
-                samples, up, down,
-                axis=0, window=kernel, padtype='constant',
-            )
-        )
+        expected = (result.shape[0] * stage_up + stage_down - 1) // stage_down
+        if stage_up != stage_down:
+            result = (np.empty((0,) if samples.ndim == 1 else (0, channels),
+                               dtype=np.float64) if result.shape[0] == 0 else
+                      resample_poly(result, stage_up, stage_down, axis=0,
+                                    window=kernel, padtype='constant'))
+        require(result.shape[0] == expected,
+                'delivery FIR stage changed declared physical extent')
+        stage_details.append({
+            'input_rate_hz': incoming, 'output_rate_hz': outgoing,
+            'ratio_up': stage_up, 'ratio_down': stage_down,
+            'kernel_taps': taps,
+            'kernel_sha256': hashlib.sha256(
+                np.asarray(kernel, dtype='<f8').tobytes()).hexdigest(),
+        })
+        if cancelled is not None and cancelled():
+            raise ClockCancelled('delivery conversion cancelled between FIR stages')
     require(result.shape == (output_frames,) if samples.ndim == 1
             else result.shape == (output_frames, channels),
             'delivery converter returned unexpected frame/channel extent')
+    if policy.method == STAGED_44100_METHOD:
+        aggregate = hashlib.sha256(b'nyq.delivery-ordered-fir-stages.v1\\n')
+        for row in stage_details:
+            aggregate.update(f"{row['input_rate_hz']}|{row['output_rate_hz']}|{row['kernel_sha256']}\\n".encode('ascii'))
+        kernel_hash = aggregate.hexdigest()
+    else:
+        kernel_hash = stage_details[0]['kernel_sha256']
     require(np.isfinite(result).all(),
             'delivery conversion would publish nonfinite PCM')
     if cancelled is not None and cancelled():
@@ -125,15 +178,16 @@ def convert_numerical_to_delivery(
     return DeliveryConversionResult(
         audio=_immutable(result),
         diagnostics={
-            'method': METHOD,
+            'method': policy.method,
             'policy_sha256': policy.sha256,
             'numerical_rate_hz': numerical_rate_hz,
             'delivery_rate_hz': delivery_rate_hz,
             'ratio_up': up, 'ratio_down': down,
-            'kernel_taps': len(kernel),
-            'kernel_sha256': hashlib.sha256(
-                np.asarray(kernel, dtype='<f8').tobytes()).hexdigest(),
-            'window': 'kaiser_beta10',
+            'kernel_taps': sum(row['kernel_taps'] for row in stage_details),
+            'kernel_sha256': kernel_hash,
+            'window': ('staged_kaiser_beta10_v1'
+                       if policy.method == STAGED_44100_METHOD else 'kaiser_beta10'),
+            **({'stages': stage_details} if policy.method == STAGED_44100_METHOD else {}),
             'boundary': policy.boundary,
             'clipping': policy.clipping,
             'source_frames': frames,
@@ -195,15 +249,13 @@ def render_sampler_to_delivery(source, sonic, *, numerical_rate_hz: int,
             'sampler delivery requires integral final physical extent')
     require(expected_delivery_frames.numerator * asset['channels'] <= budget.max_frames,
             'sampler final extent over admitted frame budget')
-    # Preflight every declared converter before rendering virtual captures.
-    common = gcd(numerical_rate_hz, delivery_rate_hz)
-    up, down = delivery_rate_hz // common, numerical_rate_hz // common
-    require(up == down or 24 * max(up, down) + 1 <= budget.max_filter_taps,
-            'sampler final delivery FIR ratio exceeds admitted tap budget')
+    # Qualify every exact FIR stage and intermediate extent before capture.
     extent = source_extent * numerical_rate_hz
     require(extent.denominator == 1, 'sampler delivery requires aligned physical extent')
     require(extent.numerator * asset['channels'] <= budget.max_frames,
             'sampler numerical extent over admitted frame budget')
+    admit_delivery_stages(numerical_rate_hz, delivery_rate_hz,
+                          policy=policy, budget=budget, frames=extent.numerator)
 
     plan = SamplerPlan.prepare(source, sonic, sampler_evaluation(numerical_rate_hz, budget),
                                frame_count=extent.numerator, cancelled=cancelled,
