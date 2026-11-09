@@ -180,5 +180,51 @@ class IndependentDeliveryClockTests(unittest.TestCase):
         self.assertLess(abs(products[0] - products[1]), .015)
 
 
+    def test_real_post_sampler_clipping_and_folding_before_delivery(self):
+        # The immutable 96 kHz source contains two separate 28/33 kHz
+        # components. Both fit below the *virtual* 80 kHz Nyquist, but
+        # neither fits below the 48 kHz delivery Nyquist. Diode half-wave
+        # clipping and full-wave folding AFTER actual virtual capture
+        # generate a 5 kHz intermodulation difference component. Converting
+        # first removes the high-frequency parents before they can mix.
+        # This is a local numerical placement oracle, not a graph stage.
+        t = np.arange(SOURCE_FRAMES, dtype=np.float64) / SOURCE_HZ
+        parents = (.4 * np.sin(2 * np.pi * 28000 * t) +
+                   .4 * np.sin(2 * np.pi * 33000 * t))
+        source = FrozenInput.from_pcm(parents.astype('<f4'), SOURCE_HZ)
+        sonic = SonicSpec(clock=ClockSpec(rate=VirtualRate('80000/1')),
+                          reconstruction='hold_v1', prefilter='off_v1')
+        operations = (
+            ('half_wave_clip', lambda pcm: np.maximum(pcm, 0.), .06),
+            ('full_wave_fold', np.abs, .12),
+        )
+        amplitudes = {name: [] for name, _, _ in operations}
+        for rate in RATES[:2]:
+            plan = SamplerPlan.prepare(
+                source, sonic, sampler_evaluation(rate),
+                frame_count=rate // 10, delivery_rate_hz=DELIVERY_HZ)
+            self.assertEqual(len(plan.events), 8000)
+            numerical = plan.render().audio
+            premature = convert_numerical_to_delivery(
+                numerical, rate, DELIVERY_HZ).audio
+            for name, nonlinearity, minimum in operations:
+                proper_pcm = convert_numerical_to_delivery(
+                    nonlinearity(numerical), rate, DELIVERY_HZ).audio
+                incorrect_pcm = nonlinearity(premature)
+                self.assertEqual(proper_pcm.shape, (4800,))
+                self.assertFalse(proper_pcm.flags.writeable)
+                proper_5k = coherent_amplitude(proper_pcm, 5000)
+                premature_5k = coherent_amplitude(incorrect_pcm, 5000)
+                self.assertGreater(proper_5k, minimum, (name, rate))
+                self.assertGreater(proper_5k, 2. * premature_5k,
+                                   (name, rate, proper_5k, premature_5k))
+                amplitudes[name].append(proper_5k)
+        # The identical virtual capture lattice, physical source and
+        # nonlinear placement preserve low-band products across both
+        # numerical evaluation grids, without claiming bit identity.
+        for values in amplitudes.values():
+            self.assertLess(abs(values[0] - values[1]), .015)
+
+
 if __name__ == '__main__':
     unittest.main()
