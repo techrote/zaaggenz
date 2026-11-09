@@ -398,12 +398,13 @@ class SamplerPlan:
                     'sinc8 Hann reconstruction requires a static uniform event lattice')
             require(evaluation.budget.max_filter_taps >= 17,
                     'sinc8 Hann reconstruction exceeds admitted kernel support')
-        if spec.reconstruction == 'shepard8_hann_local_time_v1':
-            # Up to eight actual captured events on either side of an interval.
-            # This non-bandlimited kernel uses physical-time local scales and
-            # is deliberately separate from the uniform cardinal-sinc policy.
+        if spec.reconstruction in ('shepard8_hann_local_time_v1',
+                                   'sinc8_hann_local_time_v1'):
+            # Both bounded irregular-event modes use at most 17 captures.
+            # The windowed-sinc mode is density-weighted in physical seconds,
+            # not a uniform-grid sinc silently applied to a changing clock.
             require(evaluation.budget.max_filter_taps >= 17,
-                    'local-time Shepard Hann reconstruction exceeds admitted kernel support')
+                    'local-time reconstruction exceeds admitted kernel support')
         if spec.prefilter in STATIC_FIR_PREFILTER_POLICIES:
             require(not spec.clock.points_hz, 'static FIR prefilter rejects modulated virtual rate')
             if spec.prefilter == GUARDED_CLEAN_PREFILTER:
@@ -577,6 +578,52 @@ class SamplerPlan:
                                         'uniform Hann sinc local DC normalization invalid')
                                 block[j] = np.sum(self.captures[lo:hi] *
                                                   weights[:, None], axis=0) / dc
+                        elif self.spec.reconstruction == 'sinc8_hann_local_time_v1':
+                            # Experimental, time-aware *nonuniform* windowed
+                            # sinc quadrature. h[k] is the physical Voronoi
+                            # cell width (half adjacent span at interiors,
+                            # immediate interval at endpoints). Weighting by
+                            # h[k] prevents a locally dense event cluster
+                            # from receiving disproportionate mass. This
+                            # is not ideal nonuniform-sampling inversion:
+                            # ringing and aliases already captured survive.
+                            positions = np.flatnonzero(mask)
+                            for j, frame in zip(positions, frames[mask]):
+                                t = Fraction(int(frame), self.sample_rate_hz)
+                                lo = max(0, owner - 8)
+                                hi = min(len(self.events), owner + 9)
+                                weights = np.zeros(hi - lo, dtype=np.float64)
+                                for k in range(lo, hi):
+                                    delta = _difference(t, self._coordinates[k])
+                                    if delta == 0:
+                                        # Preserve an exact event's captured
+                                        # amplitude, even on a nonuniform grid.
+                                        weights.fill(0)
+                                        weights[k - lo] = 1
+                                        break
+                                    if k == 0:
+                                        h = _difference(self._coordinates[1],
+                                                        self._coordinates[0])
+                                    elif k == len(self.events) - 1:
+                                        h = _difference(self._coordinates[-1],
+                                                        self._coordinates[-2])
+                                    else:
+                                        h = _difference(self._coordinates[k + 1],
+                                                        self._coordinates[k - 1]) / 2
+                                    x = _ratio(delta, h)
+                                    if abs(x) < 8:
+                                        weights[k - lo] = (float(h) * float(np.sinc(x))
+                                            * (0.5 + 0.5 * math.cos(math.pi * x / 8)))
+                                dc = float(np.sum(weights))
+                                mass = float(np.sum(np.abs(weights)))
+                                # Negative sinc lobes can cancel. Refuse a
+                                # numerically ill-conditioned DC normalizer
+                                # rather than amplify an unbounded result.
+                                require(math.isfinite(dc) and math.isfinite(mass)
+                                        and mass > 0 and abs(dc) > 1e-8 * mass,
+                                        'local-time windowed-sinc has ill-conditioned DC mass')
+                                block[j] = np.sum(self.captures[lo:hi] *
+                                                  weights[:, None], axis=0) / dc
                         elif self.spec.reconstruction == 'shepard8_hann_local_time_v1':
                             # Bounded, explicitly non-bandlimited irregular-event
                             # Shepard reconstruction: each kernel's scale is
@@ -681,11 +728,14 @@ class SamplerPlan:
             'resets': [r.to_dict() for r in self.spec.clock.resets],
             'capture': self.spec.capture, 'reconstruction': self.spec.reconstruction,
             'reconstruction_support_events': (8 if self.spec.reconstruction in
-                                              ('sinc8_hann_uniform_v1', 'shepard8_hann_local_time_v1')
+                                              ('sinc8_hann_uniform_v1', 'shepard8_hann_local_time_v1',
+                                               'sinc8_hann_local_time_v1')
                                               else 2 if self.spec.reconstruction == 'cubic_time_v1'
                                               else 1 if self.spec.reconstruction != 'hold_v1' else 0),
             'reconstruction_window': ('hann_symmetric_radius_8_v1'
                                       if self.spec.reconstruction == 'sinc8_hann_uniform_v1'
+                                      else 'hann_radius_8_local_time_density_weighted_sinc_v1'
+                                      if self.spec.reconstruction == 'sinc8_hann_local_time_v1'
                                       else 'hann_symmetric_radius_8_local_shepard_inverse_square_v1'
                                       if self.spec.reconstruction == 'shepard8_hann_local_time_v1' else None),
             'prefilter': self.spec.prefilter,

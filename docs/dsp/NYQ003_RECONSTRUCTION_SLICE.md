@@ -353,3 +353,45 @@ question from the existing isolated converter's evaluation-grid rejection.
 It still does **not** certify ordinary Compose, production export, a general
 alias-free clean policy for arbitrary nonuniform clocks, or human listening.
 
+
+
+## Experimental density-weighted nonuniform windowed-sinc reconstruction
+
+The additional opt-in `sinc8_hann_local_time_v1` executes on the actual NYQ-002
+physical event coordinates, including a changing virtual rate. This is **not**
+the uniform-grid `sinc8_hann_uniform_v1` applied to an irregular clock and
+is **not** an ideal inverse of arbitrary nonuniform sampling. The separate
+positive-weight, non-bandlimited Shepard mode is unchanged.
+
+For each captured event `k`, the local physical cell width `h[k]` in seconds
+is half the time between its two neighbors, with the adjacent interval used
+at each endpoint. At output time `t`, with `x=(t-t[k])/h[k]`, its weight is
+
+`h[k] * sinc(x) * (1 + cos(pi*x/8)) / 2` for `|x| < 8` and zero otherwise.
+
+At most 17 events (owner ±8) are accumulated. The physical cell-width factor
+compensates for changing event density; dividing by the sum of weights
+preserves captured-stream DC when that sum is well-conditioned. An exact
+captured-event time yields that capture itself. The method has oscillatory
+negative lobes, can exhibit genuine pre/post ringing and overshoot, and cannot
+undo aliasing already created by sampling. It requires an admitted 17-tap
+budget, full event context, and a finite DC sum greater than 1e-8 of the
+absolute-weight mass; an ill-conditioned sum **refuses** instead of silently
+amplifying or switching kernels. The original zero-before-first and
+last-capture hold, extent, checkpoint, stereo, bypass and output policies
+remain in force. There is no dynamic prefilter, hidden AA, normalization,
+graph UI or final export adaptation.
+
+This is a bounded local approximation, **not** a certified nonuniform
+bandlimited reconstruction theorem. In particular, strongly clustered
+events, phase resets and local gaps can change its bandwidth and ringing;
+unsupported/ill-conditioned requests fail closed. It uses the original
+clock/seed realization independent of the numerical evaluation grid.
+
+Regression:
+`python -m unittest discover -s tests/dsp -p 'test_nyquismic_nonuniform_sinc.py' -v`.
+The independent physical-time quadrature check uses a changed virtual clock;
+further tests cover uniform-limit correspondence, deliberate 6→2 kHz
+capture alias, stereo region/checkpoint identity, exact dry bypass, kernel
+budget and strict irregular-clock refusal of the uniform method.
+No owner listening, final product export or #252 dependency acceptance is claimed.
