@@ -260,7 +260,7 @@ class TimelineService:
             session = self._accept_locked(document)
         return {**describe(document), 'recipe_sha256': recipe.sha256,
                 'estimated_memory_bytes': estimate, 'session': session,
-                'rack_editor': editor_state(document)
+                'rack_editor': editor_state(document)}
 
     def propose_rack_edit(self, data, action):
         """Return a validated, memory-admitted proposal without changing session.
