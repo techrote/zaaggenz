@@ -6,6 +6,7 @@ import json
 import numpy as np
 from fractions import Fraction
 import os
+import time
 from pathlib import Path
 import sys
 import threading
@@ -36,9 +37,9 @@ def main():
             page.on('pageerror',lambda e:errors.append(str(e)))
             page.set_default_timeout(15000)
             page.goto(url)
-            def ready():
+            def ready(timeout=30000):
                 try:
-                    expect(page.locator('#render')).to_be_enabled(timeout=30000)
+                    expect(page.locator('#render')).to_be_enabled(timeout=timeout)
                 except Exception:
                     print('Browser status:',page.locator('#status').inner_text(),errors,flush=True)
                     page.screenshot(path=args.out/'failure.png',full_page=True)
@@ -917,7 +918,16 @@ def main():
                 ('max correction slew cents per second · cents/s','20000'),
             ):
                 field=spectral_stage.get_by_label(label)
-                field.fill(value);field.dispatch_event('change');ready()
+                start=time.monotonic()
+                field.fill(value);field.dispatch_event('change')
+                # A real Windows spectral proposal can remain admission-
+                # disabled beyond the ordinary 30 s UI smoke bound. The
+                # original failure screenshot showed a validated, enabled
+                # Render button immediately after the timeout. Wait for
+                # genuine authoritative readiness, never force enablement.
+                ready(timeout=120000)
+                print('Spectral control accepted:',label,
+                      'elapsed_seconds:',round(time.monotonic()-start,3),flush=True)
             spectral_stage.get_by_label('preserve ambiguous').uncheck();ready()
             spectral_doc=saved('rack-spectral-source-bound.zgtimeline.json')
             spectral_rack=json.loads(spectral_doc['project']['revisions'][-1]['recipe_json'])['rack']
