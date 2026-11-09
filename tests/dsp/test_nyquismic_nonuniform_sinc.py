@@ -59,17 +59,21 @@ class NonuniformSincTests(unittest.TestCase):
         weights = []
         taps = []
         for k in range(owner - 8, owner + 9):
+            # Independent binary64 physical-time reference: the NYQ-002
+            # event authority may return Decimal80 roots on Hz ramps, so
+            # mixing Fraction and Decimal with native subtraction is invalid.
+            event_times = plan._coordinates
             if k == 0:
-                h = plan._coordinates[1] - plan._coordinates[0]
+                h = float(event_times[1]) - float(event_times[0])
             elif k == len(plan.events) - 1:
-                h = plan._coordinates[-1] - plan._coordinates[-2]
+                h = float(event_times[-1]) - float(event_times[-2])
             else:
-                h = (plan._coordinates[k + 1] - plan._coordinates[k - 1]) / 2
-            delta = t - plan._coordinates[k]
+                h = (float(event_times[k + 1]) - float(event_times[k - 1])) / 2
+            delta = float(t) - float(event_times[k])
             if delta == 0:
                 weights, taps = [1.], [float(plan.captures[k, 0])]
                 break
-            x = float(delta / h)
+            x = delta / h
             w = (float(h) * (np.sin(np.pi * x) / (np.pi * x))
                  * (1 + np.cos(np.pi * x / 8)) / 2) if abs(x) < 8 else 0.
             weights.append(w)
