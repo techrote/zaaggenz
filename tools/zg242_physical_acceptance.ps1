@@ -30,6 +30,8 @@ function Evidence-Path([string]$Description) {
     return $path
 }
 function Start-Compose([string]$Python, [string]$SessionName) {
+    $listeners = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue)
+    if ($listeners.Count -gt 0) { throw "Local port $Port is already occupied; refusing another server's HTTP response." }
     $log = Join-Path $work "$SessionName-console.txt"
     $child = @'
 $ErrorActionPreference = 'Stop'
@@ -111,7 +113,7 @@ try {
         $builder = Join-Path $buildVenv 'Scripts\python.exe'
         & $builder -m pip install -c constraints/ci.txt -e '.[test]'
         Must-Succeed 'Pinned build dependencies'
-        & $builder -m build --no-isolation --wheel --outdir $dist
+        & $builder -m build --wheel --outdir $dist
         Must-Succeed 'Wheel build'
         & $builder tools/artifact_acceptance.py --dist $dist --kind wheel --constraints constraints/ci.txt --report (Join-Path $work 'wheel-acceptance-private.json')
         Must-Succeed 'Wheel artifact smoke'
