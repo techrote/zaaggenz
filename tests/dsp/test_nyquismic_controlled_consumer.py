@@ -4,7 +4,7 @@ The #267 packet module is deliberately NOT copied into #266. On an isolated
 #266 branch these cross-PR cases are skipped, NOT qualified; Integration must
 execute the exact pinned combined source on both hosts before admission.
 """
-from dataclasses import replace
+from dataclasses import fields, replace
 from fractions import Fraction
 from hashlib import sha256
 from math import ceil
@@ -219,6 +219,46 @@ class ActualControlledPCMTests(unittest.TestCase):
             _owned_grid_frame(Fraction(1,8), Fraction(1,10**18),
                               Fraction(0), 192000, 192000)
 
+
+    def test_public_replace_cannot_forge_capture_or_checkpoint_identity(self):
+        source, spec = fixture(), sonic()
+        admitted = plan(source, spec, producer(source, spec), 192000)
+        original_hash = admitted.render_sha256
+        original_checkpoint = admitted.checkpoint(24000)
+        original_pcm = admitted.render(24000, 24001).audio
+        self.assertEqual(float(admitted.captures[0][1]), 0.125)
+        self.assertEqual(float(original_pcm[0]), 0.125)
+
+        # Source-critical adversarial fixture from independent review
+        # #5832465615: a second event capture of 0.625 would have made
+        # different executable PCM at frame 24000 while keeping the packet,
+        # checkpoint and render SHA identical.
+        forged_capture = np.array(admitted.captures[0], copy=True)
+        forged_capture[1] = 0.625
+        forged_capture.flags.writeable = False
+        with self.assertRaises(ContractError):
+            replace(admitted, captures=(forged_capture,))
+
+        # Ordinary dataclass rebuilding cannot bypass admission by replacing
+        # another executable field (event ownership or source), either.
+        forged_owners = np.array(admitted._first_frames[0], copy=True)
+        forged_owners[1] += 1
+        forged_owners.flags.writeable = False
+        with self.assertRaises(ContractError):
+            replace(admitted, _first_frames=(forged_owners,))
+        with self.assertRaises(ContractError):
+            replace(admitted, source=fixture(silent=True))
+        with self.assertRaises(ContractError):
+            ControlledSamplerPlan(**{
+                field.name: getattr(admitted, field.name)
+                for field in fields(ControlledSamplerPlan)
+            })
+
+        self.assertEqual(admitted.render_sha256, original_hash)
+        self.assertEqual(admitted.checkpoint(24000), original_checkpoint)
+        np.testing.assert_array_equal(admitted.render(24000, 24001).audio,
+                                      original_pcm)
+
     def test_short_and_silent_source_remain_bounded_and_finite(self):
         for short, silent in ((True, False), (False, True)):
             source = fixture(short=short, silent=silent)
@@ -233,6 +273,14 @@ class ActualControlledPCMTests(unittest.TestCase):
                 np.testing.assert_array_equal(full, np.zeros_like(full))
             if short:
                 np.testing.assert_array_equal(full, np.zeros_like(full))
+
+
+
+class ControlledConstructionGateTests(unittest.TestCase):
+    def test_direct_unadmitted_constructor_refuses_without_packet_dependency(self):
+        # Runs even on the isolated #266 branch, where #267 packet tests skip.
+        with self.assertRaises(ContractError):
+            ControlledSamplerPlan()
 
 
 class LegacyAbsenceTests(unittest.TestCase):

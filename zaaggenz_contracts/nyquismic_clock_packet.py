@@ -165,6 +165,27 @@ def _ledger_sha256(channels: tuple[ControlledChannelClockV1, ...]) -> str:
         } for c in channels],
     })
 
+def _seed_receipt_sha256(sonic: SonicSpec, channel: int) -> str:
+    """Re-derive a packet *context* receipt, not a per-cell jitter draw seed.
+
+    This identity intentionally includes the complete clock SHA and an
+    ungrouped band. The accepted clock_cell_value counter namespace instead
+    uses root/stream/instance-or-group/cell/channel; it is not changed here.
+    """
+    record(sonic, SonicSpec, 'controlled seed receipt sonic')
+    require(sonic.clock is not None, 'controlled seed receipt requires clock')
+    integer(channel, 'controlled seed receipt channel', 0, sonic.channels - 1)
+    clock = sonic.clock
+    seed_channel = channel if sonic.stereo_link == 'independent' else 0
+    return digest({
+        'domain': 'nyq.controlled-clock-seed-namespace.v1',
+        'root': clock.jitter.seed, 'stream': clock.jitter.stream,
+        'clock': clock.sha256,
+        'scope': sonic.clock_group or sonic.instance_id,
+        'band': None if sonic.clock_group is not None else sonic.band,
+        'channel': seed_channel,
+    })
+
 
 @dataclass(frozen=True)
 class ControlledSamplerClockV1(_Record):
@@ -288,10 +309,14 @@ class ControlledSamplerClockV1(_Record):
         require(tuple((r.route_id, r.route_sha256) for r in self.route_receipts) ==
                 tuple((r.id, r.sha256) for r in sonic.clock.routes),
                 'controlled packet route mismatch')
-        # A self-consistent rehashed packet can still omit or forge events.
-        # Recompute physical crossings from the separately frozen spec.
-        # The consuming sampler must additionally bind actual PCM and graph.
+        # A self-consistent rehashed packet can still forge a seed receipt
+        # even when its physical events are correct. Re-derive each context
+        # identity from the separately frozen SonicSpec before accepting it.
+        # This is not authentication of actual live PCM or graph state.
         for channel in self.channels:
+            require(channel.seed_identity_sha256 ==
+                    _seed_receipt_sha256(sonic, channel.channel),
+                    'controlled packet seed receipt differs from source clock')
             expected = compile_step_clock_events(
                 sonic, self.full_end_s, channel=channel.channel,
                 budget=ResourceBudget(max_events=self.budget_max_events))
@@ -372,17 +397,9 @@ def compile_controlled_sampler_clock_v1(
         total += len(events)
         require(total <= budget.max_events,
                 'controlled packet combined stereo event budget exceeded')
-        seed_channel = channel if frozen.stereo_link == 'independent' else 0
-        seed = digest({
-            'domain': 'nyq.controlled-clock-seed-namespace.v1',
-            'root': clock.jitter.seed, 'stream': clock.jitter.stream,
-            'clock': clock.sha256,
-            'scope': frozen.clock_group or frozen.instance_id,
-            'band': None if frozen.clock_group is not None else frozen.band,
-            'channel': seed_channel,
-        })
         channels.append(ControlledChannelClockV1(
-            channel=channel, seed_identity_sha256=seed,
+            channel=channel,
+            seed_identity_sha256=_seed_receipt_sha256(frozen, channel),
             events=tuple(ControlledClockEventV1(
                 index=e.index, epoch=e.epoch, crossing=e.crossing,
                 coordinate_s=event_text(e.coordinate_s),
