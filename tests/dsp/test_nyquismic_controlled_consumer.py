@@ -113,6 +113,43 @@ class ActualControlledPCMTests(unittest.TestCase):
             seen.add(packet.event_ledger_sha256)
         self.assertEqual(len(seen), 1)
 
+    def test_all_admitted_time_aware_reconstruction_mappings(self):
+        source = fixture()
+        event_times = np.array([0., .125, .25, .375, .5, .75])
+        frames = np.arange(192000, dtype=np.int64)
+        physical = frames / 192000
+        owners = np.searchsorted(event_times, physical, side='right') - 1
+        for method in ('hold_v1', 'nearest_time_v1', 'linear_time_v1',
+                       'cubic_time_v1'):
+            spec = sonic(reconstruction=method)
+            pkt = producer(source, spec)
+            admitted = plan(source, spec, pkt, 192000)
+            output = admitted.render().audio
+            if method == 'hold_v1':
+                expected = event_times[owners]
+                np.testing.assert_array_equal(output, expected)
+            elif method == 'nearest_time_v1':
+                nxt = np.minimum(owners + 1, len(event_times)-1)
+                exact_left = 2*(physical-event_times[owners]) <= (
+                    event_times[nxt]-event_times[owners])
+                expected = np.where(exact_left, event_times[owners],
+                                    event_times[nxt])
+                np.testing.assert_array_equal(output, expected)
+            else:
+                # A sampled affine ramp reproduces an affine ramp through
+                # time-aware linear and cubic Hermite, then holds its last
+                # actual physical capture. This is not a grid-rate oscillator.
+                np.testing.assert_allclose(
+                    output, np.minimum(physical, .75), atol=2e-12, rtol=0)
+            np.testing.assert_array_equal(
+                admitted.render(30001, 55555).audio, output[30001:55555])
+        for mode in ('sinc4_hann_uniform_v1',
+                     'shepard8_hann_local_time_v1'):
+            spec = sonic(reconstruction=mode)
+            packet = producer(source, spec)
+            with self.assertRaises(ContractError):
+                plan(source, spec, packet, 192000)
+
     def test_linked_and_independent_stereo_and_captured_channel_identity(self):
         for link in ('linked', 'independent'):
             source, spec = fixture(2), sonic(2, stereo_link=link)
