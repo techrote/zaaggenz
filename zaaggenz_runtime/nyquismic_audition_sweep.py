@@ -203,7 +203,7 @@ def export_saved_compose_rate_sweep(
                 if _sha(data) != entry["page_sha256"]:
                     raise RuntimeError("rate sweep page mutated before final packaging")
                 _zip_write(archive, entry["page"], data)
-        with archive_path.open("rb") as f:
+        with archive_path.open("r+b") as f:
             os.fsync(f.fileno())
         _check(cancelled)
         if _sha(project.read_bytes()) != project_sha:
