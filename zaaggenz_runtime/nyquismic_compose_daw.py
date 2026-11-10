@@ -105,9 +105,10 @@ def export_saved_compose_daw(
                 raise RuntimeError('saved Compose project changed during DAW publication')
             _check(cancelled)
         except BaseException:
-            # Never unlink an external writer's replacement of our output. A
-            # different inode or changed metadata means we no longer own it.
-            # Changes AFTER the final validation require writer cooperation.
+            # Attempt rollback only while the path still identifies our staged
+            # inode with unchanged metadata. Another writer's replacement is
+            # preserved when observable; an uncooperative replacement racing
+            # the stat/unlink itself cannot be excluded portably.
             try:
                 output_stat = dest.stat(follow_symlinks=False)
                 if (output_stat.st_dev == staged_stat.st_dev and
