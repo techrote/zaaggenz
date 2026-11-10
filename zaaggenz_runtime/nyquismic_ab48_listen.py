@@ -90,6 +90,16 @@ output devices may resample the 48-kHz WAVs. Not a registered Compose export/UI.
   const $ = id => document.getElementById(id);
   let context = null, buffers = null, sources = [], gains = [];
   let playing = false, offset = 0, startedAt = 0, selected = 0;
+  // AudioParam.value is the intrinsic value, not the live mid-ramp gain.
+  // Retain the analytic envelope for engines without cancelAndHoldAtTime.
+  let envelopes = [{from:1, to:1, start:0, end:0},
+                   {from:0, to:0, start:0, end:0}];
+  function envelopeAt(i, time) {
+    const e = envelopes[i];
+    if (time >= e.end) return e.to;
+    if (time <= e.start) return e.from;
+    return e.from + (e.to - e.from) * (time - e.start) / (e.end - e.start);
+  }
   const status = $("status"), play = $("play"), seek = $("seek");
   const duration = payload.frames / 48000;
   const clockText = seconds => {
@@ -141,6 +151,10 @@ output devices may resample the 48-kHz WAVs. Not a registered Compose export/UI.
     if (offset >= duration) offset = 0;
     const when = context.currentTime + .035;
     startedAt = when - offset;
+    envelopes = [0, 1].map(i => {
+      const level = i === selected ? 1 : 0;
+      return {from:level, to:level, start:when, end:when};
+    });
     for (let i = 0; i < 2; i++) {
       const source = context.createBufferSource();
       const gain = context.createGain();
@@ -174,9 +188,18 @@ output devices may resample the 48-kHz WAVs. Not a registered Compose export/UI.
       const t = context.currentTime, end = t + .008;
       for (let i = 0; i < 2; i++) {
         const g = gains[i].gain;
-        g.cancelScheduledValues(t);
-        g.setValueAtTime(g.value, t);
-        g.linearRampToValueAtTime(i === selected ? 1 : 0, end);
+        const from = envelopeAt(i, t);
+        const to = i === selected ? 1 : 0;
+        if (typeof g.cancelAndHoldAtTime === "function") {
+          // Preserve the computed automation value, including a mid-ramp edit.
+          g.cancelAndHoldAtTime(t);
+        } else {
+          // Firefox/older engines: reconstruct the actual in-progress gain.
+          g.cancelScheduledValues(t);
+          g.setValueAtTime(from, t);
+        }
+        g.linearRampToValueAtTime(to, end);
+        envelopes[i] = {from:from, to:to, start:t, end:end};
       }
       status.textContent = "Playing synchronized sources; selection " + (selected ? "B" : "A");
     }
