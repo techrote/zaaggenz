@@ -70,7 +70,7 @@ jobs:
       - name: Install Chromium with Linux dependencies
         run: python -m playwright install --with-deps chromium
       - name: NYQ direct saved-Compose HTML - real Chromium playback and WAV identity
-        run: python tests/runtime/browser_nyq_direct_audition.py --fixture
+        run: PYTHONPATH=. python tests/runtime/browser_nyq_direct_audition.py --fixture
       - name: Compose Research switching and preserved session
         run: python tests/runtime/browser_zg041.py --out zg041-browser
       - name: Cross-workspace source and stale-result proof
