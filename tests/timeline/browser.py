@@ -1143,7 +1143,10 @@ def main():
             assert page.locator('#waveform').get_attribute('data-revision')==''
             page.locator('#outputs').select_option(full_job);ready()
             expect(page.locator('#playback-revision')).to_have_text(first_revision)
-            page.locator('#stop').click();expect(page.locator('#play')).to_be_disabled()
+            stopped_download=page.locator('#download').get_attribute('href')
+            page.locator('#stop').click();expect(page.locator('#play')).to_be_enabled()
+            page.wait_for_function("document.getElementById('audio').paused && document.getElementById('audio').currentTime === 0")
+            assert page.locator('#download').get_attribute('href')==stopped_download
             page.locator('#master').fill('-9');page.locator('#master').dispatch_event('change');ready()
             page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json')
             expect(page.locator('#revision')).to_have_text(TimelineDocument(data4).revision_id)

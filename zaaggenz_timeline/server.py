@@ -100,6 +100,7 @@ class Handler(webapp.Handler):
                          '/timeline/app.mjs': ('app.mjs', 'text/javascript; charset=utf-8'),
                          '/timeline/editor.mjs': ('editor.mjs', 'text/javascript; charset=utf-8'),
                          '/timeline/rack-ui.mjs': ('rack-ui.mjs', 'text/javascript; charset=utf-8'),
+                         '/timeline/theme.mjs': ('theme.mjs', 'text/javascript; charset=utf-8'),
                          '/timeline/style.css': ('style.css', 'text/css; charset=utf-8')}
             if path in resources:
                 filename, mime = resources[path]
