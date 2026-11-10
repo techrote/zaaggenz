@@ -139,7 +139,8 @@ output devices may resample the 48-kHz WAVs. Not a registered Compose export/UI.
     halt();
     offset = Math.max(0, Math.min(at, duration));
     if (offset >= duration) offset = 0;
-    startedAt = context.currentTime - offset;
+    const when = context.currentTime + .035;
+    startedAt = when - offset;
     for (let i = 0; i < 2; i++) {
       const source = context.createBufferSource();
       const gain = context.createGain();
@@ -147,7 +148,8 @@ output devices may resample the 48-kHz WAVs. Not a registered Compose export/UI.
       gain.gain.value = i === selected ? 1 : 0;
       source.connect(gain);
       gain.connect(context.destination);
-      source.start(context.currentTime, offset);
+      // Both inputs have exactly one scheduled Web Audio start timestamp.
+      source.start(when, offset);
       sources.push(source);
       gains.push(gain);
     }
@@ -157,7 +159,7 @@ output devices may resample the 48-kHz WAVs. Not a registered Compose export/UI.
   }
   function pause() {
     if (!playing) return;
-    offset = Math.min(duration, context.currentTime - startedAt);
+    offset = Math.max(0, Math.min(duration, context.currentTime - startedAt));
     halt();
     playing = false;
     play.textContent = "PLAY";
