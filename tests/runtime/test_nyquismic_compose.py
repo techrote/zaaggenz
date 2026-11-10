@@ -4,6 +4,7 @@ Requires a real RuntimeSession and completed source audio, not caller-invented
 source, graph or rack hashes. This is an opt-in full-mix integration slice.
 """
 from copy import deepcopy
+from dataclasses import fields, replace
 import json
 import unittest
 
@@ -17,10 +18,12 @@ from zaaggenz_contracts.nyquismic_clock import ClockCancelled
 from zaaggenz_contracts.nyquismic_clock_packet import (
     AuthenticatedRouteReceiptV1, compile_controlled_sampler_clock_v1,
 )
-from zaaggenz_dsp.nyquismic import sampler_evaluation
+from zaaggenz_dsp.nyquismic import FrozenInput, sampler_evaluation
 from zaaggenz_jobs import JobError
 from zaaggenz_runtime import RuntimeSession
-from zaaggenz_runtime.nyquismic_compose import bind_completed_compose
+from zaaggenz_runtime.nyquismic_compose import (
+    ComposeControlledSource, ComposeControlledRender, bind_completed_compose,
+)
 from zaaggenz_timeline.model import TimelineDocument, default_document
 from zaaggenz_timeline.service import TimelineService
 
@@ -142,6 +145,34 @@ class ComposeControlledSessionTests(unittest.TestCase):
         with self.assertRaises((ClockCancelled, JobError)):
             handle.render(0, 10000, progress=change_on_progress)
         self.assertTrue(moved[0])
+
+    def test_public_constructor_replace_and_rebound_pcm_refuse(self):
+        binding, _, handle = self.prepare()
+        false_pcm = FrozenInput.from_pcm(
+            np.zeros_like(binding.source.pcm), binding.source.sample_rate_hz)
+        with self.assertRaises(JobError):
+            replace(binding, source=false_pcm)
+        with self.assertRaises(JobError):
+            replace(binding, rack_revision_sha256='0'*64)
+        with self.assertRaises(JobError):
+            ComposeControlledSource(**{
+                field.name: getattr(binding, field.name)
+                for field in fields(ComposeControlledSource)})
+        with self.assertRaises(JobError):
+            replace(handle, _plan=handle._plan)
+        with self.assertRaises(JobError):
+            ComposeControlledRender(binding, handle._plan)
+
+        # Bypassing a dataclass constructor still cannot turn foreign PCM into
+        # an authenticated current Compose source: check actual job bytes.
+        cloned = object.__new__(ComposeControlledSource)
+        for field in fields(ComposeControlledSource):
+            object.__setattr__(cloned, field.name,
+                               false_pcm if field.name == 'source'
+                               else getattr(binding, field.name))
+        with self.assertRaises(JobError):
+            _ = cloned.packet_claims
+        self.assertTrue(np.isfinite(handle.render(0, 100).audio).all())
 
     def test_cold_reopened_session_recompiles_identical_source_and_pcm(self):
         binding, _, handle = self.prepare()
