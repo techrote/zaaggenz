@@ -207,13 +207,12 @@ class ComposeControlled48kWavTests(unittest.TestCase):
 
     def test_admission_budget_rejects_before_preparation(self):
         binding, spec, packet = self.prepared()
-        with patch.object(binding, 'prepare', side_effect=AssertionError(
-                'sampler preparation should not be called')):
-            with self.assertRaises(Exception) as error:
+        with patch('zaaggenz_runtime.nyquismic_compose_delivery.ComposeControlledSource.prepare',
+                   side_effect=AssertionError('sampler preparation should not be called')):
+            with self.assertRaises(JobError):
                 render_compose_controlled_48k_wav(
                     binding, spec, packet, sampler_evaluation(192000),
                     budget=ResourceBudget(max_frames=1024))
-        self.assertNotIsInstance(error.exception, AssertionError)
 
 
 if __name__ == '__main__':
