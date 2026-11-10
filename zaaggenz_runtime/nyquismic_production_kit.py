@@ -189,7 +189,7 @@ def export_saved_compose_kit(
                 stems._entry(archive, name, wav)
         if not 0 < bundle.stat().st_size <= MAX_FINAL_ZIP:
             raise ValueError("production kit exceeds 128 MiB")
-        with bundle.open("rb") as handle:
+        with bundle.open("r+b") as handle:
             os.fsync(handle.fileno())
         bundle_sha = direct._sha_file(bundle, cancelled)
         if direct._sha_file(sweep_path, cancelled) != sr["archive_sha256"]:
