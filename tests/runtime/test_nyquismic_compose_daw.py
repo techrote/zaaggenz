@@ -173,6 +173,73 @@ class IsolatedDirectDaw(unittest.TestCase):
         self.assert_stage_clean()
 
 
+    def test_final_link_window_cancellation_rolls_back_own_output(self):
+        # Reproduce the independently reported gap: callback changes state
+        # inside os.link, AFTER the exporter's previous final _check.
+        flag = [False]
+        real_link = direct.os.link
+
+        def cancel_at_commit(source, destination):
+            flag[0] = True
+            return real_link(source, destination)
+
+        with mock.patch.object(direct.os, 'link', side_effect=cancel_at_commit):
+            with self.assertRaisesRegex(RuntimeError, 'cancelled'):
+                self.execute(cancelled=lambda: flag[0])
+        self.assertFalse(self.output.exists())
+        self.assert_stage_clean()
+
+    def test_final_link_window_project_edit_rolls_back_own_output(self):
+        real_link = direct.os.link
+
+        def edit_at_commit(source, destination):
+            self.project.write_bytes(b'{"a":99}')
+            return real_link(source, destination)
+
+        with mock.patch.object(direct.os, 'link', side_effect=edit_at_commit):
+            with self.assertRaisesRegex(RuntimeError, 'project changed during DAW publication'):
+                self.execute()
+        self.assertFalse(self.output.exists())
+        self.assert_stage_clean()
+
+    def test_after_actual_link_cancellation_and_project_edit_roll_back(self):
+        real_link = direct.os.link
+        for change in ('cancel', 'project'):
+            with self.subTest(change=change):
+                flag = [False]
+
+                def change_after_commit(source, destination):
+                    real_link(source, destination)
+                    if change == 'cancel':
+                        flag[0] = True
+                    else:
+                        self.project.write_bytes(b'{"a":44}')
+
+                with mock.patch.object(direct.os, 'link', side_effect=change_after_commit):
+                    with self.assertRaisesRegex(RuntimeError, 'cancelled|project changed'):
+                        self.execute(cancelled=lambda: flag[0])
+                self.assertFalse(self.output.exists())
+                self.assert_stage_clean()
+                self.project.write_bytes(b'{"a":1}')
+
+    def test_rollback_never_unlinks_another_writers_replacement(self):
+        real_link = direct.os.link
+        foreign = self.root / 'foreign.zip'
+
+        def replace_just_after_link(source, destination):
+            real_link(source, destination)
+            foreign.write_bytes(b'other-writer-owned-output')
+            foreign.replace(destination)
+            self.project.write_bytes(b'{"a":76}')
+
+        with mock.patch.object(direct.os, 'link', side_effect=replace_just_after_link):
+            with self.assertRaisesRegex(RuntimeError, 'project changed during DAW publication'):
+                self.execute()
+        self.assertEqual(self.output.read_bytes(), b'other-writer-owned-output')
+        self.assertFalse(foreign.exists())
+        self.assert_stage_clean()
+
+
 class OriginalSavedComposeDirectDaw(unittest.TestCase):
     def test_real_compose_to_original_wav_bundle(self):
         root = Path(__file__).resolve().parents[2]
