@@ -117,6 +117,23 @@ class ComposeControlled48kWavTests(unittest.TestCase):
         self.assertEqual(hashlib.sha256(
             audio.astype('<f4', copy=False).tobytes()).hexdigest(),
             result.pcm_f32le_sha256)
+        # Original-host source/PCM receipt: retain actual values in CI logs
+        # rather than asserting against a fabricated cross-host byte identity.
+        print('NYQ48K_ORIGINAL_NUMERICS ' + json.dumps({
+            'source_asset_sha256': result.source_asset_sha256,
+            'source_frames': binding.source.asset.to_dict()['frame_count'],
+            'source_rate_hz': binding.source.sample_rate_hz,
+            'recipe_sha256': result.recipe_sha256,
+            'packet_sha256': result.packet_sha256,
+            'sampler_render_sha256': result.sampler_render_sha256,
+            'numerical_f64le_sha256': result.numerical_f64le_sha256,
+            'converted_f64le_sha256': result.converted_f64le_sha256,
+            'pcm_f32le_sha256': result.pcm_f32le_sha256,
+            'wav_sha256': result.wav_sha256,
+            'wav_frames': result.frames,
+            'wav_rate_hz': result.sample_rate_hz,
+            'identity_sha256': result.identity_sha256,
+        }, sort_keys=True))
 
     def test_checkpoint_replay_matches_full_numerical_and_final_pcm(self):
         binding, spec, packet, result = self.export()
