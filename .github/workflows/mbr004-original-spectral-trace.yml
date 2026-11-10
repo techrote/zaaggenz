@@ -63,6 +63,20 @@ jobs:
             "https://api.github.com/repos/techrote/zaaggenz/actions/artifacts/${ORIGINAL_ARTIFACT_ID}/zip" \
             --output original-zg009.zip
           printf '%s  %s\n' "${ORIGINAL_ARCHIVE_SHA256}" original-zg009.zip | sha256sum --check
+      - name: Retrieve and verify prior original-Windows trace for matched-input tracker probe
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --location \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/techrote/zaaggenz/actions/artifacts/13720288381/zip" \
+            --output reference-stage-windows.zip
+          printf '%s  %s\n' "59bad277a78a55c329f6c479415daa09dc5f9e2ce4d27efbb9da98e9ff2fbe5b" reference-stage-windows.zip | sha256sum --check
+          python -c "from zipfile import ZipFile; from pathlib import Path; z=ZipFile('reference-stage-windows.zip'); n='trace-windows.json'; assert z.namelist().count(n)==1, 'exact original Windows reference trace required'; Path('stage-reference-windows.json').write_bytes(z.read(n))"
       - name: Trace NORMAL saved-source rack; no frozen dry substitution
         shell: bash
         run: |
@@ -70,7 +84,8 @@ jobs:
           python tools/zg242_spectral_portability_trace.py capture \
             --artifact original-zg009.zip \
             --document rack-order-compression-then-spectral.zgtimeline.json \
-            --out "trace-${TRACE_HOST}.json"
+            --out "trace-${TRACE_HOST}.json" \
+            --match-stage-from stage-reference-windows.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
