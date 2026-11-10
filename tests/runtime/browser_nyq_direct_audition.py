@@ -193,6 +193,45 @@ def verify_in_chromium(url, payload, measured, *, loopback=False):
                         measured[key]["wav_sha256"]), key + " WAV download changed"
             assert not errors, "Chromium page errors: " + repr(errors)
             assert not external_requests, "unexpected network: " + repr(external_requests)
+
+            # Force the no-cancelAndHold browser branch on an isolated copy
+            # of the *actual generated page*. This is a compatibility probe,
+            # not a claim that Firefox was physically executed here.
+            fallback = browser.new_page()
+            fallback_errors = []
+            fallback.on("pageerror", lambda e: fallback_errors.append(str(e)))
+            fallback.add_init_script(r"""
+(() => {
+  AudioParam.prototype.cancelAndHoldAtTime = undefined;
+  window.__nyq_fallback_sets = [];
+  const original = AudioParam.prototype.setValueAtTime;
+  AudioParam.prototype.setValueAtTime = function(value, when) {
+    window.__nyq_fallback_sets.push({value, when});
+    return original.apply(this, arguments);
+  };
+})();
+""")
+            try:
+                fallback.goto(url, wait_until="load")
+                fallback.locator("#play").click()
+                expect(fallback.locator("#status")).to_contain_text(
+                    "Playing synchronized sources")
+                fallback.locator("#wet").click()
+                fallback.wait_for_timeout(3)
+                fallback.locator("#dry").click()
+                sets = fallback.evaluate("window.__nyq_fallback_sets")
+                assert len(sets) == 4, (
+                    "no-hold browser path did not reconstruct both gain ramps")
+                delta = sets[2]["when"] - sets[0]["when"]
+                fraction = max(0., min(1., delta / .008))
+                assert abs(sets[2]["value"] - (1. - fraction)) < .025, (
+                    "fallback dry gain is not the current interpolated ramp")
+                assert abs(sets[3]["value"] - fraction) < .025, (
+                    "fallback wet gain is not the current interpolated ramp")
+                assert not fallback_errors, (
+                    "fallback browser errors: " + repr(fallback_errors))
+            finally:
+                fallback.close()
             return {
                 "chromium_version": browser.version,
                 "entry": "loopback-only" if loopback else "file://",
