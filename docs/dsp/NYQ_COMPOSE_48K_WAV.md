@@ -14,7 +14,7 @@ binding plus the selected `SonicSpec`, #267 authored-route clock packet and
 `sampler_evaluation(...)`. It performs:
 
 1. Full-phrase source/graph/session preflight and strict rational extent
-   admission onto **both** numerical and 48,000-Hz grids.
+   admission onto **both** numerical and 48,000-Hz grids. Reject any\n   packet whose physical extent is shorter than the complete source PCM: an\n   otherwise valid short clock packet may not silently truncate the owned\n   Compose phrase.
 2. Existing #266 controlled `SamplerPlan` at the caller's explicit numerical
    rate, with checkpoint/event-ledger semantics unchanged.
 3. Existing NYQ-003 `convert_numerical_to_delivery` **after** artistic clock
@@ -52,7 +52,7 @@ PCM/checkpoint replay against decoded 48-kHz float WAV via the independently
 implemented pinned final FIR. They cover saved-document cold reopen and
 injection of an ordinary Compose edit during WAV encoding, owned-job
 cancellation after the FIR, and caller cancellation during encoding. A
-small delivery budget must fail before sampler preparation. Recording original
+small delivery budget or a shortened packet must fail before sampler\npreparation. Recording original
 supported Ubuntu/Windows CI, exact hashes, independent review and final-host
 receipts remains required; writing the tests does not certify their execution.
 
