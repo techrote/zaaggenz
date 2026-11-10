@@ -65,6 +65,35 @@ class ComposeControlledSource:
             'domain': 'nyq.compose-rack-bound-v1', 'rack': recipe.to_dict().get('rack')
         }), 'source rack identity differs from compiled Compose recipe')
 
+    def _publish(self, result, *, cancelled=None):
+        """Linearize the final handoff with Compose edits and cancellation.
+
+        The full artifact/recipe/PCM comparison is deliberately outside the
+        critical section. TimelineService mutations acquire _jobs_lock before
+        RuntimeSession's _lock; acquire in that order here too. Direct session
+        mutations are consequently serialized even when they bypass the
+        TimelineService API. The caller cancellation hook has no shared lock:
+        sample it at the final handoff, then recheck ownership in case that
+        hook caused a reentrant edit or job cancellation.
+        """
+        self._guard()
+        timeline = self.timeline
+        with timeline._jobs_lock:
+            with timeline.session._lock:
+                witness = timeline._jobs.get(self.job_id)
+                def still_current():
+                    return (witness is not None and
+                            timeline._current_locked(witness) and
+                            timeline.session.current_identity() ==
+                            (self.generation, self.timeline_revision_id))
+                _require(still_current(),
+                         'stale/ABA Compose session or cancelled job at publication')
+                _require(cancelled is None or not cancelled(),
+                         'caller cancelled controlled render before publication')
+                _require(still_current(),
+                         'Compose session or job changed during publication check')
+                return result
+
     @property
     def packet_claims(self) -> dict[str, str]:
         """Recipe and source receipts for the #267 producer; not proof on their own."""
@@ -137,14 +166,12 @@ class ComposeControlledRender:
 
     @property
     def render_sha256(self):
-        self.source_binding._guard()
-        return self._plan.render_sha256
+        return self.source_binding._publish(self._plan.render_sha256)
 
     def checkpoint(self, frame: int):
         self.source_binding._guard()
         result = self._plan.checkpoint(frame)
-        self.source_binding._guard()
-        return result
+        return self.source_binding._publish(result)
 
     def render(self, start_frame=None, stop_frame=None, *, checkpoint=None,
                cancelled=None, progress=None):
@@ -158,8 +185,7 @@ class ComposeControlledRender:
                 (binding.generation, binding.timeline_revision_id))
         result = self._plan.render(start_frame, stop_frame, checkpoint=checkpoint,
                                    cancelled=obsolete, progress=progress)
-        binding._guard()  # Never publish audio/checkpoints across edit or cancellation.
-        return result
+        return binding._publish(result, cancelled=cancelled)
 
 
 def bind_completed_compose(timeline: TimelineService, job_id: str) -> ComposeControlledSource:

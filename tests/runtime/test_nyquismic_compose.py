@@ -7,6 +7,7 @@ from copy import deepcopy
 from dataclasses import fields, replace
 import json
 import unittest
+from unittest.mock import patch
 
 import numpy as np
 
@@ -173,6 +174,83 @@ class ComposeControlledSessionTests(unittest.TestCase):
         with self.assertRaises(JobError):
             _ = cloned.packet_claims
         self.assertTrue(np.isfinite(handle.render(0, 100).audio).all())
+
+    def test_late_edit_during_last_artifact_read_refuses_publication(self):
+        binding, _, handle = self.prepare()
+        changed = deepcopy(self.document)
+        changed['name'] = 'edit while final guard reads artifact'
+        original_artifact = self.service.artifact
+        reads = [0]
+
+        def read_and_edit(job_id):
+            artifact = original_artifact(job_id)
+            reads[0] += 1
+            # Initial guard: status/artifact; final guard: status/artifact.
+            if reads[0] == 4:
+                self.service.accept_document(changed)
+            return artifact
+
+        with patch.object(self.service, 'artifact', side_effect=read_and_edit):
+            with self.assertRaises(JobError):
+                handle.render(0, 100)
+        self.assertEqual(reads[0], 4)
+        self.assertNotEqual(
+            self.service.session.current_identity(),
+            (binding.generation, binding.timeline_revision_id))
+
+    def test_late_job_revocation_during_last_artifact_read_refuses(self):
+        _, _, handle = self.prepare()
+        original_artifact = self.service.artifact
+        reads = [0]
+
+        def read_and_cancel(job_id):
+            artifact = original_artifact(job_id)
+            reads[0] += 1
+            if reads[0] == 4:
+                self.service.cancel(job_id)
+            return artifact
+
+        with patch.object(self.service, 'artifact', side_effect=read_and_cancel):
+            with self.assertRaises(JobError):
+                handle.render(0, 100)
+        self.assertEqual(reads[0], 4)
+
+    def test_late_caller_cancellation_at_publication_refuses(self):
+        _, _, handle = self.prepare()
+        original_artifact = self.service.artifact
+        reads, stop = [0], [False]
+
+        def read_and_signal(job_id):
+            artifact = original_artifact(job_id)
+            reads[0] += 1
+            if reads[0] == 4:
+                stop[0] = True
+            return artifact
+
+        with patch.object(self.service, 'artifact', side_effect=read_and_signal):
+            with self.assertRaises(JobError):
+                handle.render(0, 100, cancelled=lambda: stop[0])
+        self.assertEqual(reads[0], 4)
+        self.assertTrue(stop[0])
+
+    def test_direct_runtime_session_edit_during_final_guard_refuses(self):
+        _, _, handle = self.prepare()
+        changed = deepcopy(self.document)
+        changed['name'] = 'direct session edit'
+        original_artifact = self.service.artifact
+        reads = [0]
+
+        def read_and_edit(job_id):
+            artifact = original_artifact(job_id)
+            reads[0] += 1
+            if reads[0] == 4:
+                self.service.session.accept_document(changed)
+            return artifact
+
+        with patch.object(self.service, 'artifact', side_effect=read_and_edit):
+            with self.assertRaises(JobError):
+                handle.render(0, 100)
+        self.assertEqual(reads[0], 4)
 
     def test_cold_reopened_session_recompiles_identical_source_and_pcm(self):
         binding, _, handle = self.prepare()

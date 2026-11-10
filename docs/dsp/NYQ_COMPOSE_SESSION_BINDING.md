@@ -22,9 +22,15 @@ RenderRecipe SHA, rack identity = source-derived rack digest, and actual
 FrozenInput asset digest. These become parameters for the existing #267 packet
 producer. `prepare(...)` revalidates the current source, graph, actual packet
 and existing #266 SamplerPlan; it refuses upstream-feature routes because
-their graph taps and input PCM are not yet authenticated. Render and checkpoint
-publication recheck session generation, including A→B→A, owned job and compiled
-recipe. The delegated renderer checks cancellation between bounded blocks.
+their graph taps and input PCM are not yet authenticated. Render and checkpoint publication validate the source/recipe/PCM before entering
+a short final handoff synchronized with TimelineService's owned-job lock and
+RuntimeSession's document lock (in that order). This final check rejects edits,
+including A→B→A, job revocation, and caller cancellation observed at handoff;
+it also rechecks authority after the cancellation callback in case the callback
+caused a reentrant mutation. Expensive controlled audio rendering stays outside
+the locks. Publication has a defined final-check linearization point, not a
+promise that independent caller cancellation flags cannot change *after* return.
+The delegated renderer checks cancellation between bounded blocks.
 No legacy audio or default route is changed.
 
 This demonstrates the source/session authority needed by a later registered
@@ -44,7 +50,10 @@ compile the #267 physical-event clock, and execute the #266 controlled sampler.
 They verify region/checkpoint PCM identity, real current-session graph/source
 receipts, refusal of a forged graph SHA and truncated source region, generation
 revocation across a repeated document (ABA), cancellation during rendering,
-and saved-document cold-reopen numerical identity.
+and saved-document cold-reopen numerical identity. Adversarial regressions
+also inject ordinary Compose edits, direct RuntimeSession edits, job revocation,
+and caller cancellation on the *last* artifact read of the final guard: a
+successful ordinary PCM render must not publish past these late boundaries.
 
 Record exact Ubuntu/Windows CI checks, direct/reverse programme impact and
 independent review **before** considering this code qualified. Any ZG-024a
