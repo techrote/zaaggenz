@@ -50,14 +50,14 @@ def sonic():
         rate=VirtualRate('4/1'), routes=(route,)))
 
 
-def packet_for(binding, spec):
+def packet_for(binding, spec, *, full_end_s='1/1'):
     claims = binding.packet_claims
     route = spec.clock.routes[0]
     receipt = AuthenticatedRouteReceiptV1(
         route_id=route.id, route_sha256=route.sha256,
         source_sha256='2' * 64, source_method='nyq.step-source.v1')
     return compile_controlled_sampler_clock_v1(
-        spec, full_end_s='1/1',
+        spec, full_end_s=full_end_s,
         input_asset_sha256=claims['input_asset_sha256'],
         source_revision_sha256=claims['source_revision_sha256'],
         graph_revision_sha256=claims['graph_revision_sha256'],
@@ -204,6 +204,15 @@ class ComposeControlled48kWavTests(unittest.TestCase):
                     binding, spec, packet, sampler_evaluation(192000),
                     cancelled=lambda: cancelled[0])
         self.assertTrue(cancelled[0])
+
+    def test_shorter_packet_cannot_silently_truncate_full_compose_export(self):
+        binding, spec, _ = self.prepared()
+        short = packet_for(binding, spec, full_end_s='3/4')
+        with patch('zaaggenz_runtime.nyquismic_compose_delivery.ComposeControlledSource.prepare',
+                   side_effect=AssertionError('do not prepare partial packet')):
+            with self.assertRaises(JobError):
+                render_compose_controlled_48k_wav(
+                    binding, spec, short, sampler_evaluation(192000))
 
     def test_admission_budget_rejects_before_preparation(self):
         binding, spec, packet = self.prepared()
