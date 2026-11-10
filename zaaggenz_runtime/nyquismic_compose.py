@@ -72,6 +72,19 @@ class ComposeControlledSource:
             return (cancelled is not None and cancelled()) or (
                 self.timeline.session.current_identity() !=
                 (self.generation, self.timeline_revision_id))
+        if frame_count is None:
+            # A compiled packet declares its full *physical* extent. The
+            # SamplerPlan default instead derives an extent from input length;
+            # that is not necessarily the intended controlled-clock region.
+            # Never silently truncate a non-grid-aligned packet.
+            from fractions import Fraction
+            physical_frames = (
+                Fraction(packet.full_end_s) - Fraction(sonic.clock.origin_s)
+            ) * evaluation.evaluation_rate_hz
+            _require(physical_frames.denominator == 1 and
+                     physical_frames.numerator > 0,
+                     'packet full physical extent does not fit evaluation grid')
+            frame_count = physical_frames.numerator
         plan = SamplerPlan.prepare(
             self.source, sonic, evaluation,
             controlled_clock=packet,
