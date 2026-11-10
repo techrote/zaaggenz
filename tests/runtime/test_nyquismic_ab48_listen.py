@@ -77,9 +77,7 @@ class LocalAuditionTests(unittest.TestCase):
         self.assertIn('document.getElementById("nyq-payload")', html)
         self.assertIn('context.createBufferSource()', html)
         self.assertIn('source.start(context.currentTime, offset)', html)
-        self.assertIn('gain.linearRampToValueAtTime', html) if False else None
         self.assertIn('g.linearRampToValueAtTime', html)
-        self.assertIn('connect-src &#', html) if False else None
         self.assertIn("connect-src 'none'", html)
         self.assertEqual(receipt["html_sha256"],
                          hashlib.sha256(self.output.read_bytes()).hexdigest())
