@@ -89,9 +89,15 @@ def render_compose_controlled_48k_wav(
              (extent * OUTPUT_RATE_HZ).denominator == 1 and
              (extent * evaluation.evaluation_rate_hz).denominator == 1,
              'packet duration must fit both numerical and 48-kHz grids exactly')
+    # This candidate publishes a complete owned Compose phrase, not a
+    # caller-selected shortened packet that silently drops the source tail.
+    asset = binding.source.asset.to_dict()
+    source_extent = Fraction(asset['frame_count'], binding.source.sample_rate_hz)
+    _require(extent == source_extent,
+             'packet must cover the complete owned Compose PCM physical extent')
     numerical_frames = int(extent * evaluation.evaluation_rate_hz)
     final_frames = int(extent * OUTPUT_RATE_HZ)
-    channels = binding.source.asset.to_dict()['channels']
+    channels = asset['channels']
     _require(numerical_frames * channels <= budget.max_frames and
              final_frames * channels <= budget.max_frames,
              'physical extent exceeds delivery budget')
