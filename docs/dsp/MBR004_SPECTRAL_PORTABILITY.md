@@ -72,7 +72,7 @@ With just the *explicit frozen dry-input substitution*, the **same local code** 
 
 Integration and the DSP owner should preregister a **source-specific, executable criterion** that (1) requires authenticated identical source/rack, explicit numerical environment and exact no-rack/bypass/reopen identity, (2) locates the *first* divergent input, filter, tracker frame, threshold/abstention, target choice, transformed partial, routed delta or final PCM, (3) separately evaluates allowable near-threshold decisions and audible consequences, and (4) quantifies tolerance tied to the actual algorithm, *not* the observed PCM to make a failing test pass. Earlier MBR-002 inverse projection numeric budgets are **not** whole-rack PCM policy. No silent normalization or changed defaults.
 
-**Gate B HOLD:** source-exact Ubuntu/Windows normal replays have executed, but common-input tracker attribution, reviewer source validation and DSP-owner criterion remain pending. **Gate A EXTERNAL PENDING:** ordinary installed-wheel Windows 11 Compose startup, edit, restart/reopen and export receipts are absent; existing issue #242 operator procedure is the entry point. #243 native VST remains blocked. Integration alone admits #242, merges, or changes programme gates. This PR changes only new diagnostic tools/tests/docs; no shared implementation source or CI.
+**Gate B HOLD:** original-host source-exact normal replays and a separate matched-input tracker comparison have executed. The first discrete Hungarian split is isolated, but DSP-owner source review, a preregistered near-tie/portability criterion and audible-consequence qualification remain pending. **Gate A EXTERNAL PENDING:** ordinary installed-wheel Windows 11 Compose startup, edit, restart/reopen and export receipts are absent; existing issue #242 operator procedure is the entry point. #243 native VST remains blocked. Integration alone admits #242, merges, or changes programme gates. This PR changes only new diagnostic tools/tests/docs; no shared implementation source or CI.
 
 
 ## Actual numerical tracker subledger (same commands, no counterfactual)
@@ -94,8 +94,7 @@ value. Only identical analysis-input float64 SHA permits host tracker
 attribution. The Integration-owned matrix already triggers on changes to
 the diagnostic file, so no new workflow or dispatch is required.
 
-Original Windows replay remains exact; Ubuntu normal replay remains
-**new-execution only**, not authenticated original internal provenance.
+Later **original-host source-exact** normal replays in [#42729088425](https://github.com/techrote/zaaggenz/actions/runs/42729088425) reproduce **both** respective original exported WAVs exactly, 57,600/57,600 float32 samples per host; earlier unauthenticated Ubuntu replays above are historical. These are new re-executions that authenticate the output-matched stage path, not recordings of the original run's internal tracker state.
 This ledger is a source-local diagnostic, not an adopted portability
 tolerance, DSP defect verdict, or substitute for physical Gate A. Whole-rack
 \`sosfiltfilt\` tails are noncompact. DSP owner and Integration must
@@ -120,3 +119,30 @@ python tools/zg242_spectral_portability_trace.py capture \
 ```
 
 This **separate matched-input tracker pass is new-execution evidence**, not a substitute for normal source synthesis, authenticated original Ubuntu internal history, original dry/bypass/save-reopen identities or a DSP-owner portability rule. No arbitrary PCM tolerance, forced agreement, source-DSP fix or VST permission follows from this fixture.
+
+
+## Matched-stage decision separation — 10 November 2026
+
+Authoritative matched-input execution: original-host [#42729088425](https://github.com/techrote/zaaggenz/actions/runs/42729088425), exact Integration workflow head `f0b076de65d9bb8ab4f03dae794b07a1ef0a081c`. Its authenticated original Windows reference trace is artifact `13720288381`, and the two *new-execution* matched-stage trackers consumed identical float64 analysis-input SHA-256 `c1ab91804c52256cd8aa274ce31936a46508c15501e93f9b29818fbac16f17ea`. The original normal Ubuntu/Windows *source* and resulting native spectral inputs were not byte-identical; the matched-stage probe must not be presented as the original 9 November tracker trace. Both independent normal replays on these hosts nevertheless match each host's own original 57,600-sample exported order-B WAV exactly.
+
+The original [host traces](https://github.com/techrote/zaaggenz/actions/runs/42729088425) (Ubuntu `13723697600`, Windows `13723896553`) and [comparison artifact `13723687773`](https://github.com/techrote/zaaggenz/actions/runs/42729088425/artifacts/13723687773) identify **different kinds of first event**:
+
+| Boundary | Evidence from the same verified stage input |
+| --- | --- |
+| First observed float64 difference | STFT weighted Hann *before FFT*, frame 0 / channel 0 / sample 2392: Ubuntu `-0x1.5a0961ff1719cp-11`; Windows `-0x1.5a0961ff1719bp-11` (1 ULP). |
+| Earlier assignment **numeric** drift | Cost at tracker frame 2 differs in hex, while selected row/column and admitted pairs remain identical. This is *not* a discrete split. |
+| First actual assignment **discrete** split | Tracker frame **13**, with 15 prediction rows and 13 candidates. Ubuntu chooses `(0,1)` / `(1,0)` and admits `(1,0)`; Windows chooses `(0,0)` / `(1,1)` and admits neither of these pairings under the existing **240-cent** jump rule. |
+| Downstream continuity | The same-input probes subsequently yield 26 vs 25 tracks, 65 vs 60 transform-eligible frames. These are new-probe outcomes, not original tracker identities. |
+
+At frame 13, the native captured cost hex for rows 0/1, columns 0/1 is:
+
+| Host | c00 | c01 | c10 | c11 |
+| --- | --- | --- | --- | --- |
+| Ubuntu | `0x1.5bff843ee6890p+10` | `0x1.cefc052de8edap+10` | `0x1.e1aafc58213bbp+4` | `0x1.ea0cb3818ba5fp+8` |
+| Windows | `0x1.5bff843ee688ep+10` | `0x1.cefc052de8ed8p+10` | `0x1.e1aafc58213bbp+4` | `0x1.ea0cb3818ba5fp+8` |
+
+The two-row alternative totals (diagonal and cross, respectively) computed *after the fact* are Ubuntu `0x1.d682b11f49728p+10` / `0x1.d682b11f49729p+10`; Windows `0x1.d682b11f49726p+10` / `0x1.d682b11f49727p+10`. Whole-assignment totals round to the same float64 value for both alternative pairings on each host. These are **post-hoc diagnostic totals, not captured Hungarian internal arithmetic or proof of a particular tie-breaking implementation**. The frame's prediction/candidate physical frequencies and the admission jump explain why a tiny change can affect subsequent continuity. No cross-host raw track ID is taken as a physical identity.
+
+The corrected `compare_subledger()` reports `first_numeric_boundary` and `first_discrete_boundary` independently, plus `first_assignment_numeric_difference`. Its assignment scanner continues past changed floating costs when pairings/admission are unchanged. The bounded regression includes earlier numerical cost drift with later changed pairing/admission, identical-decision numeric-only control, and foreign-input refusal. Reuse the already authorised host capture/compare workflow; do not introduce a second tracer or modify production DSP.
+
+**Acceptance hold:** An independent DSP owner and Integration must *preregister* expected near-tied global-assignment behavior, accepted numerical sensitivity and audible consequences before treating the five original WAV differences as permissible or defective. No 0.1% PCM tolerance, artificial renormalisation, solver modification or physical Windows Gate-A claim is authorised by this evidence.
