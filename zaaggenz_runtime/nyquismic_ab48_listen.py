@@ -122,7 +122,7 @@ output devices may resample the 48-kHz WAVs. Not a registered Compose export/UI.
     await context.resume();
     buffers = await Promise.all(raw.map(data => context.decodeAudioData(data.buffer.slice(0))));
     if (buffers.some(b => b.numberOfChannels !== payload.channels ||
-                          Math.abs(b.duration - duration) > 1 / 48000)) {
+                          Math.abs(b.duration - duration) > .001)) {
       throw new Error("Browser-decoded audio extent or channel count differs from WAV");
     }
   }
@@ -221,7 +221,11 @@ def _read_verified_bundle(path: Path, cancelled) -> tuple[dict, bytes, bytes, st
     _cancel(cancelled)
     if path.stat().st_size > MAX_BUNDLE_BYTES:
         raise ValueError("audition bundle exceeds 64 MiB limit")
-    with zipfile.ZipFile(path, "r") as archive:
+    # Parse and identify one immutable byte snapshot, not two racing disk reads.
+    archive_bytes = path.read_bytes()
+    if len(archive_bytes) > MAX_BUNDLE_BYTES:
+        raise ValueError("audition bundle exceeds 64 MiB limit")
+    with zipfile.ZipFile(io.BytesIO(archive_bytes), "r") as archive:
         infos = archive.infolist()
         if tuple(item.filename for item in infos) != NAMES:
             raise ValueError("unexpected NYQ A/B bundle entries or order")
@@ -253,7 +257,7 @@ def _read_verified_bundle(path: Path, cancelled) -> tuple[dict, bytes, bytes, st
                 or _sha(np.asarray(pcm, dtype="<f4").tobytes(order="C"))
                 != row["pcm_f32le_sha256"]):
             raise ValueError(name + " decoded PCM or source extent differs from manifest")
-    return manifest, dry, wet, _sha(path.read_bytes())
+    return manifest, dry, wet, _sha(archive_bytes)
 
 
 def publish_ab48_audition(
