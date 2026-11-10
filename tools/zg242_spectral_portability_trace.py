@@ -297,6 +297,55 @@ def _tracker_taps(stack,active):
     stack.enter_context(patch.object(tr.optimize,'linear_sum_assignment',assign))
     stack.enter_context(patch.object(tr,'_transient_mask',transient))
 
+
+def _assignment_decision_witness(frame, ubuntu, windows, candidate_rows):
+    """Describe a changed native assignment without equating tracker IDs.
+
+    Totals are post-hoc sums of captured hexadecimal costs, not observations
+    of the Hungarian solver's internal accumulation or tie-breaking policy.
+    """
+    anchor=next((c['anchor'] for c in candidate_rows if c is not None),None)
+    if ubuntu is None or windows is None:
+        return {'frame':frame,'anchor_sample':anchor,
+                'kind':'assignment-frame-admission',
+                'ubuntu_present':ubuntu is not None,'windows_present':windows is not None}
+    chosen=[{tuple(v) for v in z['selected_pairs']} for z in (ubuntu,windows)]
+    admitted=[{tuple(v) for v in z['admitted_pairs']} for z in (ubuntu,windows)]
+    changed=sorted(chosen[0]^chosen[1] | admitted[0]^admitted[1])
+    def details(packet,own,other):
+        matrix=packet['cost_cents_hex']
+        limit=float.fromhex(packet['max_jump_cents_hex'])
+        def total(pairs):
+            return float(sum(float.fromhex(matrix[i][j]) for i,j in pairs)).hex()
+        out={'selected_pairs':packet['selected_pairs'],
+             'admitted_pairs':packet['admitted_pairs'],
+             'max_jump_cents_hex':packet['max_jump_cents_hex'],
+             'changed_pair_costs':[{
+                 'row':i,'column':j,
+                 'predicted_hz_hex':packet['predicted_hz_hex'][i],
+                 'candidate_hz_hex':packet['candidate_hz_hex'][j],
+                 'cost_cents_hex':matrix[i][j],
+                 'accepted_by_jump':float.fromhex(matrix[i][j])<=limit}
+                 for i,j in changed],
+             'selected_total_cents_hex':total(own),
+             'other_host_pairing_total_cents_hex':total(other)}
+        rows=sorted({i for i,_ in changed})
+        cols=sorted({j for _,j in changed})
+        if len(rows)==2 and len(cols)==2:
+            i,k=rows;j,l=cols
+            out['two_row_alternatives_cents_hex']={
+                'diagonal':float(float.fromhex(matrix[i][j])+float.fromhex(matrix[k][l])).hex(),
+                'cross':float(float.fromhex(matrix[i][l])+float.fromhex(matrix[k][j])).hex()}
+        return out
+    return {'frame':frame,'anchor_sample':anchor,
+            'kind':'hungarian-pairing-or-jump-admission',
+            'selected_pairs_differ':chosen[0]!=chosen[1],
+            'admitted_pairs_differ':admitted[0]!=admitted[1],
+            'ubuntu':details(ubuntu,chosen[0],chosen[1]),
+            'windows':details(windows,chosen[1],chosen[0]),
+            'near_tie_note':'Derived totals are diagnostic post-hoc float sums; not the solver objective or an acceptance tolerance'}
+
+
 def compare_subledger(u,w):
     if (u['analysis_input']['shape']!=w['analysis_input']['shape'] or
         u['analysis_input']['f64le_sha256']!=w['analysis_input']['f64le_sha256']):
@@ -306,8 +355,9 @@ def compare_subledger(u,w):
         return {'input_matched':True,'first_boundary':'missing-actual-tracker-capture'}
     x,y=a['stft'],b['stft']
     out={'input_matched':True,'first_boundary':None,
-         'first_candidate_difference':None,'first_discrete_boundary':None,
-         'first_assignment_difference':None}
+         'first_numeric_boundary':None,'first_candidate_difference':None,
+         'first_discrete_boundary':None,'first_assignment_difference':None,
+         'first_assignment_numeric_difference':None}
     for field in ('input','spec','sample_rate_hz','anchors','supports','valid_fraction'):
         if x[field]!=y[field]:out['first_boundary']='stft-'+field;break
     if out['first_boundary'] is None:
@@ -316,6 +366,9 @@ def compare_subledger(u,w):
             if d is not None:
                 out['first_boundary']='stft-'+('weighted-Hann-input' if field=='weighted' else 'native-rfft-output')
                 out['first_numeric_difference']=d
+                out['first_numeric_boundary']={'stage':out['first_boundary'],
+                    'anchor_sample':x['anchors'][d['frame']] if 'frame' in d and d['frame']<len(x['anchors']) else None,
+                    **d}
                 break
     left={z['frame']:z for z in a['candidates']}
     right={z['frame']:z for z in b['candidates']}
@@ -349,16 +402,51 @@ def compare_subledger(u,w):
                 break
     aa={z['frame']:z for z in a['assignments']}
     bb={z['frame']:z for z in b['assignments']}
+    # Numeric differences and actual discrete choices are independent scans.
+    # In particular, frame 2's changed float cost must not mask frame 13's
+    # different Hungarian pairing when frame 2 still admits the same pairs.
     for frame in sorted(set(aa)|set(bb)):
         p,q=aa.get(frame),bb.get(frame)
-        if p!=q:
+        if p==q:
+            continue
+        if out['first_assignment_difference'] is None:
             out['first_assignment_difference']={'frame':frame,'ubuntu':p,'windows':q}
-            if out['first_discrete_boundary'] is None and (p is None or q is None or
-                p['selected_pairs']!=q['selected_pairs'] or p['admitted_pairs']!=q['admitted_pairs']):
-                out['first_discrete_boundary']={'frame':frame,'kind':'assignment-or-jump-admission',
-                  'ubuntu':None if p is None else p['admitted_pairs'],
-                  'windows':None if q is None else q['admitted_pairs']}
+        if p is not None and q is not None and out['first_assignment_numeric_difference'] is None:
+            lp,rp=p['cost_cents_hex'],q['cost_cents_hex']
+            if len(lp)!=len(rp) or any(len(a)!=len(b) for a,b in zip(lp,rp)):
+                out['first_assignment_numeric_difference']={'frame':frame,'kind':'cost-matrix-shape'}
+            else:
+                for i,(row_u,row_w) in enumerate(zip(lp,rp)):
+                    j=next((k for k,(cu,cw) in enumerate(zip(row_u,row_w)) if cu!=cw),None)
+                    if j is not None:
+                        out['first_assignment_numeric_difference']={
+                            'frame':frame,'row':i,'column':j,
+                            'anchor_sample':next((z['anchor'] for z in (left.get(frame),right.get(frame))
+                                                  if z is not None),None),
+                            'ubuntu_cost_cents_hex':row_u[j],
+                            'windows_cost_cents_hex':row_w[j],
+                            'ubuntu_prediction_hz_hex':p['predicted_hz_hex'][i],
+                            'windows_prediction_hz_hex':q['predicted_hz_hex'][i],
+                            'ubuntu_candidate_hz_hex':p['candidate_hz_hex'][j],
+                            'windows_candidate_hz_hex':q['candidate_hz_hex'][j]}
+                        break
+        choice_diff=(p is None or q is None or
+                     p['selected_pairs']!=q['selected_pairs'] or
+                     p['admitted_pairs']!=q['admitted_pairs'])
+        if choice_diff and (out['first_discrete_boundary'] is None or
+                            frame<out['first_discrete_boundary']['frame']):
+            out['first_discrete_boundary']=_assignment_decision_witness(
+                frame,p,q,(left.get(frame),right.get(frame)))
+        # Continue until the first *discrete* assignment split is seen.
+        # Early numeric drift alone never terminates the scan.
+        if choice_diff:
             break
+    if out['first_numeric_boundary'] is None and out['first_assignment_numeric_difference'] is not None:
+        out['first_numeric_boundary']={'stage':'assignment-cost',
+                                       **out['first_assignment_numeric_difference']}
+    if out['first_numeric_boundary'] is None and out['first_candidate_difference'] is not None:
+        out['first_numeric_boundary']={'stage':'post-fft-candidate',
+                                       **out['first_candidate_difference']}
     if out['first_boundary'] is None and out['first_candidate_difference'] is not None:
         out['first_boundary']='post-fft-peak-fit'
     if out['first_boundary'] is None and out['first_assignment_difference'] is not None:
