@@ -153,5 +153,31 @@ class KitVerifyTests(unittest.TestCase):
             verify.verify_production_kit(self.path,expected_zip_sha256='123')
 
 
+class OriginalSavedComposeKitVerification(unittest.TestCase):
+    def test_real_saved_compose_cold_reopen_pcm(self):
+        root = Path(__file__).resolve().parents[2]
+        if not (root / "zaaggenz_runtime" / "nyquismic_offline_audition.py").is_file():
+            self.skipTest("full original-host NYQ Compose rendering chain required")
+        from zaaggenz_runtime import nyquismic_production_kit as producer
+        from test_nyquismic_compose_delivery import source_document
+        with tempfile.TemporaryDirectory() as folder:
+            project = Path(folder) / "song.zgtimeline.json"
+            project.write_text(json.dumps(source_document()), encoding="utf-8")
+            kit = Path(folder) / "kit.zip"
+            receipt = producer.export_saved_compose_kit(
+                project, kit, virtual_rates_hz=["4/1", "5/1"])
+            verified = verify.verify_production_kit(
+                kit, project_path=project, expected_zip_sha256=receipt["zip_sha256"])
+            self.assertEqual(verified["frames"], 28800)
+            self.assertEqual(verified["virtual_rates_hz"], ["4/1", "5/1"])
+            self.assertEqual(verified["source_project_sha256"], sha(project.read_bytes()))
+            self.assertTrue(verified["trusted_zip_sha_checked"])
+            print("NYQ_KIT_REOPEN_PCM " + json.dumps({
+                "frames": verified["frames"], "delivery_hz": 48000,
+                "dry_wav_sha256": verified["tracks"][0]["wav_sha256"],
+                "wet_pcm_f32le_sha256": [x["pcm_f32le_sha256"] for x in verified["tracks"][1:]],
+                "zip_sha256": verified["zip_sha256"]}, sort_keys=True))
+
+
 if __name__ == '__main__':
     unittest.main()
