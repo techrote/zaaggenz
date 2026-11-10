@@ -47,7 +47,7 @@ python -m unittest discover -s tests/dsp -p 'test_nyquismic_controlled_consumer.
 ```
 
 Tests render synthetic one-second Compose PCM via a real `TimelineService`,
-compile the author's six-event 4-to-8-to-4-Hz packet, and compare numerical
+compile a matching full-asset-duration 4-to-8-to-4-Hz packet, and compare numerical
 PCM/checkpoint replay against decoded 48-kHz float WAV via the independently
 implemented pinned final FIR. They cover saved-document cold reopen and
 injection of an ordinary Compose edit during WAV encoding, owned-job
