@@ -75,11 +75,19 @@ INSTRUMENT = r"""
 (() => {
   window.__nyq_browser_starts = [];
   window.__nyq_browser_ramps = [];
+  window.__nyq_browser_holds = [];
   const start = AudioBufferSourceNode.prototype.start;
   AudioBufferSourceNode.prototype.start = function(when, offset, duration) {
     window.__nyq_browser_starts.push({when, offset, duration});
     return start.apply(this, arguments);
   };
+  const hold = AudioParam.prototype.cancelAndHoldAtTime;
+  if (typeof hold === "function") {
+    AudioParam.prototype.cancelAndHoldAtTime = function(at) {
+      window.__nyq_browser_holds.push(at);
+      return hold.apply(this, arguments);
+    };
+  }
   const ramp = AudioParam.prototype.linearRampToValueAtTime;
   AudioParam.prototype.linearRampToValueAtTime = function(target, at) {
     window.__nyq_browser_ramps.push({target, at});
@@ -139,6 +147,16 @@ def verify_in_chromium(url, payload, measured, *, loopback=False):
                 "true", "true", 2), "A/B switch restarted playback"
             assert [event["target"] for event in switched["ramps"]] == [
                 0, 1, 1, 0], "A/B switch did not schedule click-avoidance ramps"
+            # Chromium must hold the actual scheduled mid-ramp value instead
+            # of restarting from AudioParam.value (an intrinsic parameter).
+            # Other engines use the tracked linear envelope fallback.
+            supports_hold = page.evaluate(
+                'typeof AudioParam.prototype.cancelAndHoldAtTime === "function"')
+            if supports_hold:
+                held = page.evaluate("window.__nyq_browser_holds")
+                assert len(held) == 4, (
+                    "rapid A/B did not hold in-progress Web Audio automation")
+                assert all(isinstance(at, (float, int)) for at in held)
 
             # Seeking must restart both sources at the identical *physical*
             # 25%-of-duration offset without touching the source WAVs.
