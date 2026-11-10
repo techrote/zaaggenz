@@ -4,6 +4,7 @@ All fixtures are synthetic, authored, full-phrase TimelineService jobs. The
 module under test has no UI, filesystem, registered graph, or default effect.
 """
 from copy import deepcopy
+from fractions import Fraction
 import hashlib
 import io
 import json
@@ -50,7 +51,13 @@ def sonic():
         rate=VirtualRate('4/1'), routes=(route,)))
 
 
-def packet_for(binding, spec, *, full_end_s='1/1'):
+def packet_for(binding, spec, *, full_end_s=None):
+    if full_end_s is None:
+        # Actual full-context owned Compose PCM can include bounded sonic tail;
+        # the edited two-beat document span is not the audio asset frame count.
+        asset = binding.source.asset.to_dict()
+        end = Fraction(asset['frame_count'], asset['sample_rate_hz'])
+        full_end_s = f'{end.numerator}/{end.denominator}'
     claims = binding.packet_claims
     route = spec.clock.routes[0]
     receipt = AuthenticatedRouteReceiptV1(
@@ -93,7 +100,8 @@ class ComposeControlled48kWavTests(unittest.TestCase):
         binding, spec, packet, result = self.export()
         self.assertEqual(result.sample_rate_hz, 48000)
         self.assertEqual(result.numerical_rate_hz, 192000)
-        self.assertEqual(result.frames, 48000)
+        expected_frames = binding.source.asset.to_dict()['frame_count'] * 4
+        self.assertEqual(result.frames, expected_frames)
         self.assertEqual(result.channels, 1)
         self.assertEqual(result.source_asset_sha256, binding.source.asset.sha256)
         self.assertEqual(result.recipe_sha256, binding.recipe_sha256)
@@ -101,7 +109,7 @@ class ComposeControlled48kWavTests(unittest.TestCase):
         rate, audio = wavfile.read(io.BytesIO(result.wav_bytes))
         self.assertEqual(rate, 48000)
         self.assertEqual(audio.dtype, np.dtype('float32'))
-        self.assertEqual(audio.shape, (48000,))
+        self.assertEqual(audio.shape, (expected_frames,))
         self.assertGreater(float(np.max(np.abs(audio))), 0.)
         self.assertTrue(np.isfinite(audio).all())
         self.assertEqual(hashlib.sha256(result.wav_bytes).hexdigest(),
@@ -114,7 +122,7 @@ class ComposeControlled48kWavTests(unittest.TestCase):
         binding, spec, packet, result = self.export()
         handle = binding.prepare(spec, packet, sampler_evaluation(192000))
         full = handle.render()
-        split = 96000
+        split = len(full.audio) // 2
         left = handle.render(0, split)
         right = handle.render(checkpoint=handle.checkpoint(split))
         np.testing.assert_array_equal(
@@ -207,7 +215,11 @@ class ComposeControlled48kWavTests(unittest.TestCase):
 
     def test_shorter_packet_cannot_silently_truncate_full_compose_export(self):
         binding, spec, _ = self.prepared()
-        short = packet_for(binding, spec, full_end_s='3/4')
+        asset = binding.source.asset.to_dict()
+        extent = Fraction(asset['frame_count'], asset['sample_rate_hz'])
+        short_extent = extent * Fraction(3, 4)
+        short = packet_for(binding, spec, full_end_s=(
+            f'{short_extent.numerator}/{short_extent.denominator}'))
         with patch('zaaggenz_runtime.nyquismic_compose_delivery.ComposeControlledSource.prepare',
                    side_effect=AssertionError('do not prepare partial packet')):
             with self.assertRaises(JobError):
