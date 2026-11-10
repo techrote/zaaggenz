@@ -101,6 +101,68 @@ class PortabilityTraceTests(unittest.TestCase):
             {'shape':[2],'f64le_sha256':'foreign'}})['first_boundary'],
             'different-f64-analysis-input')
 
+    def test_independent_hungarian_discrete_scan_after_early_numeric_cost_drift(self):
+        # The real matched-host pair diverged numerically at frame 2, but
+        # selected/admitted identical pairs until frame 13.
+        stft={'input':{'shape':[1],'f64le_sha256':'same'},
+              'spec':{},'sample_rate_hz':48000,'anchors':[0],
+              'supports':[[0,1]],'valid_fraction':[],
+              'weighted':_numerical_tensor(np.zeros((1,1))),
+              'rfft':_numerical_tensor(np.zeros((1,1),dtype=np.complex128))}
+        def candidate(frame):
+            return {'frame':frame,'anchor':frame*512,
+                    'peaks':None,'parabolas':[],'selected_frequency_hex':[],
+                    'pre_fit_confidence_hex':[],'ambiguous':[],'fitted':[]}
+        def assignment(frame,costs,selected,admitted):
+            return {'frame':frame,
+                    'predicted_hz_hex':[float(v).hex() for v in (45.,99.)],
+                    'candidate_hz_hex':[float(v).hex() for v in (100.6,131.)],
+                    'cost_cents_hex':[[float(v).hex() for v in row] for row in costs],
+                    'max_jump_cents_hex':float(240.).hex(),
+                    'selected_pairs':selected,'admitted_pairs':admitted}
+        same=[[0,0],[1,1]]
+        early_u=assignment(2,[[10.,100.],[200.,10.]],same,same)
+        early_w=assignment(2,[[np.nextafter(10.,11.),100.],[200.,10.]],same,same)
+        late_u=assignment(13,[[1391.,1851.],[30.,491.]],
+                          [[0,1],[1,0]],[[1,0]])
+        late_w=assignment(13,[[1391.,1851.],[30.,491.]],same,[])
+        def capture(early,late):
+            return {'analysis_input':stft['input'],
+                    'subledger':{'stft':stft,
+                                 'candidates':[candidate(2),candidate(13)],
+                                 'assignments':[early,late]}}
+        u,w=capture(early_u,late_u),capture(early_w,late_w)
+        report=compare_subledger(u,w)
+        self.assertTrue(report['input_matched'])
+        self.assertEqual(report['first_numeric_boundary']['stage'],'assignment-cost')
+        self.assertEqual(report['first_assignment_numeric_difference']['frame'],2)
+        self.assertEqual(report['first_assignment_difference']['frame'],2)
+        discrete=report['first_discrete_boundary']
+        self.assertEqual(discrete['frame'],13)
+        self.assertEqual(discrete['anchor_sample'],13*512)
+        self.assertTrue(discrete['selected_pairs_differ'])
+        self.assertTrue(discrete['admitted_pairs_differ'])
+        self.assertEqual(discrete['ubuntu']['selected_pairs'],[[0,1],[1,0]])
+        self.assertEqual(discrete['windows']['selected_pairs'],same)
+        self.assertEqual(discrete['ubuntu']['changed_pair_costs'][0]['cost_cents_hex'],
+                         float(1391.).hex())
+        self.assertIn('diagonal',discrete['ubuntu']['two_row_alternatives_cents_hex'])
+        self.assertIn('selected_total_cents_hex',discrete['windows'])
+
+        # Control: cost drift with identical pair selection and admission is
+        # strictly numeric; it must never fabricate a discrete split.
+        unchanged=compare_subledger(capture(early_u,late_w),capture(early_w,late_w))
+        self.assertEqual(unchanged['first_numeric_boundary']['frame'],2)
+        self.assertIsNone(unchanged['first_discrete_boundary'])
+        self.assertIsNone(compare_subledger(capture(early_u,late_w),
+                                           capture(early_u,late_w))['first_numeric_boundary'])
+        # Failed input identity precedes both scans, even for a plausible
+        # numerical ledger; foreign identities cannot be matched.
+        refused=compare_subledger(u,{**w,'analysis_input':
+                                   {'shape':[1],'f64le_sha256':'foreign'}})
+        self.assertFalse(refused['input_matched'])
+        self.assertIsNotNone(refused['first_boundary'])
+
     def test_matched_stage_pcm_identity_and_source_admission(self):
         x=(np.sin(2*np.pi*440*np.arange(2400)/12000)*.05).astype(np.float32)
         packet=_stage_pcm_bytes(x)
