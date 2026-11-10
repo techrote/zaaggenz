@@ -216,9 +216,11 @@ def verify_in_chromium(url, payload, measured, *, loopback=False):
                 fallback.locator("#play").click()
                 expect(fallback.locator("#status")).to_contain_text(
                     "Playing synchronized sources")
-                fallback.locator("#wet").click()
-                fallback.wait_for_timeout(3)
-                fallback.locator("#dry").click()
+                fallback.evaluate("""async () => {
+                  document.querySelector('#wet').click();
+                  await new Promise(resolve => setTimeout(resolve, 3));
+                  document.querySelector('#dry').click();
+                }""")
                 sets = fallback.evaluate("window.__nyq_fallback_sets")
                 assert len(sets) == 4, (
                     "no-hold browser path did not reconstruct both gain ramps")
