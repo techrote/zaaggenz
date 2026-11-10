@@ -48,7 +48,7 @@ class DirectAuditionTests(unittest.TestCase):
     def test_real_compose_single_command_produces_only_verified_audible_page(self):
         receipt = self.export()
         self.assertEqual(sorted(self.root.iterdir()),
-                         [self.project, self.output])
+                         sorted([self.project, self.output]))
         self.assertEqual(receipt["html_sha256"],
                          hashlib.sha256(self.output.read_bytes()).hexdigest())
         self.assertEqual(receipt["source_zip_sha256"],
@@ -107,7 +107,7 @@ class DirectAuditionTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 self.export()
         self.assertEqual(self.output.read_bytes(), b"original owner HTML")
-        self.assertEqual(sorted(self.root.iterdir()), [self.project, self.output])
+        self.assertEqual(sorted(self.root.iterdir()), sorted([self.project, self.output]))
 
     def test_invalid_destination_and_bad_project_never_publish(self):
         with self.assertRaises(ValueError):
@@ -175,7 +175,7 @@ class DirectAuditionTests(unittest.TestCase):
             with self.assertRaises(FileExistsError):
                 self.export()
         self.assertEqual(self.output.read_bytes(), b"winner")
-        self.assertEqual(sorted(self.root.iterdir()), [self.project, self.output])
+        self.assertEqual(sorted(self.root.iterdir()), sorted([self.project, self.output]))
 
     def test_cli_one_command_returns_verifiable_receipt(self):
         buf = io.StringIO()
