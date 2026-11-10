@@ -168,9 +168,10 @@ class IsolatedProductionKit(unittest.TestCase):
     def test_corrupt_source_pcm_and_packet_cannot_publish(self):
         original = self.stems
         def forged(*args, **kwargs):
-            result = original(*args, **kwargs)
+            # The sweep verifier has already captured the original packet.
+            # Forge a *consistent* downstream DAW receipt+manifest instead.
             self.items[1]["packet_sha256"] = "9" * 64
-            return result
+            return original(*args, **kwargs)
         with mock.patch.object(kit.stems, "export_daw_stems", side_effect=forged):
             with self.assertRaisesRegex(RuntimeError, "wet PCM/clock packet"):
                 self.export()
