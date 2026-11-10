@@ -14,7 +14,7 @@ import numpy as np
 from scipy.io import wavfile
 from scipy.signal import firwin, resample_poly
 
-from zaaggenz_dsp.nyquismic import SamplerPlan
+from zaaggenz_dsp.nyquismic_controlled_consumer import ControlledSamplerPlan
 from zaaggenz_runtime.nyquismic_compose import ComposeControlledRender, _require
 
 
@@ -95,7 +95,7 @@ def export_compose_controlled_wav48(handle: ComposeControlledRender, *, cancelle
     bytes and a receipt, not a writable file path or a registered UI export.
     """
     _require(type(handle) is ComposeControlledRender and
-             type(handle._plan) is SamplerPlan,
+             type(handle._plan) is ControlledSamplerPlan,
              'an authenticated Compose-to-NYQ SamplerPlan is required')
     _require(cancelled is None or callable(cancelled), 'invalid cancellation hook')
     binding = handle.source_binding
