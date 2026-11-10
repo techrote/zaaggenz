@@ -94,7 +94,30 @@ def export_saved_compose_daw(
         if _sha_file(project, cancelled, max_bytes=sweep.MAX_PROJECT_BYTES) != source_sha:
             raise RuntimeError('saved Compose project changed before DAW publication')
         _check(cancelled)
+        # The hard link is the no-overwrite commit. Revalidate immediately AFTER
+        # it too: cancellation or an external project edit can arrive between
+        # the final preflight check and the filesystem operation.
+        staged_stat = stems_path.stat()
         os.link(stems_path, dest)  # atomic create-if-absent, same filesystem
+        try:
+            _check(cancelled)
+            if _sha_file(project, cancelled, max_bytes=sweep.MAX_PROJECT_BYTES) != source_sha:
+                raise RuntimeError('saved Compose project changed during DAW publication')
+            _check(cancelled)
+        except BaseException:
+            # Never unlink an external writer's replacement of our output. A
+            # different inode or changed metadata means we no longer own it.
+            # Changes AFTER the final validation require writer cooperation.
+            try:
+                output_stat = dest.stat(follow_symlinks=False)
+                if (output_stat.st_dev == staged_stat.st_dev and
+                        output_stat.st_ino == staged_stat.st_ino and
+                        output_stat.st_size == staged_stat.st_size and
+                        output_stat.st_mtime_ns == staged_stat.st_mtime_ns):
+                    dest.unlink()
+            except FileNotFoundError:
+                pass
+            raise
     return {
         'format': FORMAT, 'absolute_path': str(dest),
         'project_file_sha256': source_sha,
