@@ -333,7 +333,7 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(boot['token'],self.server.token)
         self.assertEqual(boot['presets']['default'],'locked_bloom')
         self.assertEqual(len(boot['presets']['presets']),7)
-        for path,needle in [('/timeline',b'Notes, rolls'),('/',b'Open note / clip timeline'),('/timeline/app.mjs',b'RenderTransport')]:
+        for path,needle in [('/timeline',b'Phrase timeline'),('/',b'Open note / clip timeline'),('/timeline/app.mjs',b'RenderTransport')]:
             _,body=self.request(path);self.assertIn(needle,body)
 
     def test_preset_endpoint_returns_stable_selected_project_identity(self):

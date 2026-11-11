@@ -11,7 +11,10 @@ e.undo();assert.equal(e.duplicate(id,'1/4'),id2);assert.deepEqual(e.document,twi
 e.mute(id);assert.equal(e.document.notes[0].muted,true);e.undo();assert.equal(e.document.notes[0].muted,false);
 e.edit(id,{...note,beat:'1/3',duration_beats:'3/2',degree:4},'1/12');assert.equal(e.document.notes[0].beat,'1/3');
 const prior=e.document;assert.throws(()=>e.edit(id,{...note,beat:'16/1'},'1/4'));assert.deepEqual(e.document,prior);
+e.example(1);assert.equal(e.document.notes.length,8);assert.equal(e.document.end_beat,'4/1');
+assert.equal(e.document.clips[0].end_beat,'4/1');assert.equal(e.document.project.retained,true);
+e.undo();assert.deepEqual(e.document,prior);
 e.example(4);assert.equal(e.document.notes.length,32);assert.equal(e.document.end_beat,'16/1');assert.equal(e.document.project.retained,true);
 e.example(16);assert.equal(e.document.notes.length,128);assert.equal(e.document.end_beat,'64/1');
 const clip=e.clip('Triplet','1/3','2/3');e.duplicateClip(clip);assert.equal(e.document.clips.at(-1).end_beat,'1/1');
-console.log('timeline editor: rational snaps, deterministic IDs, edit/duplicate/mute, undo/redo, clips and 4/16-bar fixtures passed');
+console.log('timeline editor: rational snaps, deterministic IDs, edit/duplicate/mute, undo/redo, clips and 1/4/16-bar fixtures passed');

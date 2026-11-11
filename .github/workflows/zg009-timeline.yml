@@ -19,7 +19,7 @@ jobs:
         # Playwright 1.57 supports Ubuntu 24.04; ubuntu-latest can advance.
         os: [ubuntu-24.04, windows-latest]
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       PYTHONUTF8: '1'
       OPENBLAS_NUM_THREADS: '1'
@@ -59,10 +59,14 @@ jobs:
         run: |
           python -m unittest discover -s tests/melody -v
           python -m unittest discover -s tests/grammar -v
+      - name: Compose themes, visible transport and real 48 kHz audition/export
+        run: python tests/timeline/browser_ui.py --out compose-ui-48k
       - name: Real browser editing, save/reopen, playback and 48 kHz evidence
         run: python tests/timeline/browser.py --out timeline-browser-48k --sample-rate 48000
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: zg009-timeline-${{ matrix.os }}
-          path: timeline-browser-48k/
+          path: |
+            timeline-browser-48k/
+            compose-ui-48k/

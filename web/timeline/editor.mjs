@@ -63,6 +63,6 @@ export class Editor {
   example(bars){this.commit(s=>{s.end_beat=`${bars*4}/1`;s.notes=[];s.clips=[];
     for(let i=0;i<bars*8;i++)s.notes.push({id:this.id(s),beat:rational(`${i}/2`),duration_beats:'1/2',
       degree:i%8===6?null:[0,2,4,7,4,2,0,0][i%8],detune_cents:0,gain_db:-18,muted:false,roll_density:i%8===7?8:0});
-    s.clips.push({id:this.id(s,'c'),name:'First four bars',start_beat:'0/1',end_beat:'16/1'});
+    s.clips.push({id:this.id(s,'c'),name:bars<4?'First bar':'First four bars',start_beat:'0/1',end_beat:`${Math.min(bars,4)*4}/1`});
   });}
 }

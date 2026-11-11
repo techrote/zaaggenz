@@ -92,6 +92,13 @@ class WebReleaseRuntimeTests(unittest.TestCase):
         _, _, timeline_app = self.request(f'/timeline/app.mjs?{RELEASE_QUERY}={timeline_release}')
         self.assertIn(f'./editor.mjs?{RELEASE_QUERY}={timeline_release}', timeline_app.decode())
         self.assertIn(f'./jobs_transport.mjs?{RELEASE_QUERY}={timeline_release}', timeline_app.decode())
+        self.assertIn(f'./theme.mjs?{RELEASE_QUERY}={timeline_release}', timeline_app.decode())
+        code, headers, _ = self.request(f'/timeline/theme.mjs?{RELEASE_QUERY}={timeline_release}')
+        self.assertEqual(code, 200)
+        self.assertIn('no-store', headers['Cache-Control'])
+        with self.assertRaises(HTTPError) as cm:
+            self.request(f'/timeline/theme.mjs?{RELEASE_QUERY}={"0" * 64}')
+        self.assertEqual(cm.exception.code, 409)
         vocal_release = runtime['web_releases']['vocal']['release_id']
         _, _, vocal_app = self.request(f'/vocal/app.mjs?{RELEASE_QUERY}={vocal_release}')
         self.assertIn(f'?{RELEASE_QUERY}={vocal_release}', vocal_app.decode())
