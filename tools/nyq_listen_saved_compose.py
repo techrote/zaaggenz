@@ -16,6 +16,8 @@ import uuid
 import webbrowser
 import zipfile
 
+from zaaggenz_runtime import nyquismic_audition_sweep as sweep
+
 RATES = ("256/1", "512/1")  # Bounded real-source comparison, not unrestricted 16-kHz event packets.
 SHA = re.compile(r"[0-9a-f]{64}\Z")
 
@@ -42,8 +44,8 @@ def audition(project: Path, output_dir: Path, *, open_browser: bool = True) -> d
     project = project.resolve()
     if not project.is_file() or not project.name.endswith(".zgtimeline.json"):
         raise ValueError("select an existing saved Compose .zgtimeline.json project")
-    if not 0 < project.stat().st_size <= 2 * 1024 * 1024:
-        raise ValueError("saved Compose project must be 1 byte to 2 MiB")
+    if not 0 < project.stat().st_size <= sweep.MAX_PROJECT_BYTES:
+        raise ValueError("saved Compose project must be 1 byte to 2,000,000 bytes")
     source_sha = _sha(project)
     output_dir.mkdir(parents=False, exist_ok=False)  # Never reuse or overwrite.
     kit = output_dir / "nyq-listen.zip"

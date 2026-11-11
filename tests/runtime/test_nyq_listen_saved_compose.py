@@ -59,6 +59,26 @@ class OfflineListenTests(unittest.TestCase):
         self.assertTrue(all((self.output / name).read_bytes() == name.encode() for name in self.names))
         self.assertTrue((self.output / "receipt.json").is_file())
 
+
+    def test_oversized_project_rejected_before_directory_or_export(self):
+        limit = cli.sweep.MAX_PROJECT_BYTES
+        self.project.write_bytes(b"{}" + b" " * (limit - 1))
+        with patch.object(cli, "_command") as backend:
+            with self.assertRaisesRegex(ValueError, "2,000,000"):
+                cli.audition(self.project, self.output, open_browser=False)
+        backend.assert_not_called()
+        self.assertFalse(self.output.exists())
+
+    def test_exact_producer_project_limit_accepted(self):
+        limit = cli.sweep.MAX_PROJECT_BYTES
+        self.project.write_bytes(b"{}" + b" " * (limit - 2))
+        fake, received = self._commands()
+        with patch.object(cli, "_command", fake):
+            receipt = cli.audition(self.project, self.output, open_browser=False)
+        self.assertEqual(receipt["project_sha256"], self.source_sha)
+        self.assertEqual(len(received), 2)
+        self.assertTrue((self.output / "listen.html").is_file())
+
     def test_no_overwrite_of_existing_directory(self):
         self.output.mkdir()
         (self.output / "listen.html").write_text("do-not-touch")
