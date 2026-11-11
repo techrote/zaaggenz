@@ -82,6 +82,29 @@ class IsolatedOneCommandStereo(unittest.TestCase):
         self.assertFalse(any(x.name.startswith(".nyq-compose-stereo-")
                              for x in self.root.iterdir()))
 
+    def test_invalid_wet_preflight_never_starts_compose_render(self):
+        # No source render, sampler evaluation or new publication is warranted
+        # when the musical parameter is known to be outside the bounce policy.
+        for invalid in ("NaN", "Infinity", "-Infinity", "-0.001",
+                        "100.001", "0.0001", "37.5001", "not-a-number",
+                        "", None, 50):
+            with self.subTest(wet_percent=invalid):
+                with self.assertRaises(ValueError):
+                    self.export(wet_percent=invalid)
+                self.assertFalse(self.dest.exists())
+        self.assertEqual(self.events, [])
+        self.assert_clean()
+
+    def test_admitted_wet_values_preserve_downstream_execution(self):
+        for admitted in ("0", "100", "37.500"):
+            with self.subTest(wet_percent=admitted):
+                receipt = self.export(wet_percent=admitted)
+                self.assertEqual(receipt["wet_percent"], admitted)
+                self.assertEqual(self.events[-2:], ["kit", "bounce"])
+                self.assertEqual(self.dest.read_bytes(), self.wav_bytes)
+                self.dest.unlink()
+        self.assert_clean()
+
     def test_real_source_contract_to_published_wav_and_cleanup(self):
         receipt = self.export(wet_percent="37.5")
         self.assertEqual(self.events, ["kit", "bounce"])

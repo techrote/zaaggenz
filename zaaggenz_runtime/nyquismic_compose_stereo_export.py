@@ -57,6 +57,10 @@ def export_compose_stereo(
         raise ValueError("two distinct virtual rates required")
     # Allow user-friendly '4' input but pass only canonical rates downstream.
     left_rate, right_rate = rates
+    # Fail malformed wet controls before launching expensive Compose/clock renders.
+    # Reuse the bounce policy rather than maintaining a second interpretation.
+    # The downstream bounce validates again at its own trust boundary.
+    stereo._wet(wet_percent)
     dest = Path(output_path).absolute()
     if (dest.suffix.lower() != ".wav" or not dest.parent.is_dir()
             or dest.exists() or dest.is_symlink()):
