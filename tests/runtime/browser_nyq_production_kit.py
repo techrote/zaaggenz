@@ -157,11 +157,19 @@ def run_browser(html: Path, tracks: list[dict], frames: int, *, loopback=False) 
             assert all(abs(x["offset"]-expected) < 1e-6
                        and abs(x["when"]-seeked[n]["when"]) < 1e-9
                        for x in seeked[n:]), "seek changed per-track clock or offset"
-            page.locator("#play").click()
-            expect(page.locator("#status")).to_contain_text("Paused")
-            page.locator("#play").click()
-            expect(page.locator("#status")).to_contain_text("Playing synchronized tracks")
-            resumed = page.evaluate("window.__nyqStarts.slice()")
+            # Run both clicks in one Chromium task. The genuine 600-ms
+            # Compose fixture must not expire between driver round-trips.
+            cycle = page.evaluate("""async () => {
+              const button = document.querySelector('#play');
+              button.click(); await Promise.resolve();
+              const paused = document.querySelector('#status').textContent;
+              button.click(); await Promise.resolve();
+              return {paused, resumed:document.querySelector('#status').textContent,
+                      starts:window.__nyqStarts.slice()};
+            }""")
+            assert cycle["paused"] == "Paused", "pause failed"
+            assert cycle["resumed"] == "Playing synchronized tracks", "resume failed"
+            resumed = cycle["starts"]
             assert len(resumed) == 3*n, "resume failed to schedule every track"
             assert all(abs(x["when"]-resumed[2*n]["when"]) < 1e-9
                        and abs(x["offset"]-resumed[2*n]["offset"]) < 1e-9
