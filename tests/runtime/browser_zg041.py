@@ -16,7 +16,10 @@ def main():
             page=browser.new_page(viewport={'width':1440,'height':1000});page.on('pageerror',lambda e:errors.append(str(e)));page.set_default_timeout(30000)
             page.goto(base+'/timeline');expect(page.locator('#render')).to_be_enabled(timeout=60000)
             expect(page.locator('.eyebrow')).to_have_text('ZAAGGENZ / COMPOSE')
-            # The authoring revision lives in collapsed technical details: inspect\n            # its DOM content, not visibility-dependent innerText.\n            self_initial=page.locator('#revision').text_content().strip()\n            assert self_initial, 'No initial authoritative Compose revision'
+            # The authoring revision lives in collapsed technical details: inspect
+            # its DOM content, not visibility-dependent innerText.
+            self_initial=page.locator('#revision').text_content().strip()
+            assert self_initial, 'No initial authoritative Compose revision'
             page.locator('#project-name').fill('ZG-041 workspace persistence')
             page.locator('#project-name').dispatch_event('change')
             page.wait_for_function("initial=>document.getElementById('revision').textContent!==initial && !document.getElementById('revision').textContent.includes('Validating')",arg=self_initial)
