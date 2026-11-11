@@ -98,6 +98,18 @@ jobs:
         env:
           PYTHONPATH: .
         run: python tools/nyq_listen_saved_compose.py nyq-compose-ui-evidence/one-bar-spectral.zgtimeline.json --output-dir nyq-compose-ui-evidence/owner-listen --no-open
+      - name: Native Chromium playback of the actual one-command 256/512 Hz owner listener
+        env:
+          PYTHONPATH: .:tests/runtime
+        run: >-
+          python -c "import json, subprocess, sys;
+          from pathlib import Path;
+          p = Path('nyq-compose-ui-evidence/owner-listen');
+          receipt = json.loads((p / 'receipt.json').read_text(encoding='utf-8'));
+          subprocess.run([sys.executable, 'tests/runtime/browser_nyq_production_kit.py',
+          '--kit', str(p / 'nyq-listen.zip'),
+          '--project', 'nyq-compose-ui-evidence/one-bar-spectral.zgtimeline.json',
+          '--expected-sha256', receipt['kit_sha256']], check=True)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -149,6 +161,18 @@ jobs:
         env:
           PYTHONPATH: .
         run: python tools/nyq_listen_saved_compose.py nyq-compose-ui-evidence/one-bar-spectral.zgtimeline.json --output-dir nyq-compose-ui-evidence/owner-listen --no-open
+      - name: Native Chromium playback of the actual one-command 256/512 Hz owner listener
+        env:
+          PYTHONPATH: .:tests/runtime
+        run: >-
+          python -c "import json, subprocess, sys;
+          from pathlib import Path;
+          p = Path('nyq-compose-ui-evidence/owner-listen');
+          receipt = json.loads((p / 'receipt.json').read_text(encoding='utf-8'));
+          subprocess.run([sys.executable, 'tests/runtime/browser_nyq_production_kit.py',
+          '--kit', str(p / 'nyq-listen.zip'),
+          '--project', 'nyq-compose-ui-evidence/one-bar-spectral.zgtimeline.json',
+          '--expected-sha256', receipt['kit_sha256']], check=True)"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
