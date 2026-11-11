@@ -5,6 +5,8 @@ on:
       - 'zaaggenz_runtime/**'
       - 'web/timeline/**'
       - 'tests/runtime/**'
+      - 'tools/nyq_ui_kit_gate.py'
+      - 'tools/nyq_listen_saved_compose.py'
       - 'docs/runtime/**'
       - 'programme/task_state.json'
       - '.github/workflows/zg041-compose-research.yml'
