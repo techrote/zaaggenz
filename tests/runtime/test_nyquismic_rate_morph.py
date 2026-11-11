@@ -63,8 +63,9 @@ class TwoRateMorphIsolated(unittest.TestCase):
                       project_path=self.project,
                       expected_zip_sha256=self.receipt["zip_sha256"])
         kwargs.update(overrides)
+        output = kwargs.pop("output_wav", self.output)
         with mock.patch.object(morph, "verify_production_kit", return_value=self.receipt):
-            return morph.bounce_rate_morph(self.kit, self.output, **kwargs)
+            return morph.bounce_rate_morph(self.kit, output, **kwargs)
 
     def pcm(self):
         hz, pcm = wavfile.read(self.output)
@@ -118,7 +119,7 @@ class TwoRateMorphIsolated(unittest.TestCase):
         np.testing.assert_array_equal(out[0], self.a[0])
         np.testing.assert_array_equal(out[24000:], self.b[24000:])
         idx = np.array([1, 5000, 65535, 65536, 65537, 23999])
-        w = idx.astype(np.float64) / 24000
+        w = np.minimum(idx.astype(np.float64) / 24000, 1.)
         expected = (self.a[idx].astype(np.float64) * (1 - w[:, None])
                     + self.b[idx].astype(np.float64) * w[:, None]).astype(np.float32)
         np.testing.assert_allclose(out[idx], expected, atol=1e-7, rtol=0)
