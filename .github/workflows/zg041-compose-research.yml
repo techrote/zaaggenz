@@ -88,6 +88,10 @@ jobs:
         run: python tests/runtime/browser_nyq_production_kit.py --fixture
       - name: Complete 48-kHz owner Compose UI render, A/B, WAV and cold-reopen in Chromium
         run: python tests/timeline/browser_ui.py --out nyq-compose-ui-evidence
+      - name: Actual UI-saved project through NYQ kit export, cold reopen and file-origin Chromium
+        env:
+          PYTHONPATH: .
+        run: python tools/nyq_ui_kit_gate.py --out nyq-compose-ui-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -131,6 +135,10 @@ jobs:
         run: python tests/runtime/browser_nyq_production_kit.py --fixture
       - name: Complete 48-kHz owner Compose UI render, A/B, WAV and cold-reopen in Chromium
         run: python tests/timeline/browser_ui.py --out nyq-compose-ui-evidence
+      - name: Actual UI-saved project through NYQ kit export, cold reopen and file-origin Chromium
+        env:
+          PYTHONPATH: .
+        run: python tools/nyq_ui_kit_gate.py --out nyq-compose-ui-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
