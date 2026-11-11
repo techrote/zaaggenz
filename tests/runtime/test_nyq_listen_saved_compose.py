@@ -52,7 +52,7 @@ class OfflineListenTests(unittest.TestCase):
             receipt = cli.audition(self.project, self.output)
         self.assertEqual(receipt["status"], "PASS")
         self.assertEqual(receipt["project_sha256"], self.source_sha)
-        self.assertEqual(receipt["virtual_rates_hz"], ["11730/1", "16000/1"])
+        self.assertEqual(receipt["virtual_rates_hz"], ["256/1", "512/1"])
         self.assertEqual([name for name, _ in received], ["NYQ export", "NYQ cold-reopen verification"])
         self.assertIn("--expected-sha256", received[1][1])
         self.assertEqual(browser.call_args.args, ((self.output / "listen.html").resolve().as_uri(),))
