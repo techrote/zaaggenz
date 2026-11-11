@@ -19,6 +19,32 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def assert_kit_source_matches_ui(manifest: dict, ui_export: dict, project_sha: str) -> None:
+    """Falsify a self-consistent kit with a different UI revision/recipe/PCM.
+
+    Both receipts must refer to the *same* independently captured UI output;
+    kit-internal manifest/listener agreement alone is insufficient.
+    """
+    source = manifest.get("source") if isinstance(manifest, dict) else None
+    if not isinstance(source, dict):
+        raise RuntimeError("NYQ kit lacks a source-authentication anchor")
+    expected = {
+        "project_file_sha256": project_sha,
+        "source_revision_sha256": ui_export.get("revision_id"),
+        "compose_recipe_sha256": ui_export.get("recipe_sha256"),
+        "dry_pcm_f32le_sha256": ui_export.get("pcm_sha256"),
+    }
+    for key, value in expected.items():
+        if (not isinstance(value, str) or len(value) != 64
+                or source.get(key) != value):
+            raise RuntimeError(f"NYQ kit {key} differs from actual Compose UI evidence")
+    for key in ("frames", "channels"):
+        if (type(ui_export.get(key)) is not int
+                or source.get(key) != ui_export[key]):
+            raise RuntimeError(f"NYQ kit source {key} differs from actual Compose UI")
+
+
+
 def run(args: list[str], *, prefix: str) -> dict:
     done = subprocess.run([sys.executable, *args], capture_output=True, text=True, check=False)
     if done.returncode:
@@ -87,6 +113,8 @@ def check(out: Path) -> dict:
     # This host's actual UI WAV, not a different test fixture or OS.
     with zipfile.ZipFile(kit) as archive:
         original = archive.read("original.wav")
+        manifest = json.loads(archive.read("manifest.json"))
+    assert_kit_source_matches_ui(manifest, ui[0], source_sha)
     if (hashlib.sha256(original).hexdigest() != ui[0]["wav_sha256"]
             or verified["tracks"][0]["wav_sha256"] != ui[0]["wav_sha256"]):
         raise RuntimeError("kit's original audio differs from actual same-host UI WAV")
@@ -116,6 +144,9 @@ def check(out: Path) -> dict:
               "project_sha256": source_sha, "ui_wav_sha256": ui[0]["wav_sha256"],
               "kit_sha256": expected, "frames": ui[0]["frames"], "delivery_hz": 48000,
               "virtual_rates_hz": ["4/1", "5/1"], "file_origin_native_chromium": True,
+              "ui_source_anchor_checked": True,
+              "source_revision_sha256": ui[0]["revision_id"],
+              "compose_recipe_sha256": ui[0]["recipe_sha256"],
               "scope": "opt-in post-Compose full mix; not physical Windows acceptance"}
     (out / "ui-nyq-end-to-end.json").write_text(
         json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
