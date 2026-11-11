@@ -100,7 +100,7 @@ jobs:
         run: python tools/nyq_listen_saved_compose.py nyq-compose-ui-evidence/one-bar-spectral.zgtimeline.json --output-dir nyq-compose-ui-evidence/owner-listen --no-open
       - name: Native Chromium playback of the actual one-command 256/512 Hz owner listener
         env:
-          PYTHONPATH: .:tests/runtime
+          PYTHONPATH: .
         run: >-
           python -c "import json, subprocess, sys;
           from pathlib import Path;
@@ -163,7 +163,7 @@ jobs:
         run: python tools/nyq_listen_saved_compose.py nyq-compose-ui-evidence/one-bar-spectral.zgtimeline.json --output-dir nyq-compose-ui-evidence/owner-listen --no-open
       - name: Native Chromium playback of the actual one-command 256/512 Hz owner listener
         env:
-          PYTHONPATH: .:tests/runtime
+          PYTHONPATH: .
         run: >-
           python -c "import json, subprocess, sys;
           from pathlib import Path;
