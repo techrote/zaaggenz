@@ -55,7 +55,7 @@ class OfflineListenTests(unittest.TestCase):
         self.assertEqual(receipt["virtual_rates_hz"], ["11730/1", "16000/1"])
         self.assertEqual([name for name, _ in received], ["NYQ export", "NYQ cold-reopen verification"])
         self.assertIn("--expected-sha256", received[1][1])
-        self.assertEqual(browser.call_args.args, ((self.output / "listen.html").as_uri(),))
+        self.assertEqual(browser.call_args.args, ((self.output / "listen.html").resolve().as_uri(),))
         self.assertTrue(all((self.output / name).read_bytes() == name.encode() for name in self.names))
         self.assertTrue((self.output / "receipt.json").is_file())
 
