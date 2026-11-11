@@ -83,6 +83,8 @@ jobs:
         env:
           PYTHONPATH: .:tests/runtime
         run: python tests/runtime/browser_nyq_production_kit.py --fixture
+      - name: Complete 48-kHz owner Compose UI render, A/B, WAV and cold-reopen in Chromium
+        run: python tests/timeline/browser_ui.py --out nyq-compose-ui-evidence
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -92,6 +94,7 @@ jobs:
             runtime-browser/
             timeline-browser/
             listening-browser/
+            nyq-compose-ui-evidence/
 
   nyq-kit-browser-windows:
     needs: workspace-contract
@@ -123,3 +126,11 @@ jobs:
         run: python -m playwright install chromium
       - name: Native Chromium source-verified NYQ production kit A/B and cold-reopen
         run: python tests/runtime/browser_nyq_production_kit.py --fixture
+      - name: Complete 48-kHz owner Compose UI render, A/B, WAV and cold-reopen in Chromium
+        run: python tests/timeline/browser_ui.py --out nyq-compose-ui-evidence
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: zg041-nyq-compose-ui-windows
+          path: nyq-compose-ui-evidence/
+          retention-days: 7
