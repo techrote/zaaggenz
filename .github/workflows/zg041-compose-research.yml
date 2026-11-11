@@ -67,8 +67,11 @@ jobs:
         run: python baseline/recovered_source/materialize_v2.py --out .
       - name: Install numerical and browser dependencies
         run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt playwright==1.57.0
-      - name: Install Chromium with Linux dependencies
-        run: python -m playwright install --with-deps chromium
+      # ubuntu-24.04 GitHub image supplies Chromium's system libraries. Avoid
+      # an unnecessary apt mirror fetch: hosted mirror DNS can fail even while
+      # pip and actual browser execution work. All real Chromium tests stay required.
+      - name: Install pinned Chromium (use hosted system libraries)
+        run: python -m playwright install chromium
       - name: NYQ direct saved-Compose HTML - real Chromium playback and WAV identity
         run: PYTHONPATH=. python tests/runtime/browser_nyq_direct_audition.py --fixture
       - name: Compose Research switching and preserved session
