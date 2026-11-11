@@ -7,12 +7,15 @@ qualification, not human audibility, ordinary graph export or #242 acceptance.
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import hashlib
 import io
 import json
 import os
 from pathlib import Path
 import tempfile
+import threading
 import zipfile
 
 from playwright.sync_api import expect, sync_playwright
@@ -51,9 +54,41 @@ INSTRUMENT = r"""
 """
 
 
-def run_browser(html: Path, tracks: list[dict], frames: int) -> dict:
+@contextmanager
+def page_location(html: Path, loopback: bool):
+    if not loopback:
+        yield html.resolve().as_uri()
+        return
+    source = html.read_bytes()
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            if self.path != "/listen.html":
+                self.send_error(404)
+                return
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(source)))
+            self.end_headers()
+            self.wfile.write(source)
+
+        def log_message(self, *_args):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/listen.html"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def run_browser(html: Path, tracks: list[dict], frames: int, *, loopback=False) -> dict:
     errors, requests = [], []
-    with sync_playwright() as pw:
+    with page_location(html, loopback) as url, sync_playwright() as pw:
         browser = pw.chromium.launch(
             executable_path=os.environ.get("ZAAGGENZ_CHROMIUM") or None,
             headless=True,
@@ -64,8 +99,9 @@ def run_browser(html: Path, tracks: list[dict], frames: int) -> dict:
             page.add_init_script(INSTRUMENT)
             page.on("pageerror", lambda error: errors.append(str(error)))
             page.on("request", lambda request: requests.append(request.url)
-                    if request.url.startswith(("http:", "https:", "ws:", "wss:")) else None)
-            page.goto(html.resolve().as_uri(), wait_until="load")
+                    if request.url.startswith(("http:", "https:", "ws:", "wss:"))
+                    and request.url != url else None)
+            page.goto(url, wait_until="load")
             page.set_default_timeout(20000)
             n = len(tracks)
             assert n >= 3, "multi-rate fixture requires original plus at least two rates"
@@ -146,7 +182,7 @@ def run_browser(html: Path, tracks: list[dict], frames: int) -> dict:
                     "synchronized_tracks": n, "rapid_switch_ramps": 3*n,
                     "seek_pause_resume": "PASS", "download_identity": "PASS",
                     "unexpected_network_requests": len(requests), "page_errors": len(errors),
-                    "file_uri_qualified": True}
+                    "file_uri_qualified": not loopback, "loopback_qualified": bool(loopback)}
         finally:
             browser.close()
 
@@ -158,6 +194,8 @@ def main(argv=None) -> int:
     source.add_argument("--fixture", action="store_true", help="Render a genuine saved Compose project")
     parser.add_argument("--project", type=Path, help="Original saved project for source binding")
     parser.add_argument("--expected-sha256", help="Independently recorded kit ZIP SHA-256")
+    parser.add_argument("--loopback", action="store_true",
+                        help="localhost fallback; does NOT qualify file:// access")
     args = parser.parse_args(argv)
     with tempfile.TemporaryDirectory(prefix="nyq-kit-chromium-") as tmp:
         root = Path(tmp)
@@ -185,7 +223,7 @@ def main(argv=None) -> int:
             assert sha(raw_html) == manifest["listen_html_sha256"]
         html = root / "listen.html"
         html.write_bytes(raw_html)
-        result = run_browser(html, verified["tracks"], verified["frames"])
+        result = run_browser(html, verified["tracks"], verified["frames"], loopback=args.loopback)
         print("NYQ_PRODUCTION_KIT_CHROMIUM " + json.dumps({
             "kit_sha256": verified["zip_sha256"],
             "html_sha256": sha(raw_html),
