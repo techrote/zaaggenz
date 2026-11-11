@@ -85,7 +85,7 @@ def download_wav(page, server, path):
     result = server.timeline.artifact(job_id)
     metadata = result.metadata()
     revision = page.locator("#revision").inner_text()
-    assert metadata["revision_id"] == revision
+    assert metadata["revision_id"] == revision, {"job_id": job_id, "job_revision": metadata["revision_id"], "editor_revision": revision, "playback_revision": page.locator("#playback-revision").inner_text(), "session": server.session.snapshot(), "selected_output": page.locator("#outputs").input_value()}
     assert page.locator("#playback-revision").inner_text() == revision
     assert rate == 48000 == metadata["asset"]["sample_rate_hz"]
     assert pcm.dtype == np.float32 and np.isfinite(pcm).all()
