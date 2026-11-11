@@ -84,7 +84,7 @@ def download_wav(page, server, path):
     job_id = page.locator("#outputs").input_value()
     result = server.timeline.artifact(job_id)
     metadata = result.metadata()
-    revision = page.locator("#revision").inner_text()
+    # Revision is deliberately inside a collapsed technical-details panel.\n    # inner_text() is visibility-dependent and returns an empty string there.\n    revision = page.locator("#revision").text_content().strip()
     assert metadata["revision_id"] == revision, {"job_id": job_id, "job_revision": metadata["revision_id"], "editor_revision": revision, "playback_revision": page.locator("#playback-revision").inner_text(), "session": server.session.snapshot(), "selected_output": page.locator("#outputs").input_value()}
     assert page.locator("#playback-revision").inner_text() == revision
     assert rate == 48000 == metadata["asset"]["sample_rate_hz"]
