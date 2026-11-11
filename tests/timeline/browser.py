@@ -58,7 +58,32 @@ def main():
             def rendered(name,region=False):
                 ready();page.locator('#output-name').fill(name)
                 page.locator('#render-region' if region else '#render').click()
-                expect(page.locator('#play')).to_be_enabled(timeout=120000)
+                try:
+                    expect(page.locator('#play')).to_be_enabled(timeout=120000)
+                except AssertionError:
+                    # A disabled Play button on Windows previously left only a
+                    # timeout. Preserve the actual UI and job states without
+                    # retrying, relaxing the gate, or publishing private PCM.
+                    selected_job=page.locator('#outputs').input_value()
+                    server_state={}
+                    if selected_job:
+                        try:
+                            current=server.timeline.status(selected_job)
+                            server_state={key:current.get(key) for key in ('state','error','message')}
+                        except Exception as exc:
+                            server_state={'lookup_error':type(exc).__name__}
+                    diagnostic={'render_name':name,'selected_job':selected_job,
+                                'server':server_state,
+                                'ui_status':page.locator('#status').inner_text(),
+                                'revision':page.locator('#revision').text_content(),
+                                'playback_revision':page.locator('#playback-revision').text_content(),
+                                'page_errors':list(errors)}
+                    (args.out/(name+'-failure.json')).write_text(
+                        json.dumps(diagnostic,sort_keys=True,indent=2,default=str)+'\n',
+                        encoding='utf-8')
+                    page.screenshot(path=args.out/(name+'-failure.png'),full_page=True)
+                    print('ZG009_RENDER_FAILURE '+json.dumps(diagnostic,sort_keys=True,default=str),flush=True)
+                    raise
                 expect(page.locator('#playback-revision')).to_have_text(page.locator('#revision').inner_text())
                 assert page.locator('#waveform').get_attribute('data-revision')==page.locator('#revision').inner_text()
                 page.locator('#play').click()
