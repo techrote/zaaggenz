@@ -16,7 +16,7 @@ import uuid
 import webbrowser
 import zipfile
 
-RATES = ("11730/1", "16000/1")
+RATES = ("256/1", "512/1")  # Bounded real-source comparison, not unrestricted 16-kHz event packets.
 SHA = re.compile(r"[0-9a-f]{64}\Z")
 
 
