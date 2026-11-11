@@ -263,19 +263,23 @@ class OriginalComposeTwoRateMorph(unittest.TestCase):
             out = folder / "rate-morph.wav"
             receipt = morph.bounce_rate_morph(
                 kit, out, rate_a_hz="4/1", rate_b_hz="5/1",
-                points_ms=["0=0", "150=100"], project_path=project,
+                points_ms=["0=0", "500=100"], project_path=project,
                 expected_zip_sha256=kr["zip_sha256"])
             with zipfile.ZipFile(kit) as z:
                 _, a = wavfile.read(io.BytesIO(z.read("nyq-rate-01.wav")))
                 _, b = wavfile.read(io.BytesIO(z.read("nyq-rate-02.wav")))
             hz, actual = wavfile.read(out)
             self.assertEqual((hz, len(actual), receipt["channels"]), (48000, 28800, 1))
-            weights = np.minimum(np.arange(len(a), dtype=np.float64) / 7200., 1.)
+            weights = np.minimum(np.arange(len(a), dtype=np.float64) / 24000., 1.)
             oracle = (a.astype(np.float64) + (b.astype(np.float64) - a.astype(np.float64)) * weights).astype(np.float32)
             oracle = np.where(a == b, a, oracle)
             oracle = np.where(weights == 0, a, oracle)
             oracle = np.where(weights == 1, b, oracle)
             np.testing.assert_array_equal(actual, oracle)
+            # Prevent a vacuous fixture where the crossfade finishes before
+            # source rates first diverge in the authentic Compose recording.
+            self.assertNotEqual(sha(actual.astype("<f4").tobytes()), sha(a.astype("<f4").tobytes()))
+            self.assertNotEqual(sha(actual.astype("<f4").tobytes()), sha(b.astype("<f4").tobytes()))
             self.assertEqual(receipt["pcm_f32le_sha256"], sha(actual.astype("<f4").tobytes()))
             self.assertEqual(receipt["wav_sha256"], sha(out.read_bytes()))
             self.assertTrue(receipt["trusted_kit_checked"])
