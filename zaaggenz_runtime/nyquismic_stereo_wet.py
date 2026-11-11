@@ -120,7 +120,7 @@ def _mix(dry: np.ndarray, wet: np.ndarray, amount: float, mode: str, cancelled) 
 
 def bounce_stereo_wet(
     kit_path: str | Path, output_wav: str | Path, *, virtual_rate_hz: str,
-    wet_percent: str, mode: str = "side", project_path: str | Path | None = None,
+    wet_percent: str, mode: str = "both", project_path: str | Path | None = None,
     expected_zip_sha256: str | None = None, cancelled=None,
 ) -> dict:
     """Render a separately published opt-in spatial Nyquismic 48-kHz WAV.
@@ -214,7 +214,7 @@ def main(argv=None) -> int:
     parser.add_argument("--output", required=True, help="New WAV, never overwritten")
     parser.add_argument("--virtual-hz", required=True, help="Exact virtual-rate take in verified kit")
     parser.add_argument("--wet-percent", required=True, help="0..100, up to six decimal places")
-    parser.add_argument("--mode", choices=MODES, default="side")
+    parser.add_argument("--mode", choices=MODES, default="both")
     parser.add_argument("--project", help="Optional original saved Compose project")
     parser.add_argument("--expected-sha256", help="Externally recorded trusted kit SHA-256")
     args = parser.parse_args(argv)
