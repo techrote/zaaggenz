@@ -115,7 +115,9 @@ class SpatialWetTests(unittest.TestCase):
         self.rebuild()
         with self.assertRaisesRegex(ValueError, "stereo"):
             self.render(mode="side")
-        self.render(mode="both", wet_percent="25")
+        with mock.patch.object(spatial, "verify_production_kit", return_value=self.receipt):
+            spatial.bounce_stereo_wet(self.kit, self.dest, virtual_rate_hz="4/1",
+                                      wet_percent="25", project_path=self.project)
         np.testing.assert_allclose(self.read(), np.full(12000, .35, np.float32), atol=1e-7)
 
     def test_same_signal_all_modes_preserve_exact_bits(self):
