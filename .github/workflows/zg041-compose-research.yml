@@ -92,6 +92,10 @@ jobs:
         env:
           PYTHONPATH: .
         run: python tools/nyq_ui_kit_gate.py --out nyq-compose-ui-evidence
+      - name: Owner one-command NYQ audition export, full source/PCM verify and extraction
+        env:
+          PYTHONPATH: .
+        run: python tools/nyq_listen_saved_compose.py nyq-compose-ui-evidence/one-bar-spectral.zgtimeline.json --output-dir nyq-compose-ui-evidence/owner-listen --no-open
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -139,6 +143,10 @@ jobs:
         env:
           PYTHONPATH: .
         run: python tools/nyq_ui_kit_gate.py --out nyq-compose-ui-evidence
+      - name: Owner one-command NYQ audition export, full source/PCM verify and extraction
+        env:
+          PYTHONPATH: .
+        run: python tools/nyq_listen_saved_compose.py nyq-compose-ui-evidence/one-bar-spectral.zgtimeline.json --output-dir nyq-compose-ui-evidence/owner-listen --no-open
       - uses: actions/upload-artifact@v4
         if: always()
         with:
