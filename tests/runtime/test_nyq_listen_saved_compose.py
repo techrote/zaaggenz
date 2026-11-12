@@ -145,6 +145,32 @@ class OfflineListenTests(unittest.TestCase):
         self.assertEqual(receipt["status"], "PASS")
         self.assertEqual(len(received), 2)
 
+    def test_competing_empty_directory_cannot_be_replaced_at_publication(self):
+        # Interleave a different process's mkdir at the final OS rename boundary,
+        # not before a racy Python exists() precheck.
+        fake, _ = self._commands()
+        real_publish = cli._publish_verified_directory
+
+        def competing_creator(staging, destination):
+            destination.mkdir()  # An existing *empty* directory is replaceable by POSIX rename.
+            self.assertEqual(list(destination.iterdir()), [])
+            return real_publish(staging, destination)
+
+        with patch.object(cli, "_command", fake), patch.object(
+            cli, "_publish_verified_directory", side_effect=competing_creator
+        ):
+            with self.assertRaises(FileExistsError):
+                cli.audition(self.project, self.output, open_browser=False)
+
+        self.assertTrue(self.output.is_dir())  # The competing process still owns its directory.
+        self.assertEqual(list(self.output.iterdir()), [])
+        self.assertEqual(list(self.root.glob(".audition-nyq-stage-*")), [])
+        self.output.rmdir()  # Once the other owner removes its path, an ordinary retry works.
+        with patch.object(cli, "_command", fake):
+            receipt = cli.audition(self.project, self.output, open_browser=False)
+        self.assertEqual(receipt["status"], "PASS")
+        self.assertTrue((self.output / "receipt.json").exists())
+
     def test_no_open_still_verifies_and_saves_wavs(self):
         fake, _ = self._commands()
         with patch.object(cli, "_command", fake), patch.object(cli.webbrowser, "open") as browser:
