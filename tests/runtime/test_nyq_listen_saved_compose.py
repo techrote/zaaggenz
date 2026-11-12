@@ -28,17 +28,19 @@ class OfflineListenTests(unittest.TestCase):
         def fake(args, *, name):
             received.append((name, args))
             if name == "NYQ export":
-                with zipfile.ZipFile(self.output / "nyq-listen.zip", "w") as archive:
+                kit = Path(args[args.index("--output") + 1])
+                with zipfile.ZipFile(kit, "w") as archive:
                     for member in self.names:
                         archive.writestr(member, member.encode())
                     if bad_archive:
                         archive.writestr("../foreign-file", b"not allowed")
                 if changed_project:
                     self.project.write_bytes(b"changed after source capture")
-                return {"zip_sha256": "0" * 64 if bad_sha else cli._sha(self.output / "nyq-listen.zip"),
+                return {"zip_sha256": "0" * 64 if bad_sha else cli._sha(kit),
                         "project_file_sha256": "f" * 64 if bad_source else self.source_sha,
                         "virtual_rates_hz": list(cli.RATES), "delivery_hz": 48000}
-            return {"zip_sha256": cli._sha(self.output / "nyq-listen.zip"),
+            kit = Path(args[args.index("--kit") + 1])
+            return {"zip_sha256": cli._sha(kit),
                     "source_project_sha256": "f" * 64 if bad_verifier else self.source_sha,
                     "virtual_rates_hz": list(cli.RATES), "delivery_hz": 48000,
                     "trusted_zip_sha_checked": True, "original_project_checked": True,
@@ -117,6 +119,79 @@ class OfflineListenTests(unittest.TestCase):
                 cli.audition(self.project, self.output, open_browser=False)
         self.assertFalse((self.root / "foreign-file").exists())
         self.assertFalse((self.output / "listen.html").exists())
+
+    def test_export_failure_does_not_publish_unverified_output(self):
+        def fail_after_writing(args, *, name):
+            kit = Path(args[args.index("--output") + 1])
+            kit.write_bytes(b"unverified export")
+            raise RuntimeError("interrupted NYQ export")
+
+        with patch.object(cli, "_command", fail_after_writing):
+            with self.assertRaisesRegex(RuntimeError, "interrupted"):
+                cli.audition(self.project, self.output, open_browser=False)
+        self.assertFalse(self.output.exists())
+        self.assertEqual(list(self.root.glob(".audition-nyq-stage-*")), [])
+
+    def test_verifier_failure_does_not_poison_explicit_destination(self):
+        bad, _ = self._commands(bad_verifier=True)
+        with patch.object(cli, "_command", bad):
+            with self.assertRaises(RuntimeError):
+                cli.audition(self.project, self.output, open_browser=False)
+        self.assertFalse(self.output.exists())
+        self.assertEqual(list(self.root.glob(".audition-nyq-stage-*")), [])
+        good, received = self._commands()
+        with patch.object(cli, "_command", good):
+            receipt = cli.audition(self.project, self.output, open_browser=False)
+        self.assertEqual(receipt["status"], "PASS")
+        self.assertEqual(len(received), 2)
+
+    def test_competing_empty_destination_at_publication_is_never_replaced(self):
+        fake, _ = self._commands()
+        raced = False
+
+        if cli.os.name == "nt":
+            # Windows rename must reject a target created at the boundary.
+            original = Path.rename
+
+            def competing_rename(stage, destination):
+                nonlocal raced
+                if Path(destination) == self.output and not raced:
+                    raced = True
+                    self.output.mkdir()
+                return original(stage, destination)
+
+            publication_patch = patch.object(Path, "rename", competing_rename)
+        else:
+            # POSIX rename would overwrite an empty target. Inject the other
+            # creator exactly at exclusive publication reservation.
+            original = Path.mkdir
+
+            def competing_mkdir(path, *args, **kwargs):
+                nonlocal raced
+                if path == self.output and not raced:
+                    raced = True
+                    original(path)
+                return original(path, *args, **kwargs)
+
+            publication_patch = patch.object(Path, "mkdir", competing_mkdir)
+
+        with patch.object(cli, "_command", fake), publication_patch:
+            with self.assertRaises(FileExistsError):
+                cli.audition(self.project, self.output, open_browser=False)
+        self.assertTrue(raced)
+        self.assertTrue(self.output.is_dir())
+        self.assertEqual(list(self.output.iterdir()), [])
+        self.assertEqual(list(self.root.glob(".audition-nyq-stage-*")), [])
+
+    def test_failed_rename_removes_only_our_empty_reservation(self):
+        fake, _ = self._commands()
+        with patch.object(cli, "_command", fake), patch.object(
+            Path, "rename", side_effect=OSError("simulated publication failure")
+        ):
+            with self.assertRaisesRegex(OSError, "publication failure"):
+                cli.audition(self.project, self.output, open_browser=False)
+        self.assertFalse(self.output.exists())
+        self.assertEqual(list(self.root.glob(".audition-nyq-stage-*")), [])
 
     def test_no_open_still_verifies_and_saves_wavs(self):
         fake, _ = self._commands()
