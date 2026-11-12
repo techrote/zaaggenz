@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -40,6 +41,35 @@ def _command(args: list[str], *, name: str) -> dict:
     if not isinstance(value, dict):
         raise RuntimeError(f"{name} did not return an object receipt")
     return value
+
+
+def _publish_verified_directory(staging: Path, destination: Path) -> None:
+    """Publish a complete kit atomically without replacing any existing path.
+
+    Windows directory rename already rejects an occupied destination. Linux needs
+    renameat2(RENAME_NOREPLACE): os.rename/Path.rename can silently replace an
+    empty directory created by another process after a preflight exists() check.
+    Fail closed on other platforms or kernels without a safe primitive.
+    """
+    if sys.platform == "win32":
+        staging.rename(destination)
+        return
+    if sys.platform != "linux":
+        raise RuntimeError("atomic no-replace directory publication is unavailable on this platform")
+    import ctypes
+
+    libc = ctypes.CDLL(None, use_errno=True)
+    try:
+        rename_noreplace = libc.renameat2
+    except AttributeError as exc:
+        raise RuntimeError("Linux renameat2(RENAME_NOREPLACE) is required for safe publication") from exc
+    rename_noreplace.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int,
+                                 ctypes.c_char_p, ctypes.c_uint]
+    rename_noreplace.restype = ctypes.c_int
+    # AT_FDCWD=-100, RENAME_NOREPLACE=1; source and target stay in one parent.
+    if rename_noreplace(-100, os.fsencode(staging), -100, os.fsencode(destination), 1):
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err), str(destination))
 
 
 def audition(project: Path, output_dir: Path, *, open_browser: bool = True) -> dict:
@@ -98,9 +128,7 @@ def audition(project: Path, output_dir: Path, *, open_browser: bool = True) -> d
                    "cold_reopen_verified": True, "scope": "offline post-Compose full-mix"}
         (staging / "receipt.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n",
                                                    encoding="utf-8")
-        if output_dir.exists():
-            raise FileExistsError(f"NYQ listener destination appeared during export: {output_dir}")
-        staging.rename(output_dir)
+        _publish_verified_directory(staging, output_dir)
     finally:
         if staging.exists():
             shutil.rmtree(staging)
