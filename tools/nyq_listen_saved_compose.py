@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -40,6 +41,29 @@ def _command(args: list[str], *, name: str) -> dict:
     if not isinstance(value, dict):
         raise RuntimeError(f"{name} did not return an object receipt")
     return value
+
+
+def _publish_verified_staging(staging: Path, output_dir: Path) -> None:
+    """Publish verified files without replacing a competing empty directory.
+
+    Windows directory rename rejects any existing destination. POSIX rename
+    instead replaces an existing empty directory, so we first reserve the
+    destination name with an exclusive mkdir, then replace only our own empty
+    reservation with the verified staging directory.
+    """
+    if os.name == "nt":
+        staging.rename(output_dir)
+        return
+    output_dir.mkdir(mode=0o700)  # Atomic exclusive reservation on POSIX.
+    try:
+        staging.rename(output_dir)
+    except BaseException:
+        # Do not recursively remove a path another process might have used.
+        try:
+            output_dir.rmdir()
+        except OSError:
+            pass
+        raise
 
 
 def audition(project: Path, output_dir: Path, *, open_browser: bool = True) -> dict:
@@ -98,9 +122,7 @@ def audition(project: Path, output_dir: Path, *, open_browser: bool = True) -> d
                    "cold_reopen_verified": True, "scope": "offline post-Compose full-mix"}
         (staging / "receipt.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n",
                                                    encoding="utf-8")
-        if output_dir.exists():
-            raise FileExistsError(f"NYQ listener destination appeared during export: {output_dir}")
-        staging.rename(output_dir)
+        _publish_verified_staging(staging, output_dir)
     finally:
         if staging.exists():
             shutil.rmtree(staging)

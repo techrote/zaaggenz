@@ -145,6 +145,54 @@ class OfflineListenTests(unittest.TestCase):
         self.assertEqual(receipt["status"], "PASS")
         self.assertEqual(len(received), 2)
 
+    def test_competing_empty_destination_at_publication_is_never_replaced(self):
+        fake, _ = self._commands()
+        raced = False
+
+        if cli.os.name == "nt":
+            # Windows rename must reject a target created at the boundary.
+            original = Path.rename
+
+            def competing_rename(stage, destination):
+                nonlocal raced
+                if Path(destination) == self.output and not raced:
+                    raced = True
+                    self.output.mkdir()
+                return original(stage, destination)
+
+            publication_patch = patch.object(Path, "rename", competing_rename)
+        else:
+            # POSIX rename would overwrite an empty target. Inject the other
+            # creator exactly at exclusive publication reservation.
+            original = Path.mkdir
+
+            def competing_mkdir(path, *args, **kwargs):
+                nonlocal raced
+                if path == self.output and not raced:
+                    raced = True
+                    original(path)
+                return original(path, *args, **kwargs)
+
+            publication_patch = patch.object(Path, "mkdir", competing_mkdir)
+
+        with patch.object(cli, "_command", fake), publication_patch:
+            with self.assertRaises(FileExistsError):
+                cli.audition(self.project, self.output, open_browser=False)
+        self.assertTrue(raced)
+        self.assertTrue(self.output.is_dir())
+        self.assertEqual(list(self.output.iterdir()), [])
+        self.assertEqual(list(self.root.glob(".audition-nyq-stage-*")), [])
+
+    def test_failed_rename_removes_only_our_empty_reservation(self):
+        fake, _ = self._commands()
+        with patch.object(cli, "_command", fake), patch.object(
+            Path, "rename", side_effect=OSError("simulated publication failure")
+        ):
+            with self.assertRaisesRegex(OSError, "publication failure"):
+                cli.audition(self.project, self.output, open_browser=False)
+        self.assertFalse(self.output.exists())
+        self.assertEqual(list(self.root.glob(".audition-nyq-stage-*")), [])
+
     def test_no_open_still_verifies_and_saves_wavs(self):
         fake, _ = self._commands()
         with patch.object(cli, "_command", fake), patch.object(cli.webbrowser, "open") as browser:
