@@ -29,6 +29,7 @@ _FRONTEND_PATHS = {
         "web/timeline/app.mjs",
         "web/timeline/editor.mjs",
         "web/timeline/rack-ui.mjs",
+        "web/timeline/theme.mjs",
         "web/timeline/style.css",
         "web/jobs_transport.mjs",
     ),

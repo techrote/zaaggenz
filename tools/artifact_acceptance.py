@@ -128,7 +128,10 @@ def verify(dist: Path, kind: str, constraints: Path, *, browser: bool) -> dict:
         payload = json.loads(smoke.stdout.strip().splitlines()[-1])
         if browser:
             _run(
-                [python, "-m", "playwright", "install", "--with-deps", "chromium"],
+                # The GitHub Ubuntu runner already provides system browser libraries.
+                # Verify the isolated installed-wheel browser by launching it
+                # below; do not make acceptance depend on unrelated apt mirrors.
+                [python, "-m", "playwright", "install", "chromium"],
                 cwd=work,
                 timeout=600,
             )

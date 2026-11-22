@@ -1,6 +1,7 @@
 import {Editor,copy,rational,value,snap,add} from './editor.mjs';
 import {RenderTransport} from './jobs_transport.mjs';
 import {renderRack,renderRackMeters} from './rack-ui.mjs';
+import {initTheme} from './theme.mjs';
 const $=id=>document.getElementById(id),transport=new RenderTransport();
 let editor,token,selected=null,validation=null,epoch=0,validationSequence=0,job=null,slots=[],activeSlot=null,presetCatalogue=null,rackEditing=false;
 // A late validation must not update RuntimeSession, not merely lose its UI
@@ -11,6 +12,53 @@ const rackEditQueue=[],MAX_QUEUED_RACK_EDITS=16;
 let dryMonitor=null,dryJob=null,dryRequestSequence=0;
 let bandMonitor=null,bandJob=null,bandRequestSequence=0;
 const status=(message,error=false)=>{ $('status').textContent=message;$('status').classList.toggle('error',error); };
+const transportHint=message=>{if($('transport-hint'))$('transport-hint').textContent=message;};
+function renderEnabled(enabled){
+  for(const id of ['render','render-region','preview'])if($(id))$(id).disabled=!enabled;
+}
+function rackFeedback(message,error=false,action=null){
+  const notice=$('rack-status');
+  if(notice){notice.textContent=message;notice.classList.toggle('error',error);}
+  $('rack-editor').setAttribute('aria-busy',String(rackEditing));
+  for(const band of $('rack-editor').querySelectorAll('[data-band-id].rack-band')){
+    band.classList.toggle('rack-pending',rackEditing&&
+      (action?.band===band.dataset.bandId||action?.id===band.dataset.bandId||
+       (typeof action?.id==='string'&&action.id.startsWith(band.dataset.bandId+'/'))));
+  }
+}
+function updatePlayButton(){
+  const playing=!$('audio').paused&&!$('audio').ended;
+  $('play').textContent=playing?'Pause':'Play';
+  $('play').setAttribute('aria-label',playing?'Pause playback':'Play selected output');
+  $('play').setAttribute('aria-pressed',String(playing));
+  $('play').title=activeSlot?(playing?'Pause playback':'Play the selected output'):'Render first to enable playback';
+}
+function timecode(seconds){
+  if(!Number.isFinite(seconds)||seconds<0)return '0:00.000';
+  const minutes=Math.floor(seconds/60),rest=(seconds-minutes*60).toFixed(3).padStart(6,'0');
+  return minutes+':'+rest;
+}
+function updatePlaybackPosition(){
+  const audio=$('audio'),duration=audio.duration,seek=$('playback-seek');
+  if(!seek)return;
+  const ready=!!activeSlot&&Number.isFinite(duration)&&duration>0;
+  seek.disabled=!ready;
+  seek.value=ready?String(Math.max(0,Math.min(1000,audio.currentTime/duration*1000))):'0';
+  $('playback-time').textContent=timecode(ready?audio.currentTime:0);
+  $('playback-duration').textContent=timecode(ready?duration:0);
+  seek.setAttribute('aria-valuetext',timecode(ready?audio.currentTime:0)+' of '+timecode(ready?duration:0));
+}
+function drawWaveform(){
+  const canvas=$('waveform'),ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  if(!activeSlot||$('audio').dataset.monitorKind!=='processed')return;
+  ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--cyan').trim()||'#93a58d';
+  const points=activeSlot.artifact.scopes.waveform;
+  for(let i=0;i<points.length;i++){
+    const h=Math.min(66,points[i]*66);
+    ctx.fillRect(i*1200/points.length,70-h,Math.max(1,1200/points.length),Math.max(1,2*h));
+  }
+}
 async function api(path,payload){
   const response=await fetch('/api/timeline/'+path,payload===undefined?{}:{method:'POST',headers:{'Content-Type':'application/json','X-Zaaggenz-Token':token},body:JSON.stringify(payload)});
   const data=await response.json();if(!response.ok)throw Error(data.error??`HTTP ${response.status}`);return data;
@@ -83,13 +131,16 @@ function clearPlayback(){
   $('waveform').getContext('2d').clearRect(0,0,1200,140);
   $('download').removeAttribute('href');$('download').classList.add('disabled');$('download').setAttribute('aria-disabled','true');
   renderRackMeters($('rack-meters'),null);
+  updatePlayButton();
+  updatePlaybackPosition();
+  transportHint('Render the phrase to enable playback and WAV export.');
 }
 function invalidate(preserveRackQueue=false){
   // Any non-rack edit supersedes outstanding proposals; only the current
   // rack worker may carry queued commands across successive revisions.
   if(!preserveRackQueue)rackEditQueue.length=0;
   epoch++;quietCancel(job);job=null;validation=null;clearPlayback();
-  $('render').disabled=true;$('render-region').disabled=true;$('save').disabled=true;
+  renderEnabled(false);$('save').disabled=true;
 }
 function afterEdit(preserveRackQueue=false){
   invalidate(preserveRackQueue);paint();if(selected)select(selected);
@@ -114,9 +165,12 @@ async function validateLatest(){
     // A validation response can race another accepted rack proposal. Do not
     // admit stale saves/renders while source-bound edits remain outstanding.
     if(!rackEditing&&!rackEditQueue.length){
-      $('render').disabled=false;$('render-region').disabled=false;$('save').disabled=false;
+      renderEnabled(true);$('save').disabled=false;
     }
     updateTarget();renderRack($('rack-editor'),result.rack_editor,editRack,{exportPreset,importPreset});updateDryControls();status(`Ready · ${editor.document.notes.length} events · estimated render admission ${(result.estimated_memory_bytes/1048576).toFixed(1)} MiB`);
+    if(!activeSlot)transportHint(editor.document.notes.length
+      ?'Choose Render & play to audition your edits, or Render full phrase to prepare a WAV.'
+      :'Add notes or choose an example, then Render & play.');
   }catch(e){if(seq===validationSequence){validation=null;$('revision').textContent='Invalid editing revision';status(e.message,true);}}
 }
 function exportPreset(identifier){
@@ -158,13 +212,14 @@ function editRack(action){
   rackEditQueue.push(action);
   if(rackEditing){
     status(`Rack edit queued · ${rackEditQueue.length} more change(s)`);
+    rackFeedback(`Rack edit queued · ${rackEditQueue.length} more change(s).`,false,action);
     return;
   }
   void drainRackEdits();
 }
 async function drainRackEdits(){
   rackEditing=true;
-  let superseded=false,failedMessage=null;
+  let superseded=false,failedMessage=null,applied=0;
   try{
     while(rackEditQueue.length){
       const action=rackEditQueue.shift();
@@ -175,6 +230,8 @@ async function drainRackEdits(){
       const editEpoch=epoch;
       $('revision').textContent='Rack edit pending…';
       status(`Validating rack edit… · ${rackEditQueue.length} queued`);
+      rackFeedback(`Applying rack edit… · ${rackEditQueue.length} queued.`,false,action);
+      transportHint('Applying rack changes. Playback and export return after rendering the new sound.');
       try{
         const result=await api('rack-edit',{document:before,action});
         // Non-rack edits, imports and output selection supersede this queue.
@@ -185,12 +242,17 @@ async function drainRackEdits(){
         }
         editor.replace(result.document);
         afterEdit(true);
+        // Show the validated editing proposal promptly. Audio/save admission
+        // still waits for the final ordered /validate and authoritative session.
+        renderRack($('rack-editor'),result.rack_editor,editRack,{exportPreset,importPreset});
+        applied++;
+        rackFeedback('Rack updated · finishing validation…',false,action);
       }catch(error){
         const discarded=rackEditQueue.length;
         rackEditQueue.length=0;
         if(editEpoch===epoch&&JSON.stringify(editor.document)===identity){
           const message=error.message.includes('rack full-context memory estimate exceeds working-memory bound')
-             ?error.message+' · Shorten the phrase before enabling this spectral stage; region previews still process the full phrase.'
+             ?error.message+' · Shorten the phrase before enabling this spectral stage. One-bar example replaces the notes with a short phrase; Undo restores them. A region render still processes the full phrase.'
              :error.message;
            failedMessage=message+(discarded?` · ${discarded} queued edit(s) not applied`:'');
         }else superseded=true;
@@ -205,8 +267,13 @@ async function drainRackEdits(){
     if(!superseded){
       const finalEpoch=epoch;
       await validateLatest();
-      if(failedMessage&&finalEpoch===epoch)status(failedMessage,true);
+      if(finalEpoch===epoch){
+        if(failedMessage){status(failedMessage,true);rackFeedback(failedMessage,true);}
+        else if(validation)rackFeedback(`${applied} rack change(s) applied. Render & play to hear the result.`);
+        else rackFeedback('Rack validation failed. Check the status message above.',true);
+      }
     }
+    if(superseded)rackFeedback('Rack edit superseded by a newer project edit.');
   }
 }
 function rowFromForm(){return {beat:rational($('beat').value),duration_beats:rational($('duration').value),
@@ -221,6 +288,13 @@ function select(id){
 }
 function updateTarget(){const hz=validation?.targets?.[selected];$('target-pitch').textContent=hz===null?'Rest · no target pitch':Number.isFinite(hz)?`Selected target ${hz.toFixed(3)} Hz · source ${validation.source_hz.toFixed(2)} Hz`:'Target pitch appears after the event is applied.';}
 function svgElement(name,attrs,text){const node=document.createElementNS('http://www.w3.org/2000/svg',name);for(const [key,v]of Object.entries(attrs))node.setAttribute(key,String(v));if(text!==undefined)node.textContent=text;return node;}
+function rollPoint(clientX,clientY){
+  // The SVG may letterbox inside a wide pane. Use its actual screen transform,
+  // rather than treating the entire element box as the painted timeline.
+  const matrix=$('roll').getScreenCTM();
+  if(!matrix)throw Error('The timeline is not visible.');
+  return new DOMPoint(clientX,clientY).matrixTransform(matrix.inverse());
+}
 function paint(){
   const data=editor.document;$('project-name').value=data.name;$('length').value=data.end_beat;$('master').value=data.master_gain_db;
   $('undo').disabled=!editor.past.length;$('redo').disabled=!editor.future.length;
@@ -239,16 +313,15 @@ function paint(){
   }
   for(const row of data.notes){
     const x=left+value(row.beat)/end*width,y=row.degree===null?290:274-(row.degree-low)/span*235;
-    const rect=svgElement('rect',{x,y,width:Math.max(5,value(row.duration_beats)/end*width-1),height:Math.max(9,Math.min(18,220/span)),rx:3,
+    const rect=svgElement('rect',{x,y,width:Math.max(5,value(row.duration_beats)/end*width-1),height:Math.max(9,Math.min(18,220/span)),rx:0,
       class:`note${row.id===selected?' selected':''}${row.muted?' muted':''}${row.degree===null?' rest':''}`,'data-id':row.id,tabindex:0,
       'aria-label':`${row.degree===null?'Rest':`Degree ${row.degree}`} at beat ${row.beat}${row.roll_density?' with rolls':''}`});
     rect.append(svgElement('title',{},`${row.id}: ${row.beat} + ${row.duration_beats} beats${row.roll_density?`; density ${row.roll_density}`:''}`));
     rect.addEventListener('click',()=>select(row.id));
     rect.addEventListener('keydown',e=>{if(e.key==='Enter')select(row.id);});
     rect.addEventListener('pointerdown',e=>{
-      if(e.button!==0)return;const start=e.clientX,original=copy(row),resize=e.shiftKey,id=row.id;
-      const screenWidth=svg.getBoundingClientRect().width*width/1200;
-      const finish=event=>{window.removeEventListener('pointerup',finish);const delta=(event.clientX-start)/screenWidth*end;
+      if(e.button!==0)return;const start=e.clientX,startPoint=rollPoint(e.clientX,e.clientY),original=copy(row),resize=e.shiftKey,id=row.id;
+      const finish=event=>{window.removeEventListener('pointerup',finish);const delta=(rollPoint(event.clientX,event.clientY).x-startPoint.x)/width*end;
         if(Math.abs(event.clientX-start)<4){select(id);return;}
         safe(()=>{const updated={...original};const field=resize?'duration_beats':'beat';
           const target=Math.max(resize?value($('snap').value):0,value(original[field])+delta);
@@ -276,12 +349,15 @@ function publish(slot){
   $('playback-revision').textContent=snapshot.revisionId;$('waveform').dataset.revision=snapshot.revisionId;
   renderRackMeters($('rack-meters'),artifact);
   $('revision').textContent=snapshot.revisionId;$('outputs').value=slot.id;
-  const ctx=$('waveform').getContext('2d');ctx.clearRect(0,0,1200,140);ctx.fillStyle='#95b097';
-  const points=snapshot.scopes.waveform;for(let i=0;i<points.length;i++){const h=Math.min(66,points[i]*66);ctx.fillRect(i*1200/points.length,70-h,Math.max(1,1200/points.length),Math.max(1,2*h));}
+  drawWaveform();
   $('download').href=slot.url;$('download').download=`${slot.name.replace(/[^a-zA-Z0-9_-]/g,'_')}.wav`;
   $('download').classList.remove('disabled');$('download').setAttribute('aria-disabled','false');
+  $('download').title='Export '+slot.name+' as the original processed WAV';
   updateDryControls();
   applyMonitorVolume('processed');
+  transportHint(`${slot.name} is ready. Play or export the processed WAV.`);
+  updatePlayButton();
+  updatePlaybackPosition();
 }
 async function prepareDryMonitor(){
   if(!validation||!activeSlot||!validation.rack_editor?.present||rackEditing||
@@ -348,6 +424,7 @@ function hearDryMonitor(){
   applyMonitorVolume('dry');
   updateDryControls();
   $('play').disabled=false;
+  return true;
 }
 async function prepareBandMonitor(){
   if(!validation||!activeSlot||!validation.rack_editor?.present||rackEditing||
@@ -423,14 +500,20 @@ function hearBandMonitor(){
   $('monitor-mode').textContent='Hearing post-master '+bandMonitor.band+' '+bandMonitor.mode+
     ' filter audition; not the pre-rack band stem. Download processed WAV is unchanged.';
   updateDryControls();$('play').disabled=false;
+  return true;
 }
 function hearProcessedMonitor(){
   if((!dryMonitor&&!bandMonitor)||!activeSlot||!validation||
      validation.revision_id!==activeSlot.revision)return;
   publish(activeSlot);
   $('monitor-mode').textContent='Hearing processed source · monitoring alternatives available. Download processed WAV is unchanged.';
+  return true;
 }
-async function render(region){
+async function auditionMonitor(selectMonitor){
+  if(!selectMonitor())return;
+  try{await $('audio').play();}catch(error){status('Monitor ready. Press Play to start playback: '+error.message,true);}
+}
+async function render(region,{autoplay=false}={}){
   if(!validation||rackEditing||rackEditQueue.length)return;
   const data=editor.document,revision=validation.revision_id;
   const expected_session={generation:validation.session?.generation,
@@ -441,6 +524,8 @@ async function render(region){
   }
   const requestEpoch=++epoch;
   quietCancel(job);job=null;clearPlayback();const name=$('output-name').value;
+  status('Preparing '+name+'…');
+  transportHint('Rendering your phrase. Play and WAV export will be ready here when it finishes.');
   try{
     const submitted=await api('render',{document:data,region,name,expected_session});
     if(requestEpoch!==epoch){quietCancel(submitted.job_id);return;}
@@ -458,13 +543,25 @@ async function render(region){
         const blob=await response.blob();if(requestEpoch!==epoch)return;
         const slot={id:submitted.job_id,name,document:copy(data),revision,region:submitted.region,artifact:result.artifact,url:URL.createObjectURL(blob)};
         slots.push(slot);if(slots.length>8)URL.revokeObjectURL(slots.shift().url);redrawOutputs();publish(slot);job=null;
-        status(`${name} ready · ${slot.artifact.asset.frame_count} samples · ${slot.artifact.scopes.diagnostics.clipped_fraction>0?'WARNING: output clipping occurred':'no output clipping reported'}`);break;
+        status(`${name} ready · ${slot.artifact.asset.frame_count} samples · ${slot.artifact.scopes.diagnostics.clipped_fraction>0?'WARNING: output clipping occurred':'no output clipping reported'}`);
+        if(autoplay){
+          try{await $('audio').play();}
+          catch(error){if(requestEpoch===epoch)status('Render ready. Press Play to start playback: '+error.message,true);}
+        }
+        break;
       }
       await new Promise(resolve=>setTimeout(resolve,120));
     }
   }catch(e){if(requestEpoch===epoch){job=null;status(e.message,true);}}
 }
 function bind(){
+  for(const event of ['play','pause','ended','emptied'])$('audio').addEventListener(event,updatePlayButton);
+  for(const event of ['loadedmetadata','durationchange','timeupdate','emptied','ended','seeked'])$('audio').addEventListener(event,updatePlaybackPosition);
+  $('playback-seek').addEventListener('input',()=>{
+    if(!activeSlot||!Number.isFinite($('audio').duration)||$('audio').duration<=0)return;
+    $('audio').currentTime=Number($('playback-seek').value)/1000*$('audio').duration;
+    updatePlaybackPosition();
+  });
   $('density').replaceChildren(new Option('Off','0'));for(let n=1;n<=16;n++)$('density').add(new Option(String(n),String(n)));
 
   $('note-form').addEventListener('submit',e=>{e.preventDefault();mutate(()=>{selected=editor.add(rowFromForm(),$('snap').value);});});
@@ -472,6 +569,7 @@ function bind(){
   $('duplicate').onclick=()=>mutate(()=>{selected=editor.duplicate(selected,$('snap').value);});
   $('delete').onclick=()=>mutate(()=>editor.remove(selected));$('mute').onclick=()=>mutate(()=>editor.mute(selected));
   $('undo').onclick=()=>mutate(()=>editor.undo());$('redo').onclick=()=>mutate(()=>editor.redo());
+  $('example1').onclick=()=>mutate(()=>editor.example(1));
   $('example4').onclick=()=>mutate(()=>editor.example(4));$('example16').onclick=()=>mutate(()=>editor.example(16));
   $('project-name').onchange=()=>mutate(()=>editor.commit(s=>s.name=$('project-name').value));
   $('source-preset').onchange=async()=>{
@@ -502,9 +600,9 @@ function bind(){
   $('duplicate-clip').onclick=()=>mutate(()=>editor.duplicateClip($('clips').value));
   $('clips').onchange=()=>{const clip=editor.document.clips.find(c=>c.id===$('clips').value);if(clip){$('region-start').value=clip.start_beat;$('region-end').value=clip.end_beat;}};
   $('prepare-dry').onclick=()=>void prepareDryMonitor();
-  $('hear-dry').onclick=()=>hearDryMonitor();
+  $('hear-dry').onclick=()=>void auditionMonitor(hearDryMonitor);
   $('prepare-band').onclick=()=>void prepareBandMonitor();
-  $('hear-band').onclick=()=>hearBandMonitor();
+  $('hear-band').onclick=()=>void auditionMonitor(hearBandMonitor);
   for(const id of ['monitor-band','monitor-action'])$(id).onchange=()=>{
     // Always invalidate the request generation, including while the POST
     // creating a job is still unresolved. Otherwise an A→B→A selection can
@@ -520,14 +618,23 @@ function bind(){
     $('monitor-mode').textContent='Band selection changed; prepare a fresh monitored result. Processed WAV unchanged.';
     updateDryControls();
   };
-  $('hear-processed').onclick=()=>hearProcessedMonitor();
+  $('hear-processed').onclick=()=>void auditionMonitor(hearProcessedMonitor);
   $('peak-match').onchange=()=>applyMonitorVolume(
     $('audio').dataset.monitorKind==='dry'?'dry':'processed');
   $('render').onclick=()=>render(null);
+  $('preview').onclick=()=>render(null,{autoplay:true});
   $('render-region').onclick=()=>safe(()=>render({start_beat:rational($('region-start').value),end_beat:rational($('region-end').value)}));
   $('cancel').onclick=()=>{epoch++;quietCancel(job);job=null;discardDryMonitor();status('Render cancelled; editing state is unchanged.');};
-  $('stop').onclick=()=>{epoch++;quietCancel(job);job=null;clearPlayback();status('Playback stopped. Select a named output to reload it.');};
-  $('play').onclick=async()=>{try{if(!activeSlot||editor.document&&JSON.stringify(editor.document)!==JSON.stringify(activeSlot.document))throw Error('Playback revision no longer matches editing state.');await $('audio').play();}catch(e){status(e.message,true);}};
+  $('stop').onclick=()=>{
+    epoch++;quietCancel(job);job=null;
+    $('audio').pause();discardDryMonitor();
+    if(activeSlot){publish(activeSlot);$('audio').currentTime=0;status('Playback stopped · rendered output remains ready to play or export.');}
+    else{clearPlayback();status('Playback stopped.');}
+  };
+  $('play').onclick=async()=>{try{
+    if(!activeSlot||editor.document&&JSON.stringify(editor.document)!==JSON.stringify(activeSlot.document))throw Error('Playback revision no longer matches editing state.');
+    if(!$('audio').paused)$('audio').pause();else await $('audio').play();
+  }catch(e){status(e.message,true);}};
   $('outputs').onchange=()=>{const slot=slots.find(s=>s.id===$('outputs').value);if(!slot)return;
     safe(()=>{editor.replace(slot.document);invalidate();paint();publish(slot);validateLatest();});};
   $('save').onclick=()=>safe(()=>{if(!validation||rackEditing||rackEditQueue.length)throw Error('Finish validating pending edits before saving.');
@@ -541,7 +648,7 @@ function bind(){
     try{if(file.size>2000000)throw Error('Project exceeds the 2 MB authoring limit.');const input=JSON.parse(await file.text());
       await api('validate',{document:input,edit_ticket:validationTicket()});if(openEpoch!==epoch)return;editor.replace(input);selected=null;afterEdit();
     }catch(e){if(openEpoch===epoch){await validateLatest();status(e.message,true);}}finally{$('open').value='';}};
-  $('roll').ondblclick=e=>{if(e.target.closest('[data-id]'))return;const bounds=$('roll').getBoundingClientRect(),x=(e.clientX-bounds.left)*1200/bounds.width;
+  $('roll').ondblclick=e=>{if(e.target.closest('[data-id]'))return;const x=rollPoint(e.clientX,e.clientY).x;
     $('beat').value=snap(Math.max(0,(x-48)/1140*value(editor.document.end_beat)).toFixed(6),$('snap').value);
     mutate(()=>{selected=editor.add(rowFromForm(),$('snap').value);});};
   document.addEventListener('keydown',e=>{if(/INPUT|TEXTAREA|SELECT/.test(e.target.tagName))return;
@@ -549,6 +656,7 @@ function bind(){
     else if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='y'){e.preventDefault();mutate(()=>editor.redo());}
     else if(e.key==='Delete'&&selected){e.preventDefault();mutate(()=>editor.remove(selected));}});
 }
+initTheme(drawWaveform);
 try{const boot=await api('bootstrap');token=boot.token;presetCatalogue=boot.presets;
   const presetSelect=$('source-preset');presetSelect.replaceChildren();
   for(const item of presetCatalogue.presets)presetSelect.add(new Option(item.label,item.id));

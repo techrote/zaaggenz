@@ -114,6 +114,9 @@ export function renderRack(host,state,apply,tools={}){
   const openSpectral=sameProject?new Set(Array.from(
     host.querySelectorAll('.rack-spectral[open][data-insert-id]'),
     node=>node.dataset.insertId)):new Set();
+  const knownSpectral=sameProject?new Set(Array.from(
+    host.querySelectorAll('.rack-spectral[data-insert-id]'),
+    node=>node.dataset.insertId)):new Set();
   // Preset/authoring drafts also remain local to this immutable ancestry.
   const presetDraft=sameProject
     ?{name:oldPreset.querySelector('[data-preset-field="name"]')?.value,
@@ -147,7 +150,7 @@ export function renderRack(host,state,apply,tools={}){
   }
   host.replaceChildren();
   if(!state){host.append(make('p','Rack metadata is unavailable; refresh the validated revision.'));return;}
-  const top=group(host);
+  const top=group(host,'rack-controls rack-master');
   if(!state.present){
     top.append(make('p','No rack is installed in this project. Legacy audio and source presets remain unchanged.'));
     button(top,'Enable four-band rack',{kind:'enable'},apply);
@@ -162,7 +165,7 @@ export function renderRack(host,state,apply,tools={}){
   flag(top,'Bypass rack',rack.bypass,set('rack','rack','bypass'),apply);
   number(top,'Rack wet',rack.wet,mix,set('rack','rack','wet'),apply);
   button(top,'Remove rack (dry)',{kind:'reset'},apply);
-  const crossings=group(host);
+  const crossings=group(host,'rack-controls rack-crossovers');
   const crossovers=rack.crossovers.frequencies_hz;
   crossovers.forEach((frequency,index)=>{
     // The executable rack accepts 20 <= low < mid < high < 0.49*Fs.
@@ -176,8 +179,10 @@ export function renderRack(host,state,apply,tools={}){
         exclusiveMaximum:upper,unit:'Hz'},
       set('crossover',index,'frequency_hz'),apply);
   });
+  const bands=group(host,'rack-bands');
   for(const band of rack.bands){
-    const panel=group(host,'rack-band');
+    const panel=group(bands,'rack-band');
+    panel.dataset.bandId=band.id;
     panel.setAttribute('role','group');
     panel.setAttribute('aria-label',band.band+' processing band');
     panel.append(make('h3',band.band.toUpperCase()));
@@ -261,7 +266,9 @@ export function renderRack(host,state,apply,tools={}){
         details.dataset.voiceCount=String(request.voices?.length??0);
         details.dataset.segmentCount=String(request.segments?.length??0);
         const draft=spectralDrafts.get(stage.id);
-        details.open=openSpectral.has(stage.id);
+        // A successful Add must expose its controls immediately. Existing
+        // disclosures retain the user's choice across unrelated edits.
+        details.open=openSpectral.has(stage.id)||(sameProject&&!knownSpectral.has(stage.id));
         block.append(details);
         details.append(make('summary',retune
           ?'Internal spectral retune · target & confidence'
