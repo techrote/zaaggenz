@@ -1,7 +1,7 @@
 """Source-exact provenance check for recovered NYQ files (NOT a DSP acceptance gate)."""
 from __future__ import annotations
-import hashlib
 import json
+import subprocess
 from pathlib import Path
 import unittest
 
@@ -25,9 +25,20 @@ class ReconciledDonorIdentityTests(unittest.TestCase):
                 self.assertNotIn("..", relative.parts)
                 self.assertNotIn(path, seen)
                 seen.add(path)
-                raw = (ROOT / relative).read_bytes()
-                header = b"blob " + str(len(raw)).encode("ascii") + b"\0"
-                self.assertEqual(hashlib.sha1(header + raw).hexdigest(), entry["blob_sha"])
+                # GitHub Actions Windows may checkout text as CRLF; the
+                # immutable repository blob is LF-normalized. Verify both the
+                # checked-in object and Git-cleaned worktree content, without
+                # misreporting platform line endings as donor source changes.
+                committed = subprocess.check_output(
+                    ["git", "rev-parse", "HEAD:" + path],
+                    cwd=ROOT, text=True
+                ).strip()
+                self.assertEqual(committed, entry["blob_sha"])
+                cleaned = subprocess.check_output(
+                    ["git", "hash-object", "--path=" + path, path],
+                    cwd=ROOT, text=True
+                ).strip()
+                self.assertEqual(cleaned, entry["blob_sha"])
                 self.assertEqual(len(entry["donor_head"]), 40)
 
 

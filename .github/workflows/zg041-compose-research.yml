@@ -49,6 +49,8 @@ jobs:
       - name: Unified runtime and workspace boundary tests
         run: python -m unittest discover -s tests/runtime -p 'test_*.py' -v
       - name: Recovered NYQ clock controls and numerical proofs (not programme admission)
+        env:
+          PYTHONPATH: app
         run: |
           python -m unittest discover -s tests/contracts -p 'test_nyquismic*.py' -v
           python -m unittest discover -s tests/dsp -p 'test_nyquismic*.py' -v
