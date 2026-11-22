@@ -1,10 +1,141 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>zaaggenz · Compose timeline</title><link rel="stylesheet" href="/timeline/style.css"></head>
-<body><header><div><span class="eyebrow">ZAAGGENZ / COMPOSE</span><h1>Notes, rolls & returns</h1><p id="pitch-context">Loading the protected source…</p></div><div class="row"><a class="legacy" id="research-workspace-link" href="/research">Research workspace ↗</a><a class="legacy" href="/">Open full instrument ↗</a></div></header>
-<main><section class="deck" aria-label="Project and render controls"><div class="row"><label>Project name<input id="project-name" maxlength="80" value="Untitled melody"></label><label>Source preset<select id="source-preset" aria-label="Source preset"><option>Loading…</option></select></label><label>Length, beats<input id="length" value="16" size="7"></label><button id="set-length">Set length</button><label>Master, dB<input id="master" type="number" min="-120" max="24" step="any" value="0"></label><button id="save">Save project</button><label class="button">Reopen<input id="open" type="file" accept=".json" hidden></label></div>
-<div class="row"><button id="example4">Four-bar example</button><button id="example16">Sixteen-bar example</button><button id="undo" disabled>Undo</button><button id="redo" disabled>Redo</button><span class="spacer"></span><label>Output name<input id="output-name" value="Melody A" maxlength="80"></label><button id="render" class="primary" disabled>Render full phrase</button><button id="render-region" disabled>Render region</button><button id="cancel">Cancel job</button></div><p id="status" role="status" aria-live="polite">Starting…</p><p class="revision">Working revision <code id="revision">—</code></p></section>
-<section class="workspace"><div class="roll-panel"><div class="row"><h2>Phrase timeline</h2><span class="spacer"></span><label>Snap, beats<select id="snap"><option value="1/1">1</option><option value="1/2">½</option><option value="1/4" selected>¼</option><option value="1/8">⅛</option><option value="1/12">1/12</option><option value="1/16">1/16</option><option value="1/32">1/32</option><option value="1/960">1/960</option></select></label></div><p class="hint">Select a note to edit. Drag horizontally to move; hold Shift while dragging to resize. Double-click empty space to add.</p><div class="roll-scroll"><svg id="roll" role="img" aria-label="Musical note timeline" viewBox="0 0 1200 320"></svg></div><div id="event-list" aria-label="Editable events"></div></div>
-<aside><h2>Event editor</h2><form id="note-form"><label>Onset, beats<input id="beat" value="0" required></label><label>Duration, beats<input id="duration" value="1/2" required></label><label>Tuning degree<input id="degree" type="number" value="0" step="1"></label><label>Detune, cents<input id="detune" type="number" value="0" step="any"></label><label>Gain, dB<input id="gain" type="number" value="-18" min="-120" max="24" step="any"></label><label>Roll density, events/beat<select id="density"><option value="0">Off</option><option value="2">2</option><option value="4">4</option><option value="8">8</option><option value="16">16</option></select></label><div class="row"><label class="check"><input id="rest" type="checkbox">Rest</label><label class="check"><input id="muted" type="checkbox">Muted</label></div><p id="target-pitch">Select or add a note.</p><div class="row"><button id="add" type="submit" class="primary">Add event</button><button id="apply" type="button" disabled>Apply edit</button></div></form><div class="row"><button id="duplicate" disabled>Duplicate</button><button id="mute" disabled>Mute / unmute</button><button id="delete" disabled>Delete</button></div><p class="hint">Ctrl/Cmd+Z: undo. Ctrl/Cmd+Y: redo. Delete removes the selected event outside text fields.</p></aside></section>
-<section class="deck" aria-label="Four-band rack"><h2>Four-band processing rack</h2><p class="hint">Opt-in processing of the source-derived SYNTHLINE, before the existing final master. Changing rack controls invalidates old playback; render again for the edited recipe. No external plug-in host is required.</p><div id="rack-editor" aria-live="polite"><p>Loading rack state…</p></div><details id="rack-meter-panel"><summary>Measured rack output (selected completed render)</summary><div id="rack-meters"><p>No current completed render. Render the validated revision for measurements.</p></div></details></section>
-<section class="deck"><h2>Clips & render region</h2><div class="row"><label>Clip name<input id="clip-name" value="Phrase segment"></label><label>From beat<input id="region-start" value="0" size="7"></label><label>To beat<input id="region-end" value="4" size="7"></label><button id="add-clip">Save region as clip</button><label>Saved clip<select id="clips"><option value="">Custom region</option></select></label><button id="duplicate-clip">Duplicate clip + contained notes</button></div><p class="hint">A region is cropped from a full render, preserving material crossing its start. It does not reduce the render budget.</p></section>
-<section class="deck"><h2>Named outputs</h2><div class="row"><label>Comparison slot<select id="outputs"><option value="">No rendered output</option></select></label><button id="play" disabled>Play selected</button><button id="prepare-dry" disabled>Prepare raw/dry A/B</button><button id="hear-dry" disabled>Hear dry</button><button id="hear-processed" disabled>Hear processed</button><label>Monitor band<select id="monitor-band"><option value="sub">Sub</option><option value="lowmid" selected>Low-mid</option><option value="highmid">High-mid</option><option value="air">Air</option></select></label><label>Band audition<select id="monitor-action"><option value="solo">Solo</option><option value="mute">Mute</option></select></label><button id="prepare-band" disabled>Prepare band audition</button><button id="hear-band" disabled>Hear band audition</button><label class="check"><input id="peak-match" type="checkbox" disabled> Peak-match A/B (attenuation only)</label><button id="stop">Stop / clear playback</button><a id="download" class="button disabled" aria-disabled="true">Download processed WAV</a></div><p class="hint">Choosing an older output restores its exact saved editing revision. Undo returns to your latest edits. Up to eight outputs are retained in this browser tab. Raw/dry A/B and per-band solo/mute auditions are non-authoritative, bounded jobs. Band audition filters the completed post-master mix using the rack's crossovers; it is not a pre-rack stem and does not change exported audio. Only the selected processed output may be downloaded.</p><p id="monitor-mode" role="status" aria-live="polite">Processed output · no raw/dry comparison prepared.</p><p id="peak-match-status" class="hint">Peak-match disabled · original playback levels; processed WAV unchanged.</p><audio id="audio" controls preload="metadata"></audio><canvas id="waveform" width="1200" height="140" aria-label="Waveform for the selected rendered revision"></canvas><p class="revision">Playback revision <code id="playback-revision">—</code></p></section>
-<details class="deck"><summary>Layer ownership, source & limitations</summary><p>This phrase editor intentionally auditions the source-derived <strong>SYNTHLINE</strong> and source-sliced <strong>exciter rolls</strong>. BODY, AUX, SUB and SCULPT settings remain intact in the saved project. Accepted ZG-029 persistent-layer execution retains ownership of those layer paths; they are not silently injected into this source-audition surface.</p><p>The default remains the protected <strong>locked_bloom</strong> source. The Source preset control can explicitly select one of the six owner-approved ZG-022 production presets; its stable identity is retained in the saved project and the accepted family mechanism executes before source-derived note pitch. Notes use the source-preserving renderer, with explicit note/master gain and a truncated event tail. Source/target pitch limits are validated before job admission. Maximum: 256 objects, 60 seconds, and the scheduler's memory budget. No cloud, microphone or study setup is required.</p><pre id="layer-context"></pre></details></main><script type="module" src="/timeline/app.mjs"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ZaagGenZ :: Compose</title>
+<link rel="stylesheet" href="/timeline/style.css">
+</head>
+<body id="compose-workspace">
+<div class="global-controls">
+<header id="topbar">
+  <div class="brand"><h1 class="eyebrow">ZAAGGENZ <span>/ COMPOSE</span></h1></div>
+  <nav class="mode-strip" aria-label="Workspaces">
+    <a class="button legacy" href="/" aria-label="Open full instrument" title="Open the full instrument">SYNTH</a>
+    <span class="button active" aria-current="page">COMPOSE</span>
+    <a class="button legacy" id="research-workspace-link" href="/research" aria-label="Research workspace" title="Open Research workspace">RESEARCH</a>
+  </nav>
+  <div class="transport" aria-label="Render and playback">
+    <button id="preview" class="primary" disabled title="Render the current phrase and play when ready">Render &amp; play</button>
+    <button id="render" disabled title="Render the current phrase and rack settings">Render full phrase</button>
+    <button id="render-region" disabled title="Render the selected region, with full phrase context">Render region</button>
+    <button id="cancel" title="Cancel the pending render">Cancel job</button>
+    <span class="separator" aria-hidden="true"></span>
+    <button id="play" disabled title="Render first, then play the selected output">Play selected</button>
+    <button id="stop" title="Stop playback and return to the start">Stop</button>
+    <a id="download" class="button wav-button disabled" aria-disabled="true" title="Render first to export the processed WAV">Download processed WAV</a>
+  </div>
+  <details id="appearance-panel" class="appearance">
+    <summary title="The same themes as the main synth">Palette</summary>
+    <div class="appearance-controls">
+      <div class="panel-heading"><h2>Appearance</h2><span>Shared with Synth</span></div>
+      <label class="utility-row">Theme <select id="themePreset"><option value="earth">EARTH / NEUTRAL</option><option value="phosphor">PHOSPHOR</option><option value="amber">AMBER CRT</option><option value="ice">ICE / STEEL</option><option value="plum">PLUM / ASH</option><option value="mono">MONO</option><option value="custom">CUSTOM</option></select></label>
+      <div id="themeSwatches" class="theme-swatches" aria-label="Theme presets"></div>
+      <label class="utility-row">Accent <input id="themeAccent" type="color" value="#c8b47a"></label>
+      <label class="utility-row">Background <input id="themeBackground" type="color" value="#12100d"></label>
+      <button id="themeReset">Reset Earth default</button>
+    </div>
+  </details>
+</header>
+<div class="statusbar">
+  <p id="status" role="status" aria-live="polite">Starting…</p>
+  <p id="transport-hint">Render the phrase to enable playback and WAV export.</p>
+</div>
+</div>
+<main class="app-shell">
+  <div class="compose-pane" id="compose-pane">
+    <section class="deck project-deck" aria-label="Project and render controls">
+      <div class="row project-controls">
+        <label>Project name<input id="project-name" maxlength="80" value="Untitled melody"></label>
+        <label>Source preset<select id="source-preset" aria-label="Source preset"><option>Loading…</option></select></label>
+        <label class="short-field">Length, beats<input id="length" value="16" size="7"></label>
+        <button id="set-length">Set length</button>
+        <label class="short-field">Master, dB<input id="master" type="number" min="-120" max="24" step="any" value="0"></label>
+        <span class="spacer"></span>
+        <button id="save">Save project</button>
+        <label class="button file-control">Reopen<input id="open" type="file" accept=".json" aria-label="Reopen project"></label>
+      </div>
+      <div class="row phrase-actions">
+        <button id="example1">One-bar example</button><button id="example4">Four-bar example</button><button id="example16">Sixteen-bar example</button><button id="undo" disabled>Undo</button><button id="redo" disabled>Redo</button>
+        <p id="pitch-context">Loading the protected source…</p>
+      </div>
+    </section>
+    <section class="workspace" aria-label="Phrase editing">
+      <div class="roll-panel">
+        <div class="panel-heading"><h2>Phrase timeline</h2><label class="inline-field">Snap, beats<select id="snap"><option value="1/1">1</option><option value="1/2">½</option><option value="1/4" selected>¼</option><option value="1/8">⅛</option><option value="1/12">1/12</option><option value="1/16">1/16</option><option value="1/32">1/32</option><option value="1/960">1/960</option></select></label></div>
+        <p class="hint">Double-click to add · Drag to move · Shift+drag to resize · Select a note to edit</p>
+        <div class="roll-scroll"><svg id="roll" role="img" aria-label="Musical note timeline" viewBox="0 0 1200 320"></svg></div>
+        <div id="event-list" aria-label="Editable events"></div>
+      </div>
+      <aside class="event-editor">
+        <div class="panel-heading"><h2>Event editor</h2></div>
+        <form id="note-form">
+          <label>Onset, beats<input id="beat" value="0" required></label><label>Duration, beats<input id="duration" value="1/2" required></label>
+          <label>Tuning degree<input id="degree" type="number" value="0" step="1"></label><label>Detune, cents<input id="detune" type="number" value="0" step="any"></label>
+          <label>Gain, dB<input id="gain" type="number" value="-18" min="-120" max="24" step="any"></label><label>Roll density, events/beat<select id="density"><option value="0">Off</option><option value="2">2</option><option value="4">4</option><option value="8">8</option><option value="16">16</option></select></label>
+          <div class="row"><label class="check"><input id="rest" type="checkbox">Rest</label><label class="check"><input id="muted" type="checkbox">Muted</label></div>
+          <p id="target-pitch">Select or add a note.</p>
+          <div class="row"><button id="add" type="submit" class="primary">Add event</button><button id="apply" type="button" disabled>Apply edit</button></div>
+        </form>
+        <div class="row event-actions"><button id="duplicate" disabled>Duplicate</button><button id="mute" disabled>Mute / unmute</button><button id="delete" disabled>Delete</button></div>
+        <p class="hint">Ctrl/Cmd+Z: undo · Ctrl/Cmd+Y: redo · Delete: remove selected event outside text fields</p>
+      </aside>
+    </section>
+    <section class="deck rack-deck" aria-label="Four-band rack">
+      <div class="panel-heading"><h2>Four-band processing rack</h2><span>SYNTHLINE → RACK → MASTER</span></div>
+      <p class="hint">Enable the rack, add a processor to a band, then render to hear your edits.</p>
+      <p id="rack-status" class="rack-status" role="status" aria-live="polite"></p>
+      <div id="rack-editor" aria-live="polite"><p>Loading rack state…</p></div>
+    </section>
+    <section class="deck clips-deck">
+      <div class="panel-heading"><h2>Clips &amp; render region</h2></div>
+      <div class="row">
+        <label>Clip name<input id="clip-name" value="Phrase segment"></label><label class="short-field">From beat<input id="region-start" value="0" size="7"></label><label class="short-field">To beat<input id="region-end" value="4" size="7"></label><button id="add-clip">Save region as clip</button><label>Saved clip<select id="clips"><option value="">Custom region</option></select></label><button id="duplicate-clip">Duplicate clip + contained notes</button>
+      </div>
+      <p class="hint">Render region uses the full phrase before cropping, preserving tails across its start.</p>
+    </section>
+    <details class="deck source-details">
+      <summary>Layer ownership, source &amp; limitations</summary>
+      <p>This phrase editor auditions the source-derived <strong>SYNTHLINE</strong> and source-sliced <strong>exciter rolls</strong>. BODY, AUX, SUB and SCULPT settings remain intact in the saved project; their existing render paths remain separate.</p>
+      <p>The default remains the protected <strong>locked_bloom</strong> source. Source preset explicitly selects one of the six owner-approved production presets. Notes preserve that source with explicit note/master gain and a truncated event tail. Maximum: 256 objects, 60 seconds, and the render memory budget.</p>
+      <pre id="layer-context"></pre>
+      <p class="revision">Working revision <code id="revision">—</code></p>
+    </details>
+  </div>
+  <aside class="monitor-pane" aria-label="Playback and comparison">
+    <section class="deck monitor-deck">
+      <div class="panel-heading"><h2>Named outputs</h2><span>MONITOR / EXPORT</span></div>
+      <div class="output-fields"><label>Output name<input id="output-name" value="Melody A" maxlength="80"></label><label>Comparison slot<select id="outputs"><option value="">No rendered output</option></select></label></div>
+      <p class="hint">Render &amp; play auditions your phrase. Download processed WAV exports the selected result.</p>
+      <div class="scope-heading"><span>WAVEFORM</span><span>SELECTED OUTPUT</span></div>
+      <canvas id="waveform" width="1200" height="140" aria-label="Waveform for the selected rendered revision"></canvas>
+      <audio id="audio" preload="metadata" hidden></audio>
+      <div class="playback-position">
+        <output id="playback-time" aria-label="Playback time">0:00.000</output>
+        <input id="playback-seek" type="range" min="0" max="1000" step="any" value="0" disabled aria-label="Playback position">
+        <output id="playback-duration" aria-label="Output duration">0:00.000</output>
+      </div>
+      <p id="monitor-mode" role="status" aria-live="polite">Processed output · no raw/dry comparison prepared.</p>
+      <p class="revision">Playback revision <code id="playback-revision">—</code></p>
+    </section>
+    <section class="deck comparison-deck" aria-label="Dry and processed comparison">
+      <div class="panel-heading"><h2>Raw / processed A/B</h2></div>
+      <p class="hint">After a rack render, prepare its dry counterpart to compare the processing.</p>
+      <div class="row"><button id="prepare-dry" disabled>Prepare raw/dry A/B</button></div>
+      <div class="row ab-controls"><button id="hear-dry" disabled>Hear dry</button><button id="hear-processed" disabled>Hear processed</button></div>
+      <label class="check"><input id="peak-match" type="checkbox" disabled>Peak-match A/B (attenuation only)</label>
+      <p id="peak-match-status" class="hint">Peak-match disabled · original playback levels; processed WAV unchanged.</p>
+    </section>
+    <section class="deck band-monitor-deck" aria-label="Band monitoring">
+      <div class="panel-heading"><h2>Band audition</h2></div>
+      <div class="row"><label>Monitor band<select id="monitor-band"><option value="sub">Sub</option><option value="lowmid" selected>Low-mid</option><option value="highmid">High-mid</option><option value="air">Air</option></select></label><label>Band audition<select id="monitor-action"><option value="solo">Solo</option><option value="mute">Mute</option></select></label></div>
+      <div class="row"><button id="prepare-band" disabled>Prepare band audition</button><button id="hear-band" disabled>Hear band audition</button></div>
+      <p class="hint">Solo/mute filters the completed mix using the rack crossovers. Audition only; the processed WAV is unchanged.</p>
+    </section>
+    <details class="deck" id="rack-meter-panel"><summary>Measured rack output (selected completed render)</summary><div id="rack-meters"><p>No current completed render. Render the validated revision for measurements.</p></div></details>
+    <details class="deck monitor-notes"><summary>Output history &amp; comparison notes</summary><p>Choosing an older output restores its saved editing revision. Undo returns to your latest edits. Up to eight outputs are retained in this browser tab.</p><p>Raw/dry and band auditions are separate monitoring jobs. Band audition is a filtered post-master mix, not a pre-rack stem. Only the selected processed output is downloaded.</p></details>
+  </aside>
+</main>
+<script type="module" src="/timeline/app.mjs"></script>
+</body>
+</html>

@@ -117,8 +117,10 @@ jobs:
         run: python -m build --wheel --outdir dist-browser
       - name: Validate browser extra from built wheel outside checkout
         run: python tools/artifact_acceptance.py --dist dist-browser --kind wheel --constraints constraints/ci.txt --report browser-wheel-acceptance.json --browser
-      - name: Install explicit acceptance browser
-        run: python -m playwright install --with-deps chromium
+      # The isolated wheel acceptance already launches genuine Chromium;
+      # this browser install must not require apt mirror availability.
+      - name: Install explicit acceptance Chromium
+        run: python -m playwright install chromium
       - name: Verify optional dependency boundary
         run: python -m zaaggenz_environment.cli --check-extra browser --require-tool node
       - name: Representative real-Chromium unified-runtime acceptance

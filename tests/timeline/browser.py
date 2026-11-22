@@ -58,9 +58,32 @@ def main():
             def rendered(name,region=False):
                 ready();page.locator('#output-name').fill(name)
                 page.locator('#render-region' if region else '#render').click()
-                expect(page.locator('#play')).to_be_enabled(timeout=120000)
-                expect(page.locator('#playback-revision')).to_have_text(page.locator('#revision').inner_text())
-                assert page.locator('#waveform').get_attribute('data-revision')==page.locator('#revision').inner_text()
+                try:
+                    expect(page.locator('#play')).to_be_enabled(timeout=120000)
+                except AssertionError:
+                    # Failure evidence only: never retry, relax the gate or persist PCM.
+                    selected_job=page.locator('#outputs').input_value()
+                    server_state={}
+                    if selected_job:
+                        try:
+                            current=server.timeline.status(selected_job)
+                            server_state={key:current.get(key) for key in ('state','error','message')}
+                        except Exception as exc:
+                            server_state={'lookup_error':type(exc).__name__}
+                    diagnostic={'render_name':name,'selected_job':selected_job,
+                                'server':server_state,
+                                'ui_status':page.locator('#status').inner_text(),
+                                'revision':page.locator('#revision').text_content(),
+                                'playback_revision':page.locator('#playback-revision').text_content(),
+                                'page_errors':list(errors)}
+                    (args.out/(name+'-failure.json')).write_text(
+                        json.dumps(diagnostic,sort_keys=True,indent=2,default=str)+'\n',
+                        encoding='utf-8')
+                    page.screenshot(path=args.out/(name+'-failure.png'),full_page=True)
+                    print('ZG009_RENDER_FAILURE '+json.dumps(diagnostic,sort_keys=True,default=str),flush=True)
+                    raise
+                expect(page.locator('#playback-revision')).to_have_text(page.locator('#revision').text_content().strip())
+                assert page.locator('#waveform').get_attribute('data-revision')==page.locator('#revision').text_content().strip()
                 page.locator('#play').click()
                 page.wait_for_function("!document.getElementById('audio').paused")
                 page.locator('#audio').evaluate('(a)=>a.pause()')
@@ -387,7 +410,7 @@ def main():
             assert ab_path.read_bytes()==(args.out/'rack-gain-nine.wav').read_bytes(), (
                 'dry monitoring must not replace the processed export')
             page.locator('#hear-processed').click()
-            expect(page.locator('#playback-revision')).to_have_text(page.locator('#revision').inner_text())
+            expect(page.locator('#playback-revision')).to_have_text(page.locator('#revision').text_content().strip())
             expect(page.locator('#rack-meters')).to_contain_text('LOWMID')
             assert abs(page.locator('#audio').evaluate('(e)=>e.volume')-processed_volume)<1e-6
             assert server.timeline.session.current_identity()==before_monitor
@@ -422,7 +445,7 @@ def main():
             page.locator('#monitor-action').select_option('mute')
             expect(page.locator('#hear-band')).to_be_disabled()
             expect(page.locator('#audio')).to_have_attribute('data-monitor-kind', 'processed')
-            expect(page.locator('#playback-revision')).to_have_text(page.locator('#revision').inner_text())
+            expect(page.locator('#playback-revision')).to_have_text(page.locator('#revision').text_content().strip())
             page.locator('#monitor-action').select_option('solo')
             expect(page.locator('#hear-band')).to_be_disabled()
             expect(page.locator('#prepare-band')).to_be_enabled()
@@ -434,7 +457,7 @@ def main():
             assert mute_job!=band_job
             assert server.timeline.status(mute_job)['artifact']['scopes']['diagnostics']['monitor']['mode']=='mute'
             page.locator('#hear-processed').click()
-            expect(page.locator('#playback-revision')).to_have_text(page.locator('#revision').inner_text())
+            expect(page.locator('#playback-revision')).to_have_text(page.locator('#revision').text_content().strip())
             expect(page.locator('#rack-meters')).to_contain_text('LOWMID')
             # Reset built-in parameters without replacing the stage identity or
             # overwriting the separately saved wet/bypass/source settings.
@@ -567,7 +590,7 @@ def main():
             page.locator('#rack-editor').get_by_role('button',name='Remove rack (dry)').click();ready()
             page.locator('#rack-editor').get_by_role('button',name='Enable four-band rack').click();ready()
             budget_before=saved('rack-spectral-budget-before.zgtimeline.json')
-            before_revision=page.locator('#revision').inner_text()
+            before_revision=page.locator('#revision').text_content().strip()
             before_identity=server.timeline.session.current_identity()
             band_id=json.loads(budget_before['project']['revisions'][-1]['recipe_json'])[
                 'rack']['bands'][1]['id']
@@ -876,7 +899,7 @@ def main():
                 'aria-label','lowmid zg.spectral '+spectral_id)
             # Contract uses an exclusive 0-Hz bound. The UI must reject zero
             # before sending an invalid backend proposal or changing revision.
-            before_invalid=page.locator('#revision').inner_text()
+            before_invalid=page.locator('#revision').text_content().strip()
             min_hz=spectral_stage.get_by_label('min hz · Hz')
             min_hz.fill('0');min_hz.dispatch_event('change')
             assert min_hz.evaluate('(e)=>e.validity.customError')
@@ -892,7 +915,7 @@ def main():
             # simulated monitor or unsaved local-only target.
             add_degree=spectral_stage.get_by_label('Additional target degree')
             add_voice=spectral_stage.get_by_role('button',name='Add retune voice')
-            before_add_revision=page.locator('#revision').inner_text()
+            before_add_revision=page.locator('#revision').text_content().strip()
             before_add_identity=server.timeline.session.current_identity()
             for bad,reason in (('', 'requires a whole number'),
                                ('4097', 'must be between -4096 and 4096')):
@@ -921,7 +944,7 @@ def main():
             voice_label.dispatch_event('change');ready()
             expect(second.get_by_label('Voice 2 label')).to_be_focused()
             expect(second.get_by_label('Voice 2 label')).to_have_value('Upper interval')
-            before_invalid_ratio=page.locator('#revision').inner_text()
+            before_invalid_ratio=page.locator('#revision').text_content().strip()
             ratios=second.get_by_label('Voice 2 partial ratios (comma-separated)')
             ratios.fill('1, 1');ratios.dispatch_event('change')
             assert ratios.evaluate('(e)=>e.validity.customError')
@@ -944,7 +967,7 @@ def main():
             # changes only its scheduled lattice, not the source or export route.
             segment_start=spectral_stage.get_by_label('New segment start sample')
             add_segment=spectral_stage.get_by_role('button',name='Add retune segment')
-            before_segment_revision=page.locator('#revision').inner_text()
+            before_segment_revision=page.locator('#revision').text_content().strip()
             before_segment_identity=server.timeline.session.current_identity()
             for bad,reason in (('', 'requires a whole number'),
                                ('0', 'must be between 1 and 691200000')):
@@ -964,7 +987,7 @@ def main():
             # first start. The UI now exposes the actual predecessor-dependent
             # bound and rejects duplicate/backward starts before a proposal.
             first_segment_source=saved('rack-first-segment-source.zgtimeline.json')
-            first_segment_revision=page.locator('#revision').inner_text()
+            first_segment_revision=page.locator('#revision').text_content().strip()
             first_segment_identity=server.timeline.session.current_identity()
             following_start=spectral_stage.get_by_label('New segment start sample')
             assert following_start.get_attribute('min')=='1201'
@@ -985,7 +1008,7 @@ def main():
             segment_label.fill('Shifted upper voice')
             segment_label.dispatch_event('change');ready()
             expect(segment.get_by_label('Segment 1 label')).to_be_focused()
-            before_bad_segment=page.locator('#revision').inner_text()
+            before_bad_segment=page.locator('#revision').text_content().strip()
             segment_start_existing=segment.get_by_label('Segment 1 start sample')
             segment_start_existing.fill('0')
             segment_start_existing.dispatch_event('change')
@@ -1130,7 +1153,7 @@ def main():
             expect(page.locator('#revision')).to_have_text(TimelineDocument(data4).revision_id)
             ready()
             full_job=rendered('four-bar-full')
-            first_revision=page.locator('#revision').inner_text()
+            first_revision=page.locator('#revision').text_content().strip()
             page.locator('#region-start').fill('1/4');page.locator('#region-end').fill('4')
             page.locator('#clip-name').fill('Crossing selection');page.locator('#add-clip').click();ready()
             region_job=rendered('four-bar-region',True)
@@ -1143,7 +1166,10 @@ def main():
             assert page.locator('#waveform').get_attribute('data-revision')==''
             page.locator('#outputs').select_option(full_job);ready()
             expect(page.locator('#playback-revision')).to_have_text(first_revision)
-            page.locator('#stop').click();expect(page.locator('#play')).to_be_disabled()
+            stopped_download=page.locator('#download').get_attribute('href')
+            page.locator('#stop').click();expect(page.locator('#play')).to_be_enabled()
+            page.wait_for_function("document.getElementById('audio').paused && document.getElementById('audio').currentTime === 0")
+            assert page.locator('#download').get_attribute('href')==stopped_download
             page.locator('#master').fill('-9');page.locator('#master').dispatch_event('change');ready()
             page.locator('#open').set_input_files(args.out/'four-bar.zgtimeline.json')
             expect(page.locator('#revision')).to_have_text(TimelineDocument(data4).revision_id)
