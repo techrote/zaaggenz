@@ -171,6 +171,22 @@ class OfflineListenTests(unittest.TestCase):
         self.assertEqual(receipt["status"], "PASS")
         self.assertTrue((self.output / "receipt.json").exists())
 
+    def test_final_publication_error_cleans_only_own_stage_and_allows_retry(self):
+        # Preserve the corrected #320 no-replace path; do not reinstate the
+        # rejected #319 mkdir-then-rename reservation or delete a rival path.
+        fake, _ = self._commands()
+        with patch.object(cli, "_command", fake), patch.object(
+            cli, "_publish_verified_directory", side_effect=OSError("injected final publish error")
+        ):
+            with self.assertRaisesRegex(OSError, "final publish error"):
+                cli.audition(self.project, self.output, open_browser=False)
+        self.assertFalse(self.output.exists())
+        self.assertEqual(list(self.root.glob(".audition-nyq-stage-*")), [])
+        with patch.object(cli, "_command", fake):
+            receipt = cli.audition(self.project, self.output, open_browser=False)
+        self.assertEqual(receipt["status"], "PASS")
+        self.assertTrue((self.output / "receipt.json").is_file())
+
     def test_no_open_still_verifies_and_saves_wavs(self):
         fake, _ = self._commands()
         with patch.object(cli, "_command", fake), patch.object(cli.webbrowser, "open") as browser:
