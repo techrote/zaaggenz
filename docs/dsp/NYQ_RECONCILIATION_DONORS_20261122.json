@@ -1,0 +1,351 @@
+{
+  "format": "nyq.reconciliation-donor-blobs.v1",
+  "description": "Source-exact standalone NYQ donor paths restored without accepted-core or default-path changes; not proof of product or dependency acceptance",
+  "accepted_main": "d7e580c190d00e1d00a573a6b845c75ddddc1d4c",
+  "candidate_parent": "e4d7a6ed1a6accd1b7379d03528fb575e708a455",
+  "count": 57,
+  "donors": [
+    {
+      "path": "docs/dsp/NYQ004_BEAT_STEPS.md",
+      "blob_sha": "37b6da57060575a87045e90b1d84004330b3189e",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "docs/dsp/NYQ004_CLOCK_PACKET.md",
+      "blob_sha": "a26e95befe282e2c7ed7e2c11b52dd0e9b8859ce",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "docs/dsp/NYQ004_CONTROLLED_AUDIO_PROOF.md",
+      "blob_sha": "41b5649f4ca75300e119990846b2c268847c6fb4",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "docs/dsp/NYQ004_CONTROLS_SLICE.md",
+      "blob_sha": "b13de7b754715f050f654a17a8e786faaca270e1",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "docs/dsp/NYQ004_DELAYED_LFO_ONSET.md",
+      "blob_sha": "3a74249c6664351fc142ea2f7c8371775c3a19e7",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "docs/dsp/NYQ004_INPUT_ENVELOPE_ADAPTER.md",
+      "blob_sha": "ed265ef770e7557ad2d5c8926aca50d364d81a77",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "docs/dsp/NYQ004_INTEGER_OCTAVE_CLOCK.md",
+      "blob_sha": "939af3c953c09238726c4a47cbfec0c59e456142",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "docs/dsp/NYQ004_PHASE_RESETS.md",
+      "blob_sha": "d823b1632b9d1474f061cb7d63627b1628f9bb72",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "docs/dsp/NYQ004_PROOF_PACK.md",
+      "blob_sha": "af8ba963719750135adc498c3cc0fba621e0394e",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "docs/dsp/NYQ004_SIGNED_SAMPLE_CONTROL.md",
+      "blob_sha": "0306c63312a9e580ca8bc45b46d4f91d674f9781",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "docs/dsp/NYQ004_SPECTRAL_FEATURE.md",
+      "blob_sha": "d42c5c3e40eab86a6c2b6c9f7607c83b48ec7ed4",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "docs/dsp/NYQ004_TRANSIENT_ADAPTER.md",
+      "blob_sha": "c88afe2cf7d0d0aa6175aa04cfc22cdd924a5f4f",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/contracts/test_nyquismic_clock_packet.py",
+      "blob_sha": "df6db7889508d629ce065892b16c06a265497efd",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/contracts/test_nyquismic_control_geometry.py",
+      "blob_sha": "91501387deee2091cabb4a45c2e6c8d17aa98805",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/contracts/test_nyquismic_controls.py",
+      "blob_sha": "88520520db0646e03d7989a7ca60de7a607b3fa1",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/contracts/test_nyquismic_input_envelope.py",
+      "blob_sha": "57998d678759aec540d0e70daa9323685eb30d40",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/contracts/test_nyquismic_sampled_lfo.py",
+      "blob_sha": "a278b3685635539a7bbbc1e26d922426615c621b",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/contracts/test_nyquismic_signed_sample.py",
+      "blob_sha": "17efd0453dc38c9863cb45137cc49aeebe298407",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/contracts/test_nyquismic_spectral_feature.py",
+      "blob_sha": "d6bc3c71fab0e437f19ad672a1a90c2e9545e086",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/contracts/test_nyquismic_transient.py",
+      "blob_sha": "d9151cc2ef74d240f0b4016150aacb4664c0ddd0",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/contracts/test_nyquismic_triggered_envelope.py",
+      "blob_sha": "e57abaea2c18e97de303e765bccf6e3239c76e81",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/dsp/test_nyquismic_beat_octave_pcm.py",
+      "blob_sha": "115c71b4f937d173572d425a91a9b3a261ffd570",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/dsp/test_nyquismic_beat_steps_pcm.py",
+      "blob_sha": "37d6e44069dc97f4dc4a07dedb085d84067844f9",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/dsp/test_nyquismic_controlled_audio_proof.py",
+      "blob_sha": "5bea5911aec2e42355703eb6fc283082c520db8c",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/dsp/test_nyquismic_envelope_preview_pcm.py",
+      "blob_sha": "64d864b4916c2415c074b0dc9090f8aac4f40dd8",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/dsp/test_nyquismic_graph_tap_audio.py",
+      "blob_sha": "e7c60edba5fe30fa6be31a4114655c39a2d4f853",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/dsp/test_nyquismic_lfo_delayed_pcm.py",
+      "blob_sha": "92075fc7cda1a33074ce8413aa3debaf9f874fae",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/dsp/test_nyquismic_lfo_phase_reset_pcm.py",
+      "blob_sha": "48481f0779979a92a32e9699696059fc7081579e",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/dsp/test_nyquismic_octave_step_pcm.py",
+      "blob_sha": "eb95530eca51dbea039d29ffcd1ed31440ff3e7f",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/dsp/test_nyquismic_proof_pack.py",
+      "blob_sha": "4fbd66f63c4ae3914b4093a3869090bb0e7e4ae0",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/dsp/test_nyquismic_signed_sample_pcm.py",
+      "blob_sha": "ba59d6ae2865861e0b5723ae5a3b2492a1f2940f",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tools/nyq004_proof_pack.py",
+      "blob_sha": "96ef88d5df9cfd7f2b8363b8309647f35f99712f",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "zaaggenz_contracts/nyquismic_beat_steps.py",
+      "blob_sha": "aa62fbb41710f92d2d4275004e5b1b6f5294c9a1",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "zaaggenz_contracts/nyquismic_lfo_onset.py",
+      "blob_sha": "a80fa943ce56a1a2cf6f09fcc28ad6ae8a9e285d",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "zaaggenz_contracts/nyquismic_lfo_phase_reset.py",
+      "blob_sha": "32caa26f379a5c63c60bfe90c1cf0880e5b47367",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "zaaggenz_contracts/nyquismic_spectral_feature.py",
+      "blob_sha": "7009373da40ad2439a5f878967fdc0d049ce7b71",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "zaaggenz_contracts/nyquismic_transient.py",
+      "blob_sha": "88d5852400c758a903dddee891de5c6c5301ad71",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "zaaggenz_dsp/nyquismic_controlled_audio_proof.py",
+      "blob_sha": "9a2ce818b8ab2b89ee4f65b30c2560689a2a56de",
+      "donor_pr": 267,
+      "donor_head": "7baf7e7718e070ff26806f9996030cd5dc8cb754"
+    },
+    {
+      "path": "tests/runtime/browser_nyq_rate_sweep.py",
+      "blob_sha": "3820fc1edaca781c5e6b6a11330f022a8c2c46e7",
+      "donor_pr": 290,
+      "donor_head": "413032521f13d123c8f2d45c988c0efa3d75264d"
+    },
+    {
+      "path": "tests/runtime/test_browser_nyq_rate_sweep.py",
+      "blob_sha": "25a2922d1c2eb6d32c4391acafc42c14a2ad5d91",
+      "donor_pr": 290,
+      "donor_head": "413032521f13d123c8f2d45c988c0efa3d75264d"
+    },
+    {
+      "path": "tests/runtime/browser_nyq_rate_compare.py",
+      "blob_sha": "5407f4efc593eb6cfe38f71d791ed4a5f175213c",
+      "donor_pr": 293,
+      "donor_head": "13dc87c945bb"
+    },
+    {
+      "path": "zaaggenz_runtime/nyquismic_ab_bounce.py",
+      "blob_sha": "8578d780a095065e30050df3936a63496a70f04e",
+      "donor_pr": 300,
+      "donor_head": "2caf5ae3c70886807dae852b8a374319d9af8006"
+    },
+    {
+      "path": "tests/runtime/test_nyquismic_ab_bounce.py",
+      "blob_sha": "07538ee06afbd4d8e21637f91c432f47a9305bf4",
+      "donor_pr": 300,
+      "donor_head": "2caf5ae3c70886807dae852b8a374319d9af8006"
+    },
+    {
+      "path": "zaaggenz_runtime/nyquismic_parallel_blend.py",
+      "blob_sha": "1f51eae6418f05f56ef13ccab8711055d3cc0834",
+      "donor_pr": 301,
+      "donor_head": "d109269a5dae2b40bd6869ce20f42bc994a00add"
+    },
+    {
+      "path": "tests/runtime/test_nyquismic_parallel_blend.py",
+      "blob_sha": "544477da98177f683ec697aeec0284d3eaa488c8",
+      "donor_pr": 301,
+      "donor_head": "d109269a5dae2b40bd6869ce20f42bc994a00add"
+    },
+    {
+      "path": "zaaggenz_runtime/nyquismic_phrase_comp.py",
+      "blob_sha": "b488dd808746296aebd9eef9830a61dcb0b64f2f",
+      "donor_pr": 302,
+      "donor_head": "7a5a4cb5d011302acc70d0ca6e70533dac7fb5c2"
+    },
+    {
+      "path": "tests/runtime/test_nyquismic_phrase_comp.py",
+      "blob_sha": "fae45036c38c05942deea6e51c2dadc9bf2539bc",
+      "donor_pr": 302,
+      "donor_head": "7a5a4cb5d011302acc70d0ca6e70533dac7fb5c2"
+    },
+    {
+      "path": "zaaggenz_runtime/nyquismic_wet_envelope.py",
+      "blob_sha": "e8f7a744557b7a193295071ddaa21ee30237b9e3",
+      "donor_pr": 303,
+      "donor_head": "906303d100a7d3e999014e9dac4b9f828f67c7b1"
+    },
+    {
+      "path": "tests/runtime/test_nyquismic_wet_envelope.py",
+      "blob_sha": "6c80ab7ed9ee2a13a0f11f221cc2fca9e2c84499",
+      "donor_pr": 303,
+      "donor_head": "906303d100a7d3e999014e9dac4b9f828f67c7b1"
+    },
+    {
+      "path": "zaaggenz_runtime/nyquismic_stereo_wet.py",
+      "blob_sha": "ecc9f9473b3899c9803ccc3c36941353c471cd78",
+      "donor_pr": 304,
+      "donor_head": "61a22697f77f2b514c7def140ee352ae59ff75ff"
+    },
+    {
+      "path": "tests/runtime/test_nyquismic_stereo_wet.py",
+      "blob_sha": "ebe2c2a14d4121e3f07b841a493fa6da1f57ea63",
+      "donor_pr": 304,
+      "donor_head": "61a22697f77f2b514c7def140ee352ae59ff75ff"
+    },
+    {
+      "path": "zaaggenz_runtime/nyquismic_rate_morph.py",
+      "blob_sha": "e34f0e000d5e409f4313e0c0f471e809786d4d8a",
+      "donor_pr": 305,
+      "donor_head": "333063414a5f7cf220af6ab827408b1e468aea2e"
+    },
+    {
+      "path": "tests/runtime/test_nyquismic_rate_morph.py",
+      "blob_sha": "a1226ed08948f2cdcfa5d1fc617c62dc60cfd92b",
+      "donor_pr": 305,
+      "donor_head": "333063414a5f7cf220af6ab827408b1e468aea2e"
+    },
+    {
+      "path": "zaaggenz_runtime/nyquismic_dual_rate_stereo.py",
+      "blob_sha": "7bd5b7ff1c7d9b8ae04f71327399afe9aecbed40",
+      "donor_pr": 306,
+      "donor_head": "6090f10329ef8c9649526660a5fdabbeb0660b93"
+    },
+    {
+      "path": "tests/runtime/test_nyquismic_dual_rate_stereo.py",
+      "blob_sha": "5d30878eb7d3276d54e78d899b81837070dd961b",
+      "donor_pr": 306,
+      "donor_head": "6090f10329ef8c9649526660a5fdabbeb0660b93"
+    },
+    {
+      "path": "zaaggenz_runtime/nyquismic_compose_stereo_export.py",
+      "blob_sha": "e47ff6e569e1f0b8b966204f7acb0ae2dc607974",
+      "donor_pr": 308,
+      "donor_head": "04e03aac5bd82b0e1cbd428229ca4db9edac6348"
+    },
+    {
+      "path": "tests/runtime/test_nyquismic_compose_stereo_export.py",
+      "blob_sha": "ed7319f111961df05a4872b31a3e2bd4d2fd83f6",
+      "donor_pr": 308,
+      "donor_head": "04e03aac5bd82b0e1cbd428229ca4db9edac6348"
+    }
+  ]
+}
