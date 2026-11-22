@@ -5,6 +5,10 @@ on:
       - 'zaaggenz_runtime/**'
       - 'web/timeline/**'
       - 'tests/runtime/**'
+      - 'tests/contracts/**'
+      - 'tests/dsp/**'
+      - 'zaaggenz_contracts/**'
+      - 'zaaggenz_dsp/**'
       - 'tools/nyq_ui_kit_gate.py'
       - 'tools/nyq_listen_saved_compose.py'
       - 'docs/runtime/**'
@@ -44,6 +48,10 @@ jobs:
         run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt
       - name: Unified runtime and workspace boundary tests
         run: python -m unittest discover -s tests/runtime -p 'test_*.py' -v
+      - name: Recovered NYQ clock controls and numerical proofs (not programme admission)
+        run: |
+          python -m unittest discover -s tests/contracts -p 'test_nyquismic*.py' -v
+          python -m unittest discover -s tests/dsp -p 'test_nyquismic*.py' -v
       - name: Compose and research owner regressions
         run: |
           python -m unittest discover -s tests/timeline -p 'test_*.py' -v
@@ -76,6 +84,14 @@ jobs:
         run: python -m playwright install chromium
       - name: NYQ direct saved-Compose HTML - real Chromium playback and WAV identity
         run: PYTHONPATH=. python tests/runtime/browser_nyq_direct_audition.py --fixture
+      - name: Original NYQ sweep ZIP index and variants in native Chromium
+        env:
+          PYTHONPATH: .
+        run: python tests/runtime/browser_nyq_rate_sweep.py --fixture
+      - name: Original NYQ single-page multirate player in native Chromium
+        env:
+          PYTHONPATH: .
+        run: python tests/runtime/browser_nyq_rate_compare.py --fixture
       - name: Compose Research switching and preserved session
         run: python tests/runtime/browser_zg041.py --out zg041-browser
       - name: Cross-workspace source and stale-result proof
@@ -149,6 +165,14 @@ jobs:
         run: python -m pip install numpy==2.3.5 scipy==1.17.0 -r requirements-contracts.txt -r requirements-jobs.txt playwright==1.57.0
       - name: Install Chromium on Windows
         run: python -m playwright install chromium
+      - name: Original NYQ sweep ZIP navigation in Windows Chromium
+        env:
+          PYTHONPATH: .
+        run: python tests/runtime/browser_nyq_rate_sweep.py --fixture
+      - name: Original NYQ multirate Web Audio in Windows Chromium
+        env:
+          PYTHONPATH: .
+        run: python tests/runtime/browser_nyq_rate_compare.py --fixture
       - name: Native Chromium source-verified NYQ production kit A/B and cold-reopen
         run: python tests/runtime/browser_nyq_production_kit.py --fixture
       - name: Complete 48-kHz owner Compose UI render, A/B, WAV and cold-reopen in Chromium
