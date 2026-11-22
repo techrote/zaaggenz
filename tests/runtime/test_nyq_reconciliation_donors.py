@@ -28,7 +28,7 @@ class ReconciledDonorIdentityTests(unittest.TestCase):
                 raw = (ROOT / relative).read_bytes()
                 header = b"blob " + str(len(raw)).encode("ascii") + b"\0"
                 self.assertEqual(hashlib.sha1(header + raw).hexdigest(), entry["blob_sha"])
-                self.assertEqual(len(entry["donor_head"]), 40) if entry["donor_pr"] != 293 else None
+                self.assertEqual(len(entry["donor_head"]), 40)
 
 
 if __name__ == "__main__":

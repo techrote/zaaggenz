@@ -249,7 +249,7 @@
       "path": "tests/runtime/browser_nyq_rate_compare.py",
       "blob_sha": "5407f4efc593eb6cfe38f71d791ed4a5f175213c",
       "donor_pr": 293,
-      "donor_head": "13dc87c945bb"
+      "donor_head": "13dc87c945bb10e3534f3ecf5e61ee23b6f00e4d"
     },
     {
       "path": "zaaggenz_runtime/nyquismic_ab_bounce.py",
